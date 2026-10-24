@@ -16,6 +16,21 @@ export interface Project {
   /** Every non-.osu file in the set (audio, background, custom samples, .osb, video...). */
   files: Map<string, Blob>;
   difficulties: Difficulty[];
+  /** For a set published on osu!, what the mirrors serve for it, so cloud sync can leave those files out. */
+  origin?: ProjectOrigin;
+}
+
+/** The files the beatmap mirrors serve for a published set (see syncpack.ts). */
+export interface ProjectOrigin {
+  setId: number;
+  /** Size and SHA-256 of each non-.osu file, keyed by fileKey(name); null when no mirror had the set. */
+  files: Record<string, FileRef> | null;
+  checkedAt: number;
+}
+
+export interface FileRef {
+  size: number;
+  sha256: string;
 }
 
 export function uid(): string {

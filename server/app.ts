@@ -27,7 +27,9 @@ export function createApp() {
   const REDIRECT_URI = env.OSU_REDIRECT_URI ?? `${PUBLIC_URL}/api/auth/callback`;
   // 50 MB is the Supabase Free plan's per-file limit (also set on the bucket in the migration).
   const MAX_PROJECT_BYTES = Number(env.MAX_PROJECT_BYTES) || 50 * MB;
-  const MAX_USER_BYTES = Number(env.MAX_USER_BYTES) || 500 * MB;
+  // The Free plan has 1 GB of storage in total. Published sets sync as a few KB (the browser re-downloads
+  // their audio and images from the mirrors), so the quota mostly holds original maps (~5-15 MB each).
+  const MAX_USER_BYTES = Number(env.MAX_USER_BYTES) || 150 * MB;
   const SECURE_COOKIES = PUBLIC_URL.startsWith('https://');
   const db: Db | null = env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY ? openDb(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY) : null;
   // Logging in needs both the osu! OAuth app and somewhere to keep sessions.

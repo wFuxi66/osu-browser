@@ -3,6 +3,7 @@ import { editor } from '../editor/store';
 import { cloud } from './cloud';
 import { createProjectFromAudio, importLooseFiles, importOsz, type Project } from './project';
 import { saveProjectLocal } from './storage';
+import { originOf } from './syncpack';
 
 export const AUDIO_RE = /\.(mp3|ogg|wav|m4a|flac)$/i;
 
@@ -45,6 +46,8 @@ export async function projectFromLink(link: string, onProgress?: (fraction: numb
   const p = await importOsz(data);
   // Old .osu files have no BeatmapSetID line; we know it from the download.
   for (const d of p.difficulties) if (!(d.beatmap.metadata.beatmapSetId > 0)) d.beatmap.metadata.beatmapSetId = setId;
+  // These are exactly the mirror's files, so cloud sync can leave them out without asking the mirror again.
+  p.origin = await originOf(setId, p.files);
   await saveProjectLocal(p);
   return p;
 }

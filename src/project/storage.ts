@@ -3,7 +3,7 @@ import { beatmapInfo, type BeatmapInfo } from '../osu/info';
 import { parseOsu } from '../osu/parser';
 import { STAR_RATING_VERSION, starRating } from '../osu/stars';
 import { serializeBeatmap } from '../osu/serializer';
-import { projectTitle, type Project } from './project';
+import { projectTitle, type Project, type ProjectOrigin } from './project';
 
 const DB_NAME = 'osu-web-editor';
 const STORE = 'projects';
@@ -17,6 +17,7 @@ interface StoredProject {
   difficulties: StoredDifficulty[];
   /** Last time this project was successfully uploaded to the cloud (0 = never). */
   syncedAt: number;
+  origin?: ProjectOrigin;
 }
 
 interface StoredDifficulty {
@@ -98,6 +99,7 @@ export async function saveProjectLocal(p: Project, syncedAt?: number): Promise<v
       return { id: d.id, osu, stars: { version: STAR_RATING_VERSION, value: storedStars(prev ?? { id: d.id, osu }, parseOsu(osu)).value } };
     }),
     syncedAt: syncedAt ?? existing?.syncedAt ?? 0,
+    origin: p.origin ?? existing?.origin,
   };
   await tx('readwrite', (s) => s.put(record));
 }
@@ -106,6 +108,14 @@ export async function markSynced(id: string, syncedAt: number): Promise<void> {
   const existing = await tx<StoredProject | undefined>('readonly', (s) => s.get(id));
   if (!existing) return;
   existing.syncedAt = syncedAt;
+  await tx('readwrite', (s) => s.put(existing));
+}
+
+/** Records what the mirrors serve for a project's set, without counting as a save. */
+export async function saveOriginLocal(id: string, origin: ProjectOrigin): Promise<void> {
+  const existing = await tx<StoredProject | undefined>('readonly', (s) => s.get(id));
+  if (!existing) return;
+  existing.origin = origin;
   await tx('readwrite', (s) => s.put(existing));
 }
 
@@ -118,6 +128,7 @@ export async function loadProjectLocal(id: string): Promise<Project | null> {
     updatedAt: r.updatedAt,
     files: new Map(r.files.map((f) => [f.name, f.blob])),
     difficulties: r.difficulties.map((d) => ({ id: d.id, beatmap: parseOsu(d.osu) })),
+    origin: r.origin,
   };
 }
 

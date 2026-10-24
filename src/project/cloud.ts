@@ -1,7 +1,12 @@
 // Client for the optional backend: osu! OAuth login and per-account project sync. Packages go straight
 // between the browser and Supabase Storage via signed URLs from the API; only small JSON passes through it.
-import { exportOsz, importOsz, projectTitle, type Project } from './project';
-import { listProjectsLocal, loadProjectLocal, markSynced, saveProjectLocal } from './storage';
+// Published sets are synced as lite packages (see syncpack.ts) and rebuilt from the mirrors on download.
+import { importOsz, projectTitle, type Project } from './project';
+import { listProjectsLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal } from './storage';
+import { buildSyncPackage, originOf, restoreSyncPackage, setIdOf } from './syncpack';
+
+/** How long to wait before asking the mirrors again for a set they didn't have. */
+const MIRROR_RECHECK = 1000 * 60 * 60 * 24;
 
 export interface OsuUser {
   id: number;
@@ -68,8 +73,28 @@ class Cloud {
     return r.json();
   }
 
+  /**
+   * Makes sure a published set knows what the mirrors serve for it, so its upload can leave those files out.
+   * Sets downloaded in the app know already; others (local .osz/folders) fetch the set from a mirror once.
+   */
+  private async ensureOrigin(p: Project): Promise<void> {
+    const setId = setIdOf(p);
+    if (!(setId > 0)) return;
+    const o = p.origin;
+    if (o?.setId === setId && (o.files || Date.now() - o.checkedAt < MIRROR_RECHECK)) return;
+    try {
+      const mirror = await importOsz(await this.fetchBeatmapset(setId));
+      p.origin = await originOf(setId, mirror.files);
+    } catch {
+      // Not on the mirrors (unsubmitted, or they're down): upload the whole set for now.
+      p.origin = { setId, files: null, checkedAt: Date.now() };
+    }
+    await saveOriginLocal(p.id, p.origin);
+  }
+
   async upload(p: Project): Promise<void> {
-    const blob = await exportOsz(p);
+    await this.ensureOrigin(p);
+    const blob = await buildSyncPackage(p);
     if (blob.size > this.maxProjectBytes) throw new Error(tooLargeMessage(projectTitle(p), blob.size, this.maxProjectBytes));
     const id = encodeURIComponent(p.id);
     const { uploadId, uploadUrl } = await apiJson<{ uploadId: string; uploadUrl: string }>(`/api/projects/${id}/upload`, { size: blob.size });
@@ -84,17 +109,17 @@ class Cloud {
     await markSynced(p.id, p.updatedAt);
   }
 
-  async download(meta: CloudProject): Promise<Project> {
+  async download(meta: CloudProject): Promise<{ project: Project; warnings: string[] }> {
     const r = await fetch(`/api/projects/${encodeURIComponent(meta.id)}`, { credentials: 'include' });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const { url } = (await r.json()) as { url: string };
     const data = await fetch(url);
     if (!data.ok) throw new Error(`Download from storage failed (HTTP ${data.status})`);
-    const p = await importOsz(await data.arrayBuffer());
+    const { project: p, warnings } = await restoreSyncPackage(await data.arrayBuffer(), (setId) => this.fetchBeatmapset(setId));
     p.id = meta.id;
     p.updatedAt = meta.updatedAt;
     p.createdAt = meta.createdAt;
-    return p;
+    return { project: p, warnings };
   }
 
   async remove(id: string): Promise<void> {
@@ -114,9 +139,10 @@ class Cloud {
       const l = localById.get(r.id);
       if (!l || r.updatedAt > l.updatedAt) {
         try {
-          const p = await this.download(r);
-          await saveProjectLocal(p, r.updatedAt);
+          const { project, warnings } = await this.download(r);
+          await saveProjectLocal(project, r.updatedAt);
           n++;
+          for (const w of warnings) failures.push(`"${r.title}": ${w}`);
         } catch (e) {
           failures.push(`"${r.title}": ${(e as Error).message}`);
         }

@@ -9,7 +9,7 @@ It follows stable's flow: you start in an edit-mode song select with your maps, 
 - **Frontend** (`src/`): Vite + React + TypeScript, built to static files. Everything editor-related runs in the browser; projects are saved to IndexedDB with Ctrl+S. `src/songselect/` is the song select, `src/editor/` the editor, `src/ui/` the in-game and Windows-style dialogs.
 - **API** (`server/app.ts`): a small Hono app for osu! OAuth, sessions, and the cloud project list. It runs as a Vercel Function (`api/index.ts`) or as a plain Node server (`server/index.ts`, used by `npm run dev` and Docker).
 - **Database**: Supabase Postgres (`users`, `sessions`, `projects`, `pending_uploads`). The schema is in `supabase/migrations/`. Only the server touches it, with the service role key; RLS is on and the public roles have no grants.
-- **Storage**: `.osz` packages live in the private Supabase Storage bucket `projects`. The browser uploads and downloads them directly with short-lived signed URLs from the API, because Vercel Functions cap request bodies at about 4.5 MB. The API checks ownership, the per-map size limit (50 MB, the Supabase Free plan's maximum file size), and the per-account quota (500 MB by default). It also verifies each upload (size, zip header) before pointing the project at it.
+- **Storage**: `.osz` packages live in the private Supabase Storage bucket `projects`. The browser uploads and downloads them directly with short-lived signed URLs from the API, because Vercel Functions cap request bodies at about 4.5 MB. The API checks ownership, the per-map size limit (50 MB, the Supabase Free plan's maximum file size), and the per-account quota (150 MB by default, so a few accounts fit in the Free plan's 1 GB). It also verifies each upload (size, zip header) before pointing the project at it. Sets that are published on osu! (BeatmapSetID > 0) sync as a few KB: the package holds the `.osu` files, any file that differs from what the mirrors serve for the set (checked by SHA-256), and a manifest of the rest, which another device downloads again from the mirrors (`src/project/syncpack.ts`). It warns if the set changed on osu! since. Original maps, and sets the mirrors don't have, upload in full.
 
 ## Running locally
 
@@ -98,7 +98,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Multiple difficulties: Create a new Difficulty opens Song Setup to name it, then asks "Would you like to clear all objects and start fresh?" and saves it right away (the current one keeps its last save; flow and wording checked against stable); switch from File → Open Difficulty or Ctrl+O; delete from song select
 - [x] Add files to the beatmap folder (custom hitsounds, images, storyboard assets), replace audio
 - [x] Lossless round trip of `.osu` files (verified against ranked maps)
-- [x] osu! OAuth login + per-account cloud sync
+- [x] osu! OAuth login + per-account cloud sync (published sets sync only their edited files and come back from the mirrors)
 
 **Compose (F1)**
 - [x] Select / circle / slider / spinner tools (1–4), mania note/hold tools

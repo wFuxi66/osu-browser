@@ -159,4 +159,4 @@ Default hitsound and gameplay samples (including `spinnerspin.wav`, `combobreak.
 
 ## Licence
 
-The osu!-resources samples and skin images in `public/samples` and `public/skins/default` stay under CC BY-NC 4.0 (non-commercial, see the `ATTRIBUTION.md` files there), and the code ported from ppy/osu and osu-framework stays under their MIT licence. osu! is a trademark of ppy Pty Ltd.
+The code is under the [MIT License](LICENSE). The osu!-resources samples and skin images in `public/samples` and `public/skins/default` stay under CC BY-NC 4.0 (non-commercial, see the `ATTRIBUTION.md` files there), and the code ported from ppy/osu and osu-framework stays under their MIT licence. osu! is a trademark of ppy Pty Ltd.

@@ -46,11 +46,16 @@ async function fetchSet(setId: number): Promise<OnlineSet | null> {
   return { status: s.status, beatmaps: (s.beatmaps ?? []).map((b) => ({ id: b.id, checksum: b.checksum, status: b.status, version: b.version })) };
 }
 
-/** Stable's status for a difficulty with this checksum: the latest version, an older or edited one, or unknown to osu!. */
-export function mapStatus(checksum: string, set: OnlineSet | null): MapStatus {
+/**
+ * Stable's status for a difficulty with this checksum and BeatmapID: the latest version, an older or edited one, or
+ * unknown to osu!. A difficulty added to a published set (BeatmapID 0, or an id the set doesn't have) was never
+ * uploaded, so there's no version to update to: it's "Not submitted".
+ */
+export function mapStatus(checksum: string, beatmapId: number, set: OnlineSet | null): MapStatus {
   if (!set) return { kind: 'unsubmitted' };
   const same = set.beatmaps.find((b) => b.checksum === checksum);
-  return same ? { kind: 'latest', status: same.status || set.status } : { kind: 'update' };
+  if (same) return { kind: 'latest', status: same.status || set.status };
+  return beatmapId > 0 && set.beatmaps.some((b) => b.id === beatmapId) ? { kind: 'update' } : { kind: 'unsubmitted' };
 }
 
 /** "Latest ranked version" and so on; graveyarded and WIP maps read as pending, as in stable. */

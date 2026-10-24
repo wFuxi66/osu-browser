@@ -561,6 +561,7 @@ function SubmissionStatus({ set, diff, onUpdate }: { set: ProjectSummary | null;
   const [status, setStatus] = useState<MapStatus | null>(null);
   const setId = set?.beatmapSetId ?? 0;
   const checksum = diff?.checksum ?? '';
+  const beatmapId = diff?.beatmapId ?? 0;
   useEffect(() => {
     setStatus(null);
     if (!checksum) return;
@@ -570,13 +571,13 @@ function SubmissionStatus({ set, diff, onUpdate }: { set: ProjectSummary | null;
     }
     let live = true;
     onlineSet(setId).then(
-      (s) => live && setStatus(mapStatus(checksum, s)),
+      (s) => live && setStatus(mapStatus(checksum, beatmapId, s)),
       () => {}, // offline: show nothing rather than guess
     );
     return () => {
       live = false;
     };
-  }, [setId, checksum]);
+  }, [setId, checksum, beatmapId]);
 
   // Keep the box's space while loading so the buttons below don't jump.
   if (!status) return <div className="ss-status ss-status-empty" />;

@@ -12,7 +12,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY server ./server
-# Run as the unprivileged node user. Accounts and synced maps live in Supabase (SUPABASE_URL / _SERVICE_ROLE_KEY).
+# Run as the unprivileged node user. The server is stateless: sessions are encrypted cookies and maps sync to Google Drive.
 USER node
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \

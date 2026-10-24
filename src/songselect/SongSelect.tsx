@@ -58,8 +58,9 @@ export function SongSelect() {
   const [busy, setBusy] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
-  const [directOpen, setDirectOpen] = useState(false);
-  const closeDirect = useCallback(() => setDirectOpen(false), []);
+  const [direct, setDirect] = useState<null | 'search' | 'mine'>(null);
+  const directOpen = direct !== null;
+  const closeDirect = useCallback(() => setDirect(null), []);
   const haveSets = useMemo(() => new Map((sets ?? []).filter((s) => s.beatmapSetId > 0).map((s) => [s.beatmapSetId, s.id])), [sets]);
   const randomHistory = useRef<Selection[]>([]);
 
@@ -440,7 +441,7 @@ export function SongSelect() {
         <button className="ss-wide" onClick={async () => { const f = await pickFiles('', { directory: true }); if (f.length) handleFiles(f); }}>
           Open a <b>beatmap folder</b>
         </button>
-        <button className="ss-wide" onClick={() => setDirectOpen(true)}>
+        <button className="ss-wide" onClick={() => setDirect('search')}>
           <b>Search &amp; download</b> beatmaps
         </button>
         {linkOpen ? (
@@ -456,7 +457,7 @@ export function SongSelect() {
         </button>
         <button className="ss-footer-btn" onClick={random} title="Random (F2)">Random</button>
         <button className="ss-footer-btn" onClick={() => void optionsDialog()} title="Beatmap options (F3)" disabled={!selDiff}>Options</button>
-        <UserPanel />
+        <UserPanel onMyBeatmaps={() => setDirect('mine')} />
         <button className="ss-cookie" onClick={() => void openEditor()} disabled={!selDiff} title="Edit (Enter)">
           <span>edit</span>
         </button>
@@ -464,6 +465,7 @@ export function SongSelect() {
 
       {directOpen && (
         <DirectPanel
+          mine={direct === 'mine'}
           have={haveSets}
           onImported={async (id) => {
             const list = await refresh();
@@ -471,7 +473,7 @@ export function SongSelect() {
             if (s) setSel({ setId: s.id, diffId: s.difficulties[0].id });
           }}
           onOpen={(id) => {
-            setDirectOpen(false);
+            setDirect(null);
             void selectImported(id);
           }}
           onClose={closeDirect}
@@ -593,7 +595,7 @@ function LinkInput({ onOpen, onCancel }: { onOpen: (link: string) => void; onCan
 }
 
 /** The account dialog: Google Drive sync and the (optional) osu! login. */
-async function accountDialog() {
+async function accountDialog(onMyBeatmaps: () => void) {
   const u = cloud.user;
   const buttons: PromptButton[] = [];
   if (cloud.driveConfigured) {
@@ -603,24 +605,25 @@ async function accountDialog() {
         : { label: 'Sync my maps with Google Drive', value: 'drive-on', tone: 'blue' },
     );
   }
-  if (u) buttons.push({ label: 'Log out of osu!', value: 'logout', tone: 'pink' });
+  if (u) buttons.push({ label: 'My beatmaps on osu!', value: 'mine', tone: 'blue' }, { label: 'Log out of osu!', value: 'logout', tone: 'pink' });
   else if (cloud.oauthConfigured) buttons.push({ label: 'Log in with osu!', value: 'login', tone: 'pink' });
   buttons.push({ label: 'Privacy policy', value: 'privacy', tone: 'grey' }, { label: 'Close', value: 'close', tone: 'grey' });
   const drive = cloud.syncing
     ? `Your maps are saved in this browser and synced to the "${DRIVE_FOLDER}" folder in your Google Drive, so they're there on any computer.`
     : `Your maps are saved in this browser. Sync them with your Google Drive to open them on any computer: they go in a "${DRIVE_FOLDER}" folder, and the editor can only see the files it creates.`;
-  const osu = u ? `Logged in to osu! as ${u.username}.` : cloud.oauthConfigured ? 'Log in with osu! to sign new maps with your name.' : '';
+  const osu = u ? `Logged in to osu! as ${u.username}.` : cloud.oauthConfigured ? 'Log in with osu! to sign new maps with your name and open the maps you uploaded.' : '';
   const r = await ask({ look: 'game', title: u?.username ?? 'Your maps', message: [drive, osu].filter(Boolean).join(' '), buttons, cancelValue: 'close' });
   if (r === 'drive-on') cloud.connectDrive();
   else if (r === 'drive-off') {
     await cloud.disconnectDrive();
     editor.toast('Stopped syncing with Google Drive. The maps already there stay in your Drive.');
   } else if (r === 'login') cloud.login();
+  else if (r === 'mine') onMyBeatmaps();
   else if (r === 'logout') await cloud.logout();
   else if (r === 'privacy') window.open('/privacy.html', '_blank', 'noopener');
 }
 
-function UserPanel() {
+function UserPanel({ onMyBeatmaps }: { onMyBeatmaps: () => void }) {
   useCloud();
   const u = cloud.user;
   const label = !cloud.available ? 'Offline' : u ? u.username : 'Guest';
@@ -635,7 +638,7 @@ function UserPanel() {
           ? 'Click to sign in!'
           : 'Maps are saved in this browser';
   return (
-    <button className="ss-user" onClick={() => void accountDialog()} disabled={!canOpen}>
+    <button className="ss-user" onClick={() => void accountDialog(onMyBeatmaps)} disabled={!canOpen}>
       <span className="ss-user-avatar">{u?.avatarUrl ? <img src={u.avatarUrl} alt="" /> : <span>?</span>}</span>
       <span className="ss-user-text">
         <span className="ss-user-name">{label}</span>

@@ -1,5 +1,6 @@
 // Searching published beatmaps (osu!direct in the browser) through osu.direct's search API, which answers browsers
-// directly (CORS). Downloads go through cloud.fetchBeatmapset's mirrors.
+// directly (CORS), and the logged-in user's own sets (My beatmaps) from the osu! API through our server. Downloads go
+// through cloud.fetchBeatmapset's mirrors.
 
 export type DirectStatus = 'ranked' | 'loved' | 'qualified' | 'pending' | 'graveyard' | 'any';
 export type DirectSort = 'plays' | 'favourites' | 'ranked' | 'newest';
@@ -37,7 +38,13 @@ export interface DirectSet {
   thumb: string;
   preview: string;
   difficulties: DirectDifficulty[];
+  /** For My beatmaps: which of the user's lists the set is in, and when it was last updated (ms). */
+  kind?: MyKind;
+  updated?: number;
 }
+
+/** The osu! API's lists of a user's sets (pending includes WIP; guest is sets they made a guest difficulty for). */
+export type MyKind = 'pending' | 'ranked' | 'loved' | 'guest' | 'graveyard';
 
 export const PAGE_SIZE = 30;
 
@@ -79,6 +86,8 @@ interface ApiSet {
   covers?: { card?: string; list?: string };
   preview_url?: string;
   beatmaps?: ApiBeatmap[];
+  kind?: MyKind;
+  last_updated?: string;
 }
 
 export async function searchBeatmapsets(q: DirectQuery, signal?: AbortSignal): Promise<DirectSet[]> {
@@ -89,8 +98,19 @@ export async function searchBeatmapsets(q: DirectQuery, signal?: AbortSignal): P
   const r = await fetch(`https://osu.direct/api/v2/search?${params}`, { signal });
   if (!r.ok) throw new Error(`Beatmap search failed (HTTP ${r.status}).`);
   const data = (await r.json()) as ApiSet[];
-  if (!Array.isArray(data)) return [];
-  return data.map((s) => ({
+  return Array.isArray(data) ? data.map(toDirectSet) : [];
+}
+
+/** The logged-in user's uploaded sets and guest difficulties, newest first. */
+export async function myBeatmapsets(signal?: AbortSignal): Promise<DirectSet[]> {
+  const r = await fetch('/api/me/beatmapsets', { credentials: 'include', signal });
+  if (!r.ok) throw new Error(r.status === 401 ? 'Log in with osu! to see your beatmaps.' : `Couldn't list your beatmaps (HTTP ${r.status}).`);
+  const data = (await r.json()) as ApiSet[];
+  return data.map(toDirectSet).sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0));
+}
+
+function toDirectSet(s: ApiSet): DirectSet {
+  return {
     id: s.id,
     artist: s.artist,
     title: s.title,
@@ -107,5 +127,7 @@ export async function searchBeatmapsets(q: DirectQuery, signal?: AbortSignal): P
     difficulties: (s.beatmaps ?? [])
       .map((b) => ({ id: b.id, version: b.version, mode: b.mode_int, stars: b.difficulty_rating, length: b.total_length }))
       .sort((a, b) => a.mode - b.mode || a.stars - b.stars),
-  }));
+    kind: s.kind,
+    updated: s.last_updated ? Date.parse(s.last_updated) : undefined,
+  };
 }

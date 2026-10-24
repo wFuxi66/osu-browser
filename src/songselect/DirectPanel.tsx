@@ -1,8 +1,10 @@
-// osu!direct in the browser: search published beatmaps, preview them and download straight into song select.
+// osu!direct in the browser: search published beatmaps, preview them and download straight into song select. Logged in
+// with osu!, "My beatmaps" lists the user's own uploaded sets and guest difficulties instead.
 import { useEffect, useRef, useState } from 'react';
 import { music } from '../audio/music';
 import { editor } from '../editor/store';
-import { PAGE_SIZE, searchBeatmapsets, type DirectQuery, type DirectSet, type DirectSort, type DirectStatus } from '../project/direct';
+import { cloud } from '../project/cloud';
+import { myBeatmapsets, PAGE_SIZE, searchBeatmapsets, type DirectQuery, type DirectSet, type DirectSort, type DirectStatus, type MyKind } from '../project/direct';
 import { projectFromLink } from '../project/open';
 import { starColour } from './filter';
 
@@ -21,6 +23,14 @@ const MODES: [number | null, string][] = [
   [3, 'osu!mania'],
   [null, 'All modes'],
 ];
+const MY_KINDS: [MyKind | 'all', string][] = [
+  ['all', 'All my maps'],
+  ['pending', 'WIP & pending'],
+  ['ranked', 'Ranked'],
+  ['loved', 'Loved'],
+  ['guest', 'Guest difficulties'],
+  ['graveyard', 'Graveyard'],
+];
 const SORTS: [DirectSort, string][] = [
   ['plays', 'Most played'],
   ['favourites', 'Most favourited'],
@@ -36,6 +46,8 @@ interface Props {
   onImported: (projectId: string) => Promise<void>;
   onOpen: (projectId: string) => void;
   onClose: () => void;
+  /** Open on My beatmaps (needs the osu! login). */
+  mine?: boolean;
 }
 
 function formatLength(s: number) {
@@ -46,20 +58,24 @@ function formatCount(n: number) {
   return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
 }
 
-export function DirectPanel({ have, onImported, onOpen, onClose }: Props) {
+export function DirectPanel({ have, onImported, onOpen, onClose, mine: startMine = false }: Props) {
   const [text, setText] = useState('');
   const [query, setQuery] = useState<Omit<DirectQuery, 'offset'>>({ query: '', mode: 0, status: 'ranked', sort: 'plays' });
   const [results, setResults] = useState<DirectSet[]>([]);
   const [loading, setLoading] = useState(false);
   const [more, setMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mine, setMine] = useState(startMine && !!cloud.user);
+  const [myKind, setMyKind] = useState<MyKind | 'all'>('all');
+  const [mySets, setMySets] = useState<DirectSet[] | null>(null);
+  const [myError, setMyError] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<Map<number, Download>>(new Map());
   const [playing, setPlaying] = useState<number | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const request = useRef<AbortController | null>(null);
   const sentinel = useRef<HTMLDivElement>(null);
-  const state = useRef({ loading, more, results, query });
-  state.current = { loading, more, results, query };
+  const state = useRef({ loading, more, results, query, mine });
+  state.current = { loading, more, results, query, mine };
 
   const load = async (q: Omit<DirectQuery, 'offset'>, offset: number) => {
     request.current?.abort();
@@ -81,8 +97,8 @@ export function DirectPanel({ have, onImported, onOpen, onClose }: Props) {
 
   // New search when the filters change; typing waits a moment.
   useEffect(() => {
-    void load(query, 0);
-  }, [query]);
+    if (!mine) void load(query, 0);
+  }, [query, mine]);
   useEffect(() => {
     if (text === query.query) return;
     const t = window.setTimeout(() => setQuery((q) => ({ ...q, query: text })), 350);
@@ -95,7 +111,7 @@ export function DirectPanel({ have, onImported, onOpen, onClose }: Props) {
     if (!el) return;
     const io = new IntersectionObserver((entries) => {
       const s = state.current;
-      if (entries[0].isIntersecting && !s.loading && s.more && s.results.length) void load(s.query, s.results.length);
+      if (entries[0].isIntersecting && !s.mine && !s.loading && s.more && s.results.length) void load(s.query, s.results.length);
     });
     io.observe(el);
     return () => io.disconnect();
@@ -116,6 +132,28 @@ export function DirectPanel({ have, onImported, onOpen, onClose }: Props) {
       audio.current?.pause();
     };
   }, [onClose]);
+
+  // My beatmaps loads once per panel; the list is filtered here rather than searched.
+  useEffect(() => {
+    if (!mine || mySets) return;
+    const ctrl = new AbortController();
+    setMyError(null);
+    myBeatmapsets(ctrl.signal).then(
+      (sets) => setMySets(sets.filter((x, i) => sets.findIndex((y) => y.id === x.id) === i)),
+      (e) => !ctrl.signal.aborted && setMyError((e as Error).message),
+    );
+    return () => ctrl.abort();
+  }, [mine, mySets]);
+
+  const words = text.toLowerCase().split(/s+/).filter(Boolean);
+  const shown = !mine
+    ? results
+    : (mySets ?? []).filter((s) => {
+        if (myKind !== 'all' && s.kind !== myKind) return false;
+        if (query.mode !== null && !s.difficulties.some((x) => x.mode === query.mode)) return false;
+        const hay = `${s.artist} ${s.title} ${s.creator} ${s.difficulties.map((x) => x.version).join(' ')}`.toLowerCase();
+        return words.every((w) => hay.includes(w));
+      });
 
   const togglePreview = (s: DirectSet) => {
     audio.current ??= new Audio();
@@ -169,14 +207,14 @@ export function DirectPanel({ have, onImported, onOpen, onClose }: Props) {
         <input
           autoFocus
           className="dl-search"
-          placeholder="Search artist, title, mapper, tags… (or paste a beatmap link)"
+          placeholder={mine ? 'Filter your maps by artist, title or difficulty name…' : 'Search artist, title, mapper, tags… (or paste a beatmap link)'}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               const link = /beatmapsets\/(\d+)/.exec(text);
               if (link) void download(Number(link[1]), `beatmapset ${link[1]}`);
-              else setQuery((q) => ({ ...q, query: text }));
+              else if (!mine) setQuery((q) => ({ ...q, query: text }));
             }
           }}
         />
@@ -184,8 +222,11 @@ export function DirectPanel({ have, onImported, onOpen, onClose }: Props) {
       </div>
       <div className="dl-filters">
         <div className="dl-chips">
+          {cloud.user && (
+            <button className={mine ? 'active' : ''} onClick={() => setMine(true)} title={`Beatmaps uploaded by ${cloud.user.username}`}>My beatmaps</button>
+          )}
           {STATUSES.map(([v, label]) => (
-            <button key={v} className={query.status === v ? 'active' : ''} onClick={() => setQuery((q) => ({ ...q, status: v }))}>{label}</button>
+            <button key={v} className={!mine && query.status === v ? 'active' : ''} onClick={() => { setMine(false); setQuery((q) => ({ ...q, status: v })); }}>{label}</button>
           ))}
         </div>
         <div className="dl-chips">
@@ -193,12 +234,18 @@ export function DirectPanel({ have, onImported, onOpen, onClose }: Props) {
             <button key={label} className={query.mode === v ? 'active' : ''} onClick={() => setQuery((q) => ({ ...q, mode: v }))}>{label}</button>
           ))}
         </div>
-        <select value={query.sort} onChange={(e) => setQuery((q) => ({ ...q, sort: e.target.value as DirectSort }))}>
-          {SORTS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-        </select>
+        {mine ? (
+          <select value={myKind} onChange={(e) => setMyKind(e.target.value as MyKind | 'all')}>
+            {MY_KINDS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+        ) : (
+          <select value={query.sort} onChange={(e) => setQuery((q) => ({ ...q, sort: e.target.value as DirectSort }))}>
+            {SORTS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+        )}
       </div>
       <div className="dl-list">
-        {results.map((s) => {
+        {shown.map((s) => {
           const d = downloads.get(s.id);
           const local = d?.projectId ?? have.get(s.id);
           const diffs = query.mode === null ? s.difficulties : s.difficulties.filter((x) => x.mode === query.mode);
@@ -213,6 +260,7 @@ export function DirectPanel({ have, onImported, onOpen, onClose }: Props) {
                 <div className="dl-meta">
                   mapped by <b>{s.creator}</b>
                   <span className={`dl-status ${s.status}`}>{s.status}</span>
+                  {s.kind === 'guest' && <span>guest difficulty</span>}
                   <span>{Math.round(s.bpm)} BPM</span>
                   <span>{formatLength(length)}</span>
                   <span title="Plays">▶ {formatCount(s.plays)}</span>
@@ -239,10 +287,14 @@ export function DirectPanel({ have, onImported, onOpen, onClose }: Props) {
           );
         })}
         <div ref={sentinel} className="dl-end">
-          {error ? error : loading ? 'Searching…' : results.length === 0 ? 'No beatmaps found.' : more ? '' : 'That’s all of them.'}
+          {mine
+            ? myError ?? (!mySets ? 'Loading your beatmaps…' : shown.length === 0 ? (mySets.length ? 'None of your beatmaps match.' : 'You haven’t uploaded any beatmaps yet.') : '')
+            : error ? error : loading ? 'Searching…' : results.length === 0 ? 'No beatmaps found.' : more ? '' : 'That’s all of them.'}
         </div>
       </div>
-      <div className="dl-credit">Search by osu.direct, downloads from osu.direct / nerinyan.moe mirrors. Maps are saved in this browser.</div>
+      <div className="dl-credit">
+        {mine ? 'Your beatmaps from osu.ppy.sh' : 'Search by osu.direct'}, downloads from osu.direct / nerinyan.moe mirrors. Maps are saved in this browser.
+      </div>
     </div>
   );
 }

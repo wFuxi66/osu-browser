@@ -1,15 +1,28 @@
-// The API as a plain Hono app: osu! OAuth login and sessions, and Google Drive sign-in for cloud sync.
+// The API as a plain Hono app: osu! OAuth login, osu! API lookups, and Google Drive sign-in for cloud sync.
 // Shared by the Vercel function (api/index.ts) and the standalone Node server (server/index.ts).
-// Beatmaps never pass through here: the browser syncs them straight to the user's own Google Drive (drive.ts).
+// There's no database: the osu! session and the Drive refresh token live in encrypted httpOnly cookies, and
+// beatmaps never pass through here (the browser syncs them straight to the user's own Google Drive, drive.ts).
 import { randomBytes } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import { openDb, type Db, type UserRow } from './db.ts';
 import { driveRoutes } from './drive.ts';
+import { sealer } from './seal.ts';
 
 const SESSION_TTL = 1000 * 60 * 60 * 24 * 365;
+const SESSION_COOKIE = 'osu_session';
 
 export type Env = { Variables: Record<string, never> };
+
+export interface OsuUser {
+  id: number;
+  username: string;
+  avatarUrl: string;
+  countryCode: string;
+}
+
+/** The lists of a user's sets that "My beatmaps" shows, in the osu! API's words (pending includes WIP). */
+const MY_SET_KINDS = ['pending', 'ranked', 'loved', 'guest', 'graveyard'] as const;
+const MY_SETS_PER_KIND = 500;
 
 export function createApp() {
   const env = process.env;
@@ -18,16 +31,23 @@ export function createApp() {
   const PUBLIC_URL = (env.PUBLIC_URL ?? 'http://localhost:5173').replace(/\/$/, '');
   const REDIRECT_URI = env.OSU_REDIRECT_URI ?? `${PUBLIC_URL}/api/auth/callback`;
   const SECURE_COOKIES = PUBLIC_URL.startsWith('https://');
-  const db: Db | null = env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY ? openDb(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY) : null;
-  // Logging in needs both the osu! OAuth app and somewhere to keep sessions.
-  const OAUTH_CONFIGURED = Boolean(CLIENT_ID && CLIENT_SECRET && db);
+  const OAUTH_CONFIGURED = Boolean(CLIENT_ID && CLIENT_SECRET);
   const DRIVE_CONFIGURED = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+  // The session cookie's key is derived from the osu! client secret: rotating it signs everyone out.
+  const session = sealer(CLIENT_SECRET, 'osu-session');
 
   const app = new Hono<Env>();
 
-  async function currentUser(c: Context): Promise<UserRow | undefined> {
-    const sid = getCookie(c, 'sid');
-    return sid && db ? db.userForSession(sid) : undefined;
+  function currentUser(c: Context): OsuUser | null {
+    const v = getCookie(c, SESSION_COOKIE);
+    const text = v && OAUTH_CONFIGURED ? session.open(v) : null;
+    if (!text) return null;
+    try {
+      const s = JSON.parse(text) as { user: OsuUser; exp: number };
+      return s.exp > Date.now() ? s.user : null;
+    } catch {
+      return null;
+    }
   }
 
   // Reject cross-origin state-changing requests (cookies are SameSite=Lax as a first line of defence).
@@ -53,18 +73,17 @@ export function createApp() {
 
   app.get('/api/health', (c) => c.json({ ok: true, oauthConfigured: OAUTH_CONFIGURED, driveConfigured: DRIVE_CONFIGURED }));
 
-  app.get('/api/auth/me', async (c) => {
-    const u = await currentUser(c);
-    return c.json({
+  app.get('/api/auth/me', (c) =>
+    c.json({
       oauthConfigured: OAUTH_CONFIGURED,
       driveConfigured: DRIVE_CONFIGURED,
       driveConnected: drive?.connected(c) ?? false,
-      user: u ? { id: u.id, username: u.username, avatarUrl: u.avatar_url, countryCode: u.country_code } : null,
-    });
-  });
+      user: currentUser(c),
+    }),
+  );
 
   app.get('/api/auth/login', (c) => {
-    if (!OAUTH_CONFIGURED) return c.text('osu! login is not configured on this server (OSU_CLIENT_ID / OSU_CLIENT_SECRET / SUPABASE_*).', 500);
+    if (!OAUTH_CONFIGURED) return c.text('osu! login is not configured on this server (OSU_CLIENT_ID / OSU_CLIENT_SECRET).', 500);
     const state = randomBytes(16).toString('hex');
     const ret = c.req.query('return') ?? '/';
     const cookieOpts = { httpOnly: true, sameSite: 'Lax' as const, secure: SECURE_COOKIES, path: '/', maxAge: 600 };
@@ -80,7 +99,7 @@ export function createApp() {
   });
 
   app.get('/api/auth/callback', async (c) => {
-    if (!db) return c.text('Server storage is not configured.', 500);
+    if (!OAUTH_CONFIGURED) return c.text('osu! login is not configured on this server.', 500);
     const code = c.req.query('code');
     const state = c.req.query('state');
     const expected = getCookie(c, 'oauth_state');
@@ -102,22 +121,24 @@ export function createApp() {
     if (!meRes.ok) return c.text(`Could not read your osu! profile (${meRes.status}).`, 502);
     const me = (await meRes.json()) as { id: number; username: string; avatar_url?: string; country_code?: string };
 
-    await db.upsertUser({ id: me.id, username: me.username, avatar_url: me.avatar_url ?? '', country_code: me.country_code ?? '' });
-    const sid = randomBytes(32).toString('hex');
-    await db.createSession(sid, me.id, SESSION_TTL);
-    await db.pruneSessions();
-    setCookie(c, 'sid', sid, { httpOnly: true, sameSite: 'Lax', secure: SECURE_COOKIES, path: '/', maxAge: SESSION_TTL / 1000 });
+    // Only who the user is goes in the session; their osu! token is dropped (the API calls below use the app's own).
+    const user: OsuUser = { id: me.id, username: me.username, avatarUrl: me.avatar_url ?? '', countryCode: me.country_code ?? '' };
+    setCookie(c, SESSION_COOKIE, session.seal(JSON.stringify({ user, exp: Date.now() + SESSION_TTL })), {
+      httpOnly: true,
+      sameSite: 'Lax',
+      secure: SECURE_COOKIES,
+      path: '/',
+      maxAge: SESSION_TTL / 1000,
+    });
     return c.redirect(`${PUBLIC_URL}${ret}`);
   });
 
-  app.post('/api/auth/logout', async (c) => {
-    const sid = getCookie(c, 'sid');
-    if (sid && db) await db.deleteSession(sid);
-    deleteCookie(c, 'sid', { path: '/', secure: SECURE_COOKIES });
+  app.post('/api/auth/logout', (c) => {
+    deleteCookie(c, SESSION_COOKIE, { path: '/', secure: SECURE_COOKIES });
     return c.json({ ok: true });
   });
 
-  // ---------------------------------------------------------------- published beatmap info
+  // ---------------------------------------------------------------- osu! API
 
   // An app token (client credentials, public scope) for the osu! API, shared by every request.
   let appToken: { value: string; expires: number } | null = null;
@@ -134,15 +155,16 @@ export function createApp() {
     return t.access_token;
   }
 
+  const osuApi = async (path: string) =>
+    fetch(`https://osu.ppy.sh/api/v2${path}`, { headers: { Authorization: `Bearer ${await osuAppToken()}`, Accept: 'application/json' } });
+
   // A set's ranked status and its difficulties' checksums, for song select's status box. Straight from the
   // osu! API (mirrors can lag behind a pending map's updates); the browser falls back to osu.direct.
   app.get('/api/beatmapsets/:id', async (c) => {
-    if (!CLIENT_ID || !CLIENT_SECRET) return c.text('osu! API access is not configured on this server.', 501);
+    if (!OAUTH_CONFIGURED) return c.text('osu! API access is not configured on this server.', 501);
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) return c.text('Invalid beatmapset id', 400);
-    const res = await fetch(`https://osu.ppy.sh/api/v2/beatmapsets/${id}`, {
-      headers: { Authorization: `Bearer ${await osuAppToken()}`, Accept: 'application/json' },
-    });
+    const res = await osuApi(`/beatmapsets/${id}`);
     const cache = { 'Cache-Control': 'public, max-age=60' };
     if (res.status === 404) return c.json({ found: false }, 200, cache);
     if (!res.ok) return c.text(`osu! API error (${res.status})`, 502);
@@ -154,5 +176,40 @@ export function createApp() {
     );
   });
 
+  // The logged-in user's uploaded sets (and the sets they made guest difficulties for), for "My beatmaps" in
+  // the osu!direct panel. Same shape as osu.direct's search results, plus which list each set came from.
+  app.get('/api/me/beatmapsets', async (c) => {
+    const user = currentUser(c);
+    if (!user) return c.text('Log in with osu! to see your beatmaps.', 401);
+    const lists = await Promise.all(
+      MY_SET_KINDS.map(async (kind) => {
+        const sets: Record<string, unknown>[] = [];
+        while (sets.length < MY_SETS_PER_KIND) {
+          const res = await osuApi(`/users/${user.id}/beatmapsets/${kind}?limit=100&offset=${sets.length}`);
+          if (!res.ok) throw new Error(`osu! API error (${res.status}) listing ${kind} beatmaps`);
+          const page = (await res.json()) as Record<string, unknown>[];
+          sets.push(...page);
+          if (page.length < 100) break;
+        }
+        return sets.map((s) => ({ ...pickSet(s), kind }));
+      }),
+    );
+    return c.json(lists.flat(), 200, { 'Cache-Control': 'private, no-store' });
+  });
+
   return app;
+}
+
+/** The fields of an osu! API beatmapset that the browser shows (it parses them like osu.direct's search results). */
+function pickSet(s: Record<string, unknown>) {
+  const keep = ['id', 'artist', 'title', 'creator', 'status', 'bpm', 'play_count', 'favourite_count', 'video', 'storyboard', 'covers', 'preview_url', 'last_updated'];
+  const out: Record<string, unknown> = Object.fromEntries(keep.map((k) => [k, s[k]]));
+  out.beatmaps = ((s.beatmaps as Record<string, unknown>[] | undefined) ?? []).map((b) => ({
+    id: b.id,
+    version: b.version,
+    mode_int: b.mode_int,
+    difficulty_rating: b.difficulty_rating,
+    total_length: b.total_length,
+  }));
+  return out;
 }

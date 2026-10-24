@@ -21,7 +21,6 @@ describe('Google Drive sign-in', () => {
     vi.stubEnv('GOOGLE_CLIENT_ID', 'client-id');
     vi.stubEnv('GOOGLE_CLIENT_SECRET', 'client-secret');
     vi.stubEnv('PUBLIC_URL', 'https://editor.example');
-    vi.stubEnv('SUPABASE_URL', '');
     google = vi.fn();
     vi.stubGlobal('fetch', google);
   });

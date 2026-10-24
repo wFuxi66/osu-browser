@@ -2,10 +2,11 @@
 // server only does the OAuth code exchange (it needs the client secret) and hands the browser short-lived
 // access tokens. The refresh token isn't stored here: it lives in an encrypted httpOnly cookie in that browser.
 // Only the drive.file scope is requested, so the app can see nothing but the files it created.
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { Context, Hono } from 'hono';
 import type { Env } from './app.ts';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { sealer } from './seal.ts';
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const COOKIE = 'gdrive';
@@ -20,26 +21,10 @@ export interface DriveOptions {
 
 export function driveRoutes(app: Hono<Env>, o: DriveOptions) {
   const redirectUri = `${o.publicUrl}/api/drive/callback`;
-  // AES-256-GCM key for the cookie, derived from the client secret: rotating the secret signs everyone out.
-  const key = createHash('sha256').update(`drive-cookie:${o.clientSecret}`).digest();
+  // The cookie's key is derived from the client secret: rotating the secret signs everyone out.
+  const { seal, open } = sealer(o.clientSecret, 'drive-cookie');
   const cookieOpts = { httpOnly: true, sameSite: 'Lax' as const, secure: o.secureCookies, path: '/' };
 
-  const seal = (text: string) => {
-    const iv = randomBytes(12);
-    const c = createCipheriv('aes-256-gcm', key, iv);
-    const body = Buffer.concat([c.update(text, 'utf8'), c.final()]);
-    return Buffer.concat([iv, c.getAuthTag(), body]).toString('base64url');
-  };
-  const open = (sealed: string): string | null => {
-    try {
-      const b = Buffer.from(sealed, 'base64url');
-      const d = createDecipheriv('aes-256-gcm', key, b.subarray(0, 12));
-      d.setAuthTag(b.subarray(12, 28));
-      return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8');
-    } catch {
-      return null;
-    }
-  };
   const refreshToken = (c: Context) => {
     const v = getCookie(c, COOKIE);
     return v ? open(v) : null;

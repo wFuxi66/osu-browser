@@ -105,6 +105,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Spinners placed like stable: click to start at the current time, seek forward, click again to end
 - [x] Slider control point editing: drag, Ctrl+click to toggle red anchor / insert point, right-click to delete
 - [x] Slider repeats by dragging the tail in the timeline
+- [x] Hovering a slider with the select tool shows its control points (draggable right away)
 - [x] Grid snap (T, Shift to toggle temporarily), grid sizes (G, Ctrl+1–4), distance snap (Y, Alt temporarily) with distance spacing (Alt+wheel)
 - [x] Approach circles, follow points, combo numbers & colours (stable colour indexing), stacking (stable algorithm), slider ticks/reverse arrows/ball, hit animations, snaking sliders
 - [x] Selection: click, Ctrl/Shift+click, box select on playfield and timeline, Ctrl+A

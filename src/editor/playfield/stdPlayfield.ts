@@ -30,6 +30,8 @@ export class StdPlayfield {
   hover: Vec2 | null = null;
   mods: Modifiers = { shift: false, alt: false, ctrl: false };
   private drag: Drag | null = null;
+  /** Slider whose control points show because the cursor is on it (or on one of its points). */
+  private hoverSlider: Slider | null = null;
 
   // ------------------------------------------------------------------ helpers
 
@@ -150,6 +152,8 @@ export class StdPlayfield {
 
     const sel = this.selectedSlider();
     if (sel && editor.tool === 'select') this.drawControlPoints(ctx, v, sel);
+    this.updateHoverSlider(v, t);
+    if (this.hoverSlider && this.hoverSlider !== sel) this.drawControlPoints(ctx, v, this.hoverSlider, 0.6);
 
     this.drawPlacement(ctx, v, t, r);
 
@@ -285,10 +289,23 @@ export class StdPlayfield {
     ctx.restore();
   }
 
-  private drawControlPoints(ctx: CanvasRenderingContext2D, v: View, s: Slider) {
+  /** Like stable, hovering a slider with the select tool shows its control points; they stay while the cursor is on one. */
+  private updateHoverSlider(v: View, t: number) {
+    const p = this.hover;
+    if (!p || editor.tool !== 'select' || this.drag) {
+      this.hoverSlider = this.drag?.kind === 'point' ? this.hoverSlider : null;
+      return;
+    }
+    const hit = this.hitTest(p, t);
+    if (hit?.kind === 'slider') this.hoverSlider = hit;
+    else if (!this.hoverSlider || !editor.bm.hitObjects.includes(this.hoverSlider) || this.hitControlPoint(p, v, this.hoverSlider) < 0) this.hoverSlider = null;
+  }
+
+  private drawControlPoints(ctx: CanvasRenderingContext2D, v: View, s: Slider, alpha = 1) {
     const verts = [{ x: s.x, y: s.y }, ...s.points];
     const sp = verts.map((q) => toScreen(v, q));
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.strokeStyle = 'rgba(255,255,255,0.6)';
     ctx.lineWidth = 1;
     strokePolyline(ctx, sp);
@@ -460,6 +477,19 @@ export class StdPlayfield {
         return;
       }
       if (this.mods.ctrl && this.insertControlPoint(sel, p)) return;
+    }
+    // A point of the hovered slider can be dragged straight away.
+    const hov = this.hoverSlider;
+    if (hov && hov !== sel && !this.mods.ctrl && !this.mods.shift) {
+      const idx = this.hitControlPoint(p, v, hov);
+      if (idx >= 0) {
+        editor.select([hov.id]);
+        if (!editor.locked) {
+          editor.beginChange();
+          this.drag = { kind: 'point', slider: hov, index: idx, moved: false };
+        }
+        return;
+      }
     }
 
     const hit = this.hitTest(p, t);

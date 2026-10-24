@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
+    "@supabase/supabase-js": "^2.118.0",
     "hono": "^4.13.13",
     "jszip": "^3.10.2",
     "react": "^19.3.1",

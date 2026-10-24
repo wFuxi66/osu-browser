@@ -2,7 +2,14 @@
 
 An osu! (stable) style beatmap editor that runs in any modern browser. Drop an mp3 to start a new map, or open an `.osz` / beatmap folder to keep editing. When you're done, export the `.osz` (or a single `.osu`) and open it in osu!. Uploading to the osu! website isn't supported; use the real client for that.
 
-Your work autosaves in the browser (IndexedDB). If you log in with your osu! account (optional), your WIP maps also sync to the server, so they're there when you open the editor on another computer.
+Your work autosaves in the browser (IndexedDB). If you log in with your osu! account (optional), your WIP maps also sync to the cloud, so they're there when you open the editor on another computer.
+
+## Architecture
+
+- **Frontend** (`src/`): Vite + React + TypeScript, built to static files. Everything editor-related runs in the browser; projects autosave to IndexedDB.
+- **API** (`server/app.ts`): a small Hono app for osu! OAuth, sessions, and the cloud project list. It runs as a Vercel Function (`api/index.ts`) or as a plain Node server (`server/index.ts`, used by `npm run dev` and Docker).
+- **Database**: Supabase Postgres (`users`, `sessions`, `projects`, `pending_uploads`). The schema is in `supabase/migrations/`. Only the server touches it, with the service role key; RLS is on and the public roles have no grants.
+- **Storage**: `.osz` packages live in the private Supabase Storage bucket `projects`. The browser uploads and downloads them directly with short-lived signed URLs from the API, because Vercel Functions cap request bodies at about 4.5 MB. The API checks ownership, the per-map size limit (50 MB, the Supabase Free plan's maximum file size), and the per-account quota (500 MB by default). It also verifies each upload (size, zip header) before pointing the project at it.
 
 ## Running locally
 
@@ -10,7 +17,7 @@ Requires Node.js 22.18+ (Node 24 recommended).
 
 ```sh
 npm install
-cp .env.example .env     # optional: only needed for osu! login / cloud sync
+cp .env.example .env     # optional: only needed for osu! login / cloud sync (osu! OAuth + Supabase)
 npm run dev              # web on http://localhost:5173, API on :8787
 ```
 
@@ -21,35 +28,60 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` the
 1. Sign in on osu.ppy.sh and open <https://osu.ppy.sh/home/account/edit#oauth>, then click **New OAuth Application**.
 2. Name it (e.g. "osu! web editor"). For **Application Callback URL**, use `http://localhost:5173/api/auth/callback` for local development, or `https://your-domain/api/auth/callback` in production. It must match `OSU_REDIRECT_URI` exactly. You can register both: create a second application for production.
 3. Copy the **Client ID** and **Client Secret** into `.env` (`OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`). In production also set `PUBLIC_URL=https://your-domain` and `OSU_REDIRECT_URI=https://your-domain/api/auth/callback`.
+4. Login also needs a Supabase project for sessions and storage (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`; see below).
 
-osu!'s OAuth needs a client secret for the token exchange, which is why there's a small backend. The editor only asks for the `identify public` scopes (username and avatar). Without OAuth configured, the editor still works fully offline/local.
+osu!'s OAuth needs a client secret for the token exchange, which is why there's a small backend. Supabase Auth has no osu! provider, so the flow is our own and sessions are an httpOnly cookie backed by the `sessions` table. The editor only asks for the `identify public` scopes (username and avatar). Without OAuth configured, the editor still works fully offline/local.
 
 ### Deploying
+
+**Supabase (database + storage)**, needed by both deployment options below:
+
+```sh
+npx supabase login
+npx supabase projects create osumappingweb --org-id <org> --region eu-central-1 --db-password <password>
+npx supabase link --project-ref <ref>
+npx supabase db push --linked      # creates the tables and the private "projects" bucket (50 MB file limit)
+npx supabase projects api-keys --project-ref <ref>   # copy the service_role key
+```
+
+`SUPABASE_URL` is `https://<ref>.supabase.co`. Keep the service role key server-side only: it goes in the Vercel/server environment and never in client code or the repo. The 50 MB limit per map is the Free plan's maximum file size. On a paid plan, raise the bucket's `file_size_limit` and `MAX_PROJECT_BYTES` together. Uploads that went over the limit or were never committed are cleaned up the next time that account uploads.
+
+**Vercel (recommended, no server needed):**
+
+`vercel.json` builds the Vite app as static files, rewrites `/api/*` to the Hono function in `api/index.ts`, rewrites every other path to `index.html`, and pins the function to `fra1` (next to the eu-central-1 database; change both together if you move regions).
+
+```sh
+npx vercel link
+npx vercel env add OSU_CLIENT_ID production          # repeat for each variable below
+npx vercel deploy --prod
+```
+
+Environment variables: `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, `PUBLIC_URL` (e.g. `https://your-app.vercel.app`), `OSU_REDIRECT_URI` (`$PUBLIC_URL/api/auth/callback`), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. Check it with `curl https://your-app.vercel.app/api/health`. `.vercelignore` keeps your local `.env` out of CLI uploads.
 
 **Docker Compose with automatic HTTPS (any VPS):**
 
 1. Point a domain (A/AAAA record) at the server, and open ports 80 and 443.
-2. On the server: `git clone` this repo, then `cp .env.example .env` and fill in the production values above.
+2. On the server: `git clone` this repo, then `cp .env.example .env` and fill in the production values above, including `SUPABASE_*`.
 3. `DOMAIN=editor.example.com docker compose up -d --build`
 
-Caddy obtains the TLS certificate and proxies to the app. The SQLite database and uploaded `.osz` packages live in the `editor-data` volume. Check it with `curl https://editor.example.com/api/health`. To update: `git pull && DOMAIN=… docker compose up -d --build`.
+Caddy obtains the TLS certificate and proxies to the app. Check it with `curl https://editor.example.com/api/health`. To update: `git pull && DOMAIN=… docker compose up -d --build`.
 
 **Plain Docker (behind your own proxy, or on Fly.io/Railway/Render):**
 
-`docker build -t osu-web-editor . && docker run -d -p 8787:8787 -v osu-editor-data:/data --env-file .env osu-web-editor`
+`docker build -t osu-web-editor . && docker run -d -p 8787:8787 --env-file .env osu-web-editor`
 
-The container listens on `PORT` (8787), stores data in `/data` (mount a persistent volume there), and exposes `/api/health` for health checks. Allow request bodies up to about 250 MB on your proxy for cloud sync of large maps.
+The container is stateless (all data is in Supabase), listens on `PORT` (8787), and exposes `/api/health` for health checks.
 
 ### Opening published maps
 
-The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API doesn't let third-party apps download beatmapsets, so the server fetches them from public mirrors (catboy.best, nerinyan, osu.direct).
+The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API doesn't let third-party apps download beatmapsets, so the browser downloads them directly from public mirrors that allow CORS: osu.direct first, then nerinyan. When the app runs on the Node server, it also falls back to a server-side proxy that adds catboy.best. That proxy isn't deployed on Vercel.
 
 ## Feature checklist (vs. the stable editor)
 
 **Files & projects**
 - [x] New beatmap from mp3/ogg (reads ID3 artist/title/cover art)
 - [x] Open `.osz`, a dropped beatmap folder, or loose `.osu` + assets
-- [x] Open published maps by link (mirror proxy)
+- [x] Open published maps by link (direct from CORS-enabled mirrors)
 - [x] Save (Ctrl+S), autosave, revert to saved (Ctrl+L)
 - [x] Export `.osz` package and single `.osu`
 - [x] Multiple difficulties: create (copy timing / copy objects / any mode), switch (Ctrl+O), delete

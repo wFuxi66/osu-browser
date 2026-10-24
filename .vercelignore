@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+data
+dist
+node_modules
+supabase/.temp
+supabase/.branches
+*.log
+*.tmp.*

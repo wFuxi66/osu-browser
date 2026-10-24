@@ -1,6 +1,7 @@
 # Production setup: the editor + Caddy for automatic HTTPS.
 # 1. Point your domain's DNS (A/AAAA record) at this server.
-# 2. cp .env.example .env and fill it in (PUBLIC_URL=https://your-domain, OSU_* from your osu! OAuth app).
+# 2. cp .env.example .env and fill it in (PUBLIC_URL=https://your-domain, OSU_* from your osu! OAuth app,
+#    SUPABASE_* from your Supabase project).
 # 3. DOMAIN=your-domain docker compose up -d --build
 services:
   app:
@@ -8,10 +9,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATA_DIR: /data
       PORT: "8787"
-    volumes:
-      - editor-data:/data
 
   caddy:
     image: caddy:2.10-alpine
@@ -30,6 +28,5 @@ services:
       - app
 
 volumes:
-  editor-data:
   caddy-data:
   caddy-config:

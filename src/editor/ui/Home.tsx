@@ -144,12 +144,10 @@ export function Home() {
             <button onClick={() => oszInput.current?.click()}>Open .osz…</button>
             <button onClick={() => folderInput.current?.click()}>Open beatmap folder…</button>
           </div>
-          {cloud.available && (
-            <div className="home-link">
-              <input placeholder="osu.ppy.sh/beatmapsets/… link or set id" value={setLink} onChange={(e) => setSetLink(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && openFromWebsite()} />
-              <button onClick={openFromWebsite} disabled={!setLink.trim()}>Open from osu!</button>
-            </div>
-          )}
+          <div className="home-link">
+            <input placeholder="osu.ppy.sh/beatmapsets/… link or set id" value={setLink} onChange={(e) => setSetLink(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && openFromWebsite()} />
+            <button onClick={openFromWebsite} disabled={!setLink.trim()}>Open from osu!</button>
+          </div>
           <input ref={audioInput} type="file" accept="audio/*,.mp3,.ogg" hidden onChange={(e) => run('Creating…', () => openFiles([...(e.target.files ?? [])]))} />
           <input ref={oszInput} type="file" accept=".osz,.zip" hidden onChange={(e) => run('Opening…', () => openFiles([...(e.target.files ?? [])]))} />
           <input

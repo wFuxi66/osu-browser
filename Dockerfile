@@ -7,15 +7,13 @@ RUN npm run build
 
 FROM node:24-alpine
 WORKDIR /app
-ENV NODE_ENV=production PORT=8787 DATA_DIR=/data
+ENV NODE_ENV=production PORT=8787
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY server ./server
-# Run as the unprivileged node user; /data holds the SQLite database and uploaded maps.
-RUN mkdir -p /data && chown node:node /data
+# Run as the unprivileged node user. Accounts and synced maps live in Supabase (SUPABASE_URL / _SERVICE_ROLE_KEY).
 USER node
-VOLUME /data
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"

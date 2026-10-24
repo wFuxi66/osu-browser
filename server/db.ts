@@ -1,6 +1,8 @@
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+// Data layer on Supabase: users, sessions and the project list live in Postgres (see
+// supabase/migrations), .osz packages in the private "projects" storage bucket. Uses the service role key,
+// so this module must only ever run on the server.
+import { createHash } from 'node:crypto';
+import { createClient } from '@supabase/supabase-js';
 
 export interface UserRow {
   id: number;
@@ -15,87 +17,101 @@ export interface ProjectRow {
   created_at: number;
   updated_at: number;
   size: number;
+  object_path: string;
 }
 
-export function openDb(dataDir: string) {
-  mkdirSync(dataDir, { recursive: true });
-  const db = new DatabaseSync(join(dataDir, 'app.db'));
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY,
-      username TEXT NOT NULL,
-      avatar_url TEXT NOT NULL DEFAULT '',
-      country_code TEXT NOT NULL DEFAULT '',
-      refresh_token TEXT,
-      created_at INTEGER NOT NULL,
-      last_login INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      token TEXT PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS projects (
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      size INTEGER NOT NULL,
-      PRIMARY KEY (user_id, id)
-    );
-  `);
+export interface PendingUpload {
+  object_path: string;
+  project_id: string;
+  size: number;
+  expires_at: string;
+}
+
+const BUCKET = 'projects';
+
+const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
+
+function check<T>(res: { data: T; error: { message: string } | null }): T {
+  if (res.error) throw new Error(`Database error: ${res.error.message}`);
+  return res.data;
+}
+
+export function openDb(url: string, serviceKey: string) {
+  const sb = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const bucket = () => sb.storage.from(BUCKET);
 
   return {
-    upsertUser(u: UserRow, refreshToken: string | null) {
-      const now = Date.now();
-      db.prepare(
-        `INSERT INTO users (id, username, avatar_url, country_code, refresh_token, created_at, last_login)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET username = excluded.username, avatar_url = excluded.avatar_url,
-           country_code = excluded.country_code, refresh_token = excluded.refresh_token, last_login = excluded.last_login`,
-      ).run(u.id, u.username, u.avatar_url, u.country_code, refreshToken, now, now);
+    async upsertUser(u: UserRow) {
+      check(await sb.from('users').upsert({ ...u, last_login: new Date().toISOString() }));
     },
-    createSession(token: string, userId: number, ttlMs: number) {
-      const now = Date.now();
-      db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(token, userId, now, now + ttlMs);
+    async createSession(token: string, userId: number, ttlMs: number) {
+      check(await sb.from('sessions').insert({ token_hash: hashToken(token), user_id: userId, expires_at: new Date(Date.now() + ttlMs).toISOString() }));
     },
-    userForSession(token: string): UserRow | undefined {
-      return db
-        .prepare(
-          `SELECT u.id, u.username, u.avatar_url, u.country_code FROM sessions s JOIN users u ON u.id = s.user_id
-           WHERE s.token = ? AND s.expires_at > ?`,
-        )
-        .get(token, Date.now()) as UserRow | undefined;
+    async userForSession(token: string): Promise<UserRow | undefined> {
+      const row = check(
+        await sb
+          .from('sessions')
+          .select('users(id, username, avatar_url, country_code)')
+          .eq('token_hash', hashToken(token))
+          .gt('expires_at', new Date().toISOString())
+          .maybeSingle(),
+      ) as { users: UserRow | null } | null;
+      return row?.users ?? undefined;
     },
-    deleteSession(token: string) {
-      db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    async deleteSession(token: string) {
+      check(await sb.from('sessions').delete().eq('token_hash', hashToken(token)));
     },
-    pruneSessions() {
-      db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
+    async pruneSessions() {
+      check(await sb.from('sessions').delete().lte('expires_at', new Date().toISOString()));
     },
-    listProjects(userId: number): ProjectRow[] {
-      return db
-        .prepare('SELECT id, title, created_at, updated_at, size FROM projects WHERE user_id = ? ORDER BY updated_at DESC')
-        .all(userId) as unknown as ProjectRow[];
+
+    async listProjects(userId: number): Promise<ProjectRow[]> {
+      return check(
+        await sb.from('projects').select('id, title, created_at, updated_at, size, object_path').eq('user_id', userId).order('updated_at', { ascending: false }),
+      ) ?? [];
     },
-    getProject(userId: number, id: string): ProjectRow | undefined {
-      return db.prepare('SELECT id, title, created_at, updated_at, size FROM projects WHERE user_id = ? AND id = ?').get(userId, id) as ProjectRow | undefined;
+    async getProject(userId: number, id: string): Promise<ProjectRow | undefined> {
+      return (
+        check(await sb.from('projects').select('id, title, created_at, updated_at, size, object_path').eq('user_id', userId).eq('id', id).maybeSingle()) ??
+        undefined
+      );
     },
-    putProject(userId: number, p: ProjectRow) {
-      db.prepare(
-        `INSERT INTO projects (user_id, id, title, created_at, updated_at, size) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(user_id, id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at, size = excluded.size`,
-      ).run(userId, p.id, p.title, p.created_at, p.updated_at, p.size);
+    async putProject(userId: number, p: ProjectRow) {
+      check(await sb.from('projects').upsert({ user_id: userId, ...p }));
     },
-    deleteProject(userId: number, id: string) {
-      db.prepare('DELETE FROM projects WHERE user_id = ? AND id = ?').run(userId, id);
+    async deleteProject(userId: number, id: string) {
+      check(await sb.from('projects').delete().eq('user_id', userId).eq('id', id));
     },
-    totalSize(userId: number): number {
-      const row = db.prepare('SELECT COALESCE(SUM(size), 0) AS total FROM projects WHERE user_id = ?').get(userId) as { total: number };
-      return row.total;
+
+    async listPending(userId: number): Promise<PendingUpload[]> {
+      return check(await sb.from('pending_uploads').select('object_path, project_id, size, expires_at').eq('user_id', userId)) ?? [];
+    },
+    async addPending(userId: number, p: PendingUpload) {
+      check(await sb.from('pending_uploads').insert({ user_id: userId, ...p }));
+    },
+    async deletePending(paths: string[]) {
+      if (paths.length) check(await sb.from('pending_uploads').delete().in('object_path', paths));
+    },
+
+    /** Signed URL the browser PUTs the .osz to directly (valid for 2 hours, fixed by Supabase). */
+    async signedUploadUrl(path: string): Promise<string> {
+      return check(await bucket().createSignedUploadUrl(path))!.signedUrl;
+    },
+    async signedDownloadUrl(path: string, expiresInSec = 300): Promise<string> {
+      return check(await bucket().createSignedUrl(path, expiresInSec))!.signedUrl;
+    },
+    /** Size of a stored object and its first bytes, or undefined if it doesn't exist. */
+    async inspectObject(path: string): Promise<{ size: number; head: Uint8Array } | undefined> {
+      const slash = path.lastIndexOf('/');
+      const files = check(await bucket().list(path.slice(0, slash), { search: path.slice(slash + 1), limit: 10 })) ?? [];
+      const file = files.find((f) => f.name === path.slice(slash + 1));
+      if (!file) return undefined;
+      const res = await fetch(await this.signedDownloadUrl(path, 60), { headers: { Range: 'bytes=0-3' } });
+      if (!res.ok) return undefined;
+      return { size: Number(file.metadata?.size ?? 0), head: new Uint8Array(await res.arrayBuffer()).slice(0, 4) };
+    },
+    async removeObjects(paths: string[]) {
+      if (paths.length) check(await bucket().remove(paths));
     },
   };
 }

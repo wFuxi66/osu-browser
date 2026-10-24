@@ -1,15 +1,16 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { music } from '../../../audio/music';
+import { OkCancel, WinDialog, WinTabs } from '../../../ui/win';
 import { runAiMod } from '../../aimod';
 import { editor, formatTimestamp, useEditor } from '../../store';
 import { TestPlay } from '../TestPlay';
-import { TimingPointsTable } from '../TimingPointsTable';
-import { Modal } from './Modal';
 import { SetupDialog } from './SetupDialog';
+import { TimingSetupDialog } from './TimingSetupDialog';
 import {
   DifficultiesDialog,
   FilesDialog,
-  NewDifficultyDialog,
+  NotepadDialog,
+  ObjectSettingsDialog,
   PolygonDialog,
   PreferencesDialog,
   RotateDialog,
@@ -20,61 +21,61 @@ import {
 export function Dialogs() {
   const ed = useEditor();
   switch (ed.dialog) {
-    case 'setup': return <SetupDialog />;
-    case 'timingPoints':
-      return (
-        <Modal title="Timing and Control Points" wide footer={<button className="primary" onClick={() => ed.openDialog(null)}>Done</button>}>
-          <TimingPointsTable />
-        </Modal>
-      );
+    case 'setup': return <SetupDialog key={ed.pendingNewDifficulty ? 'new' : ed.diffIndex} />;
+    case 'timingPoints': return <TimingSetupDialog />;
     case 'rotate': return <RotateDialog />;
     case 'scale': return <ScaleDialog />;
     case 'polygon': return <PolygonDialog />;
     case 'stream': return <StreamDialog />;
     case 'aimod': return <AiModDialog />;
     case 'difficulties': return <DifficultiesDialog />;
-    case 'newDifficulty': return <NewDifficultyDialog />;
     case 'preferences': return <PreferencesDialog />;
     case 'shortcuts': return <ShortcutsDialog />;
     case 'export': return <FilesDialog />;
+    case 'osuText': return <NotepadDialog kind="osu" />;
+    case 'osbText': return <NotepadDialog kind="osb" />;
+    case 'objectSettings': return <ObjectSettingsDialog />;
     case 'test': return <TestPlay />;
     default: return null;
   }
 }
 
+const AIMOD_TABS = ['All', 'Problems', 'Warnings', 'Notes'] as const;
+
 function AiModDialog() {
   const ed = useEditor();
-  const issues = useMemo(() => runAiMod(ed.project!, ed.bm), [ed.contentRev, ed.diffIndex]);
-  const counts = { error: 0, warning: 0, info: 0 };
-  issues.forEach((i) => counts[i.severity]++);
+  const [tab, setTab] = useState<(typeof AIMOD_TABS)[number]>('All');
+  const issues = useMemo(() => runAiMod(ed.project!, ed.bm), [ed.contentRev, ed.diffIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = issues.filter((i) => tab === 'All' || { Problems: 'error', Warnings: 'warning', Notes: 'info' }[tab] === i.severity);
+  const close = () => ed.openDialog(null);
   return (
-    <Modal title="AiMod" wide footer={<button className="primary" onClick={() => ed.openDialog(null)}>Close</button>}>
-      <p>
-        <span className="sev error">{counts.error} problems</span> <span className="sev warning">{counts.warning} warnings</span> <span className="sev info">{counts.info} notes</span>
-      </p>
-      {issues.length === 0 && <p>No issues found. 🎉</p>}
-      <ul className="aimod-list">
-        {issues.map((i, k) => (
-          <li key={k} className={i.severity}>
-            <span className="cat">{i.category}</span>
-            {i.time !== undefined ? (
-              <button
-                className="link"
-                onClick={() => {
-                  music.seek(i.time!);
-                  if (i.objectIds) editor.select(i.objectIds);
-                }}
-              >
-                {formatTimestamp(i.time)}
-              </button>
-            ) : (
-              <span className="muted">—</span>
-            )}
-            <span>{i.message}</span>
-          </li>
-        ))}
-      </ul>
-    </Modal>
+    <WinDialog title="AiMod" width={640} onClose={close} footer={<OkCancel okLabel="Close" onOk={close} onCancel={close} />}>
+      <WinTabs tabs={AIMOD_TABS} value={tab} onChange={setTab}>
+        <div className="win-list" style={{ height: 320 }}>
+          <table>
+            <thead><tr><th>Time</th><th>Type</th><th>Category</th><th>Description</th></tr></thead>
+            <tbody>
+              {shown.map((i, k) => (
+                <tr
+                  key={k}
+                  onDoubleClick={() => {
+                    if (i.time !== undefined) music.seek(i.time);
+                    if (i.objectIds) editor.select(i.objectIds);
+                  }}
+                >
+                  <td className="win-mono">{i.time !== undefined ? formatTimestamp(i.time) : ''}</td>
+                  <td style={{ color: i.severity === 'error' ? '#c00' : i.severity === 'warning' ? '#b07000' : '#06c' }}>{{ error: 'Problem', warning: 'Warning', info: 'Note' }[i.severity]}</td>
+                  <td>{i.category}</td>
+                  <td style={{ whiteSpace: 'normal' }}>{i.message}</td>
+                </tr>
+              ))}
+              {shown.length === 0 && <tr><td colSpan={4}>No problems found.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <p className="win-muted">Double click an entry to jump to it.</p>
+      </WinTabs>
+    </WinDialog>
   );
 }
 
@@ -83,54 +84,47 @@ const SHORTCUTS: [string, [string, string][]][] = [
     ['Z / V', 'Jump to first / last note'], ['X', 'Play from start'], ['C or Space', 'Pause / resume'],
     ['← / →', 'Seek by beat snap'], ['Shift + ← / →', 'Seek 4x'], ['↑ / ↓', 'Next / previous timing point'],
     ['Ctrl + B / Ctrl + Shift + B', 'Add / remove bookmark'], ['Ctrl + ← / →', 'Previous / next bookmark (no selection)'],
-    ['Ctrl + S', 'Save'], ['Ctrl + L', 'Revert to saved'], ['Ctrl + O', 'Difficulties'], ['Ctrl + N', 'Remove all objects'],
+    ['Ctrl + S', 'Save (nothing saves automatically)'], ['Ctrl + L / Ctrl + Shift + L', 'Revert to saved / full revert'], ['Ctrl + O', 'Open difficulty'],
+    ['Ctrl + N', 'Clear all notes (or File menu; some browsers keep Ctrl+N)'], ['Esc', 'Back to song select (asks to save)'],
     ['Ctrl + ↑ / ↓', 'Playback speed ±25% (no selection)'], ['Ctrl + Shift + ↑ / ↓', 'Playback speed ±5%'],
-    ['F1 / F2 / F3', 'Compose / Design / Timing'], ['F4', 'Song setup'], ['F5', 'Test mode'], ['F6', 'Timing points'],
-    ['Ctrl + P / Ctrl + Shift + P', 'Add red / green line'], ['Ctrl + I', 'Delete current timing point'],
+    ['F1 / F2 / F3', 'Compose / Design / Timing'], ['F4', 'Song Setup'], ['F5', 'Test mode'], ['F6', 'Timing Setup'],
+    ['Ctrl + P / Ctrl + Shift + P', 'Add timing / inheriting section'], ['Ctrl + I', 'Delete timing section'],
   ]],
   ['Mouse', [
-    ['Wheel up / down', 'Seek forward / backward'], ['Shift + Wheel', 'Seek 4x'], ['Ctrl + Wheel', 'Beat snap divisor'],
-    ['Alt + Wheel', 'Distance spacing (playfield) / zoom (timeline)'], ['Ctrl + Alt + Wheel', 'Switch tool'],
-    ['Double click', 'Jump to object (or to a slider end)'], ['Right click', 'Delete object (select) / toggle new combo (placing) / finish slider or spinner'],
+    ['Wheel', 'Seek'], ['Shift + Wheel', 'Seek 4x'], ['Ctrl + Wheel', 'Beat snap divisor'],
+    ['Alt + Wheel', 'Distance snap (playfield) / zoom (timeline)'], ['Alt + Shift + Wheel', 'Distance snap, fine'], ['Ctrl + Alt + Wheel', 'Switch tool'],
+    ['Double click', 'Jump to object / slider end'], ['Right click', 'Delete (select tool) / new combo or finish (placing)'],
   ]],
   ['Compose', [
     ['1 2 3 4', 'Select / circle / slider / spinner'], ['Ctrl + Z / Y', 'Undo / redo'], ['Ctrl + A X C V D', 'Select all / cut / copy / paste / clone'],
-    ['Delete', 'Delete selection'], ['Ctrl + Shift + A', 'AiMod'], ['Esc', 'Cancel placement / clear selection'], ['Enter', 'Finish slider'],
-    ['T / Y', 'Toggle grid / distance snap'], ['Shift (hold) / Alt (hold)', 'Temporarily toggle grid / distance snap'],
-    ['G', 'Cycle grid size'], ['Ctrl + 1-4', 'Grid size'], ['L', 'Lock notes'],
-    ['Q', 'New combo'], ['Ctrl + , / .', 'Rotate 90°'], ['Ctrl + H / J', 'Flip horizontal / vertical'], ['Ctrl + G', 'Reverse selection'],
-    ['Ctrl + Shift + R / S', 'Rotate / scale by…'], ['Ctrl + Shift + D', 'Polygon circles'], ['Ctrl + Shift + F', 'Slider to stream'],
-    ['Ctrl + arrows', 'Nudge selection by 1px'], ['J / K', 'Nudge selection by one beat snap'],
+    ['Delete', 'Delete selection'], ['Ctrl + Shift + A', 'AiMod'], ['Enter', 'Finish slider'],
+    ['T / Y', 'Grid snap / distance snap'], ['Shift (hold) / Alt (hold)', 'Toggle grid / distance snap temporarily'],
+    ['G', 'Cycle grid size'], ['Ctrl + 1–4', 'Grid size'], ['L', 'Lock notes'], ['Q', 'New combo'],
+    ['Ctrl + < / >', 'Rotate 90°'], ['Ctrl + H / J', 'Flip horizontally / vertically'], ['Ctrl + G', 'Reverse selection'],
+    ['Ctrl + Shift + R / S', 'Rotate by / scale by'], ['Ctrl + Shift + D', 'Polygon circles'], ['Ctrl + Shift + F', 'Slider to stream'],
+    ['Ctrl + arrows', 'Nudge selection'], ['J / K', 'Nudge by one beat snap'],
   ]],
-  ['Sliders', [
-    ['Click', 'Add point while placing'], ['Click the last point again', 'Make it a red anchor'], ['Right click / Enter', 'Finish slider'],
-    ['Drag a control point', 'Move it (selected slider)'], ['Ctrl + click on a point', 'Toggle red anchor'], ['Ctrl + click on the body', 'Insert a point'],
-    ['Right click a point', 'Delete it'], ['Drag the tail in the timeline', 'Add / remove repeats'],
-  ]],
-  ['Spinners', [
-    ['Click', 'Start a spinner at the current time'], ['Seek forward, click again', 'End it there'], ['Esc', 'Cancel'],
-  ]],
-  ['Hitsounding', [
+  ['Hitsounds', [
     ['W / E / R', 'Whistle / finish / clap'], ['Shift + Q W E R', 'Sampleset auto / normal / soft / drum'],
-    ['Ctrl (or Alt) + Q W E R', 'Addition set auto / normal / soft / drum'], ['Click a slider edge in the timeline', 'Hitsound one edge'],
-    ['Shift + 1-9', 'Beat snap divisor 1/1 – 1/9'],
+    ['Ctrl (or Alt) + Q W E R', 'Addition set auto / normal / soft / drum'], ['Shift + 1–9', 'Beat snap divisor 1/1 – 1/9'],
   ]],
-  ['Timing', [['T', 'Tap tempo (timing screen)'], ['Shift / Ctrl on +/−', '×5 / fine adjust']]],
+  ['Timing', [['T', 'Tap tempo'], ['Shift / Ctrl on ‹ ›', '5x / fine steps']]],
 ];
 
 function ShortcutsDialog() {
+  const close = () => editor.openDialog(null);
   return (
-    <Modal title="Keyboard shortcuts" wide>
-      <p className="muted">Browsers reserve Ctrl+W and Ctrl+N; use Alt+W for the normal addition set. Ctrl+N is available from the Edit menu.</p>
-      <div className="shortcut-grid">
+    <WinDialog title="osu! editor help" width={760} onClose={close} footer={<OkCancel okLabel="Close" onOk={close} onCancel={close} />}>
+      <p className="win-muted">Letter keys follow your keyboard layout (on AZERTY, W is the key labelled W). Browsers keep Ctrl+W and sometimes Ctrl+N for themselves; Alt+W sets the normal addition set.</p>
+      <div className="help-grid">
         {SHORTCUTS.map(([group, list]) => (
-          <div key={group}>
-            <h3>{group}</h3>
+          <div key={group} className="win-group">
+            <b>{group}</b>
             <table>
               <tbody>
                 {list.map(([k, v]) => (
                   <tr key={k}>
-                    <td><kbd>{k}</kbd></td>
+                    <td className="help-key">{k}</td>
                     <td>{v}</td>
                   </tr>
                 ))}
@@ -139,6 +133,6 @@ function ShortcutsDialog() {
           </div>
         ))}
       </div>
-    </Modal>
+    </WinDialog>
   );
 }

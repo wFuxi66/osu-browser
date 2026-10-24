@@ -30,7 +30,6 @@ export type DialogName =
   | 'stream'
   | 'aimod'
   | 'difficulties'
-  | 'newDifficulty'
   | 'preferences'
   | 'shortcuts'
   | 'export'
@@ -81,6 +80,7 @@ class Editor {
   private processedCache: { rev: number; value: ProcessedBeatmap } | null = null;
   private clipboard: HitObject[] = [];
   private changeOpen = false;
+  private dirtyBeforeChange = false;
   /** The map last open in the editor, so song select can return to it. */
   lastOpened: { projectId: string; diffId: string } | null = null;
 
@@ -333,27 +333,6 @@ class Editor {
     if (i >= 0) this.updateTimingPoint(i, { meter });
   }
 
-  /** Create a new difficulty, optionally copying timing (and objects). */
-  addDifficulty(name: string, opts: { copyObjects: boolean; mode?: number }) {
-    if (!this.project) return;
-    const src = this.bm;
-    const bm = cloneBeatmap(src);
-    bm.metadata.version = uniqueVersionName(this.project, name || 'New Difficulty');
-    bm.metadata.beatmapId = 0;
-    if (!opts.copyObjects) {
-      bm.hitObjects = [];
-      bm.events.breaks = [];
-      bm.editor.bookmarks = [];
-      bm.timingPoints = bm.timingPoints.filter((t) => t.uninherited);
-    } else {
-      bm.hitObjects.forEach((o) => (o.id = newObjectId()));
-    }
-    if (opts.mode !== undefined) bm.general.mode = opts.mode as Beatmap['general']['mode'];
-    this.project.difficulties.push({ id: uid(), beatmap: bm });
-    this.markDirty();
-    void this.switchDifficulty(this.project.difficulties.length - 1);
-  }
-
   deleteDifficulty(i: number) {
     if (!this.project || this.project.difficulties.length <= 1) return;
     this.project.difficulties.splice(i, 1);
@@ -494,6 +473,7 @@ class Editor {
     if (!this.project || this.changeOpen) return;
     this.pushUndo();
     this.changeOpen = true;
+    this.dirtyBeforeChange = this.dirty;
   }
 
   touch() {
@@ -513,6 +493,7 @@ class Editor {
     this.changeOpen = false;
     const prev = this.undoStack.pop();
     if (prev && this.project) this.project.difficulties[this.diffIndex].beatmap = prev;
+    this.dirty = this.dirtyBeforeChange;
     this.contentRev++;
     this.emit();
   }

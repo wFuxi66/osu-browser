@@ -41,14 +41,14 @@ export function drawBackground(
   h: number,
   dim: number,
   t: number,
-  opts: { frame?: SbFrame; storyboard?: boolean } = {},
+  opts: { frame?: SbFrame; storyboard?: boolean; background?: boolean } = {},
 ) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
   const prefs = editor.prefs;
   const showSb = (opts.storyboard ?? prefs.showStoryboard) && editor.hasProject;
   if (showSb) storyboard.sync();
-  const bg = editor.hasProject ? editor.bm.events.background : null;
+  const bg = editor.hasProject && opts.background !== false ? editor.bm.events.background : null;
   // Like the game, a storyboard that draws the background file itself replaces the static background.
   const img = bg && !(showSb && storyboard.usesFile(bg.filename)) ? backgroundImage() : null;
   let drew = false;
@@ -56,7 +56,7 @@ export function drawBackground(
     drawCover(ctx, img, img.naturalWidth, img.naturalHeight, w, h);
     drew = true;
   }
-  const vid = editor.hasProject ? video.frameAt(t, prefs.showVideo) : null;
+  const vid = editor.hasProject ? video.frameAt(t, prefs.showVideo && opts.background !== false) : null;
   if (vid) {
     drawCover(ctx, vid, vid.videoWidth, vid.videoHeight, w, h);
     drew = true;

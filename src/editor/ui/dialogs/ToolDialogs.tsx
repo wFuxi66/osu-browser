@@ -1,71 +1,104 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { music } from '../../../audio/music';
 import { sliderPositionAtSpan } from '../../../osu/curves';
+import { parseOsu } from '../../../osu/parser';
+import { serializeBeatmap } from '../../../osu/serializer';
 import { beatLengthAt, sliderSpanDuration } from '../../../osu/timing';
 import { defaultSample, newObjectId, type HitObject } from '../../../osu/types';
+import { pickFiles } from '../../../project/open';
+import { confirmBox } from '../../../ui/prompt';
+import { Check, GroupBox, NumberBox, OkCancel, Radio, Row, TrackRow, WinDialog } from '../../../ui/win';
 import { expectedDistance } from '../../playfield/snapping';
+import { DIVISORS } from '../../shortcuts';
+import { storyboard } from '../../storyboard/runtime';
+import { design } from '../../storyboard/design';
 import { editor, useEditor } from '../../store';
-import { Field, Modal, SliderField } from './Modal';
+
+/**
+ * Live preview for transform dialogs: the selection is restored and re-transformed on every change, applied
+ * as one undo step on OK and rolled back on Cancel.
+ */
+function useLivePreview(applyFn: () => void, deps: unknown[]) {
+  const originals = useRef<Map<number, HitObject> | null>(null);
+  useEffect(() => {
+    originals.current = new Map(editor.selectedObjects.map((o) => [o.id, structuredClone(o)]));
+    editor.beginChange();
+    return () => editor.cancelChange();
+  }, []);
+  useEffect(() => {
+    const orig = originals.current;
+    if (!orig) return;
+    for (const o of editor.selectedObjects) {
+      const src = orig.get(o.id);
+      if (src) Object.assign(o, structuredClone(src));
+    }
+    applyFn();
+    editor.touch();
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  return {
+    ok: () => {
+      editor.endChange();
+      editor.openDialog(null);
+    },
+    cancel: () => editor.openDialog(null),
+  };
+}
 
 export function RotateDialog() {
   const ed = useEditor();
-  const [angle, setAngle] = useState(45);
-  const [pivot, setPivot] = useState<'playfield' | 'selection'>('selection');
+  const [angle, setAngle] = useState(0);
   const [dir, setDir] = useState<1 | -1>(1);
+  const [pivot, setPivot] = useState<'playfield' | 'selection'>('playfield');
+  const live = useLivePreview(() => angle && ed.rotate(angle * dir, pivot), [angle, dir, pivot]);
   return (
-    <Modal
-      title="Rotate by…"
-      footer={
-        <>
-          <button onClick={() => ed.openDialog(null)}>Cancel</button>
-          <button className="primary" onClick={() => { ed.rotate(angle * dir, pivot); ed.openDialog(null); }}>Rotate</button>
-        </>
-      }
-    >
-      <SliderField label="Angle (degrees)" value={angle} min={0} max={360} step={1} onChange={setAngle} />
-      <Field label="Direction">
-        <select value={dir} onChange={(e) => setDir(Number(e.target.value) as 1 | -1)}>
-          <option value={1}>Clockwise</option>
-          <option value={-1}>Anticlockwise</option>
-        </select>
-      </Field>
-      <Field label="Origin">
-        <select value={pivot} onChange={(e) => setPivot(e.target.value as 'playfield' | 'selection')}>
-          <option value="selection">Selection centre</option>
-          <option value="playfield">Playfield centre</option>
-        </select>
-      </Field>
-    </Modal>
+    <WinDialog title="Rotate by" width={340} onClose={live.cancel} footer={<OkCancel onOk={live.ok} onCancel={live.cancel} />}>
+      <div className="win-pad">
+        <div>Enter an angle to rotate by:</div>
+        <div className="win-track-line">
+          <input type="range" min={-180} max={180} step={1} value={angle} onChange={(e) => setAngle(Number(e.target.value))} />
+          <NumberBox value={angle} min={-360} max={360} step={1} width={56} onChange={setAngle} /> °
+        </div>
+        <div className="win-cols">
+          <GroupBox title="Direction">
+            <Radio name="rdir" label="Clockwise" checked={dir === 1} onChange={() => setDir(1)} /><br />
+            <Radio name="rdir" label="Anti-Clockwise" checked={dir === -1} onChange={() => setDir(-1)} />
+          </GroupBox>
+          <GroupBox title="Origin">
+            <Radio name="rorg" label="Playfield Centre" checked={pivot === 'playfield'} onChange={() => setPivot('playfield')} /><br />
+            <Radio name="rorg" label="Selection Centre" checked={pivot === 'selection'} onChange={() => setPivot('selection')} />
+          </GroupBox>
+        </div>
+      </div>
+    </WinDialog>
   );
 }
 
 export function ScaleDialog() {
   const ed = useEditor();
   const [factor, setFactor] = useState(1);
-  const [pivot, setPivot] = useState<'playfield' | 'selection'>('selection');
+  const [pivot, setPivot] = useState<'playfield' | 'selection'>('playfield');
   const [axes, setAxes] = useState({ x: true, y: true });
+  const live = useLivePreview(() => factor !== 1 && ed.scale(factor, pivot, axes), [factor, pivot, axes.x, axes.y]);
   return (
-    <Modal
-      title="Scale by…"
-      footer={
-        <>
-          <button onClick={() => ed.openDialog(null)}>Cancel</button>
-          <button className="primary" onClick={() => { ed.scale(factor, pivot, axes); ed.openDialog(null); }}>Scale</button>
-        </>
-      }
-    >
-      <SliderField label="Scale" value={factor} min={0.5} max={2} step={0.01} onChange={setFactor} />
-      <Field label="Axes">
-        <label><input type="checkbox" checked={axes.x} onChange={(e) => setAxes({ ...axes, x: e.target.checked })} /> X</label>
-        <label><input type="checkbox" checked={axes.y} onChange={(e) => setAxes({ ...axes, y: e.target.checked })} /> Y</label>
-      </Field>
-      <Field label="Origin">
-        <select value={pivot} onChange={(e) => setPivot(e.target.value as 'playfield' | 'selection')}>
-          <option value="selection">Selection centre</option>
-          <option value="playfield">Playfield centre</option>
-        </select>
-      </Field>
-    </Modal>
+    <WinDialog title="Scale by" width={330} onClose={live.cancel} footer={<OkCancel onOk={live.ok} onCancel={live.cancel} />}>
+      <div className="win-pad">
+        <div>Scale the selected objects' spacing by:</div>
+        <div className="win-track-line">
+          <input type="range" min={0.5} max={1.5} step={0.01} value={factor} onChange={(e) => setFactor(Number(e.target.value))} />
+          <NumberBox value={factor} min={0.1} max={4} step={0.01} digits={3} width={60} onChange={setFactor} /> ×
+        </div>
+        <div className="win-cols">
+          <GroupBox title="Origin">
+            <Radio name="sorg" label="Playfield Centre" checked={pivot === 'playfield'} onChange={() => setPivot('playfield')} /><br />
+            <Radio name="sorg" label="Selection Centre" checked={pivot === 'selection'} onChange={() => setPivot('selection')} />
+          </GroupBox>
+          <GroupBox title="Apply to">
+            <Check label="X-axis" checked={axes.x} onChange={(v) => setAxes({ ...axes, x: v })} /><br />
+            <Check label="Y-axis" checked={axes.y} onChange={(v) => setAxes({ ...axes, y: v })} />
+          </GroupBox>
+        </div>
+      </div>
+    </WinDialog>
   );
 }
 
@@ -80,7 +113,7 @@ export function PolygonDialog() {
     const bm = ed.bm;
     const start = Math.round(ed.snap(music.time));
     const step = beatLengthAt(bm, start) / ed.beatDivisor;
-    const side = expectedDistance(start, start + step) * spacing / (bm.editor.distanceSpacing || 1);
+    const side = (expectedDistance(start, start + step) * spacing) / (bm.editor.distanceSpacing || 1);
     const radius = side / (2 * Math.sin(Math.PI / points));
     const centre = { x: 256, y: 192 };
     const objs: HitObject[] = [];
@@ -104,32 +137,29 @@ export function PolygonDialog() {
       b.hitObjects = b.hitObjects.filter((o) => !times.has(o.time));
       b.hitObjects.push(...objs);
     });
+    ed.setTool('select');
     ed.select(objs.map((o) => o.id));
     ed.openDialog(null);
   };
 
   return (
-    <Modal
-      title="Polygon circles"
-      footer={
-        <>
-          <button onClick={() => ed.openDialog(null)}>Cancel</button>
-          <button className="primary" onClick={create}>Create</button>
-        </>
-      }
-    >
-      <p className="muted">Places circles in a regular polygon around the playfield centre, starting at the current time and spaced by the beat snap divisor.</p>
-      <SliderField label="Distance snap" value={spacing} min={0.1} max={6} step={0.1} onChange={setSpacing} />
-      <SliderField label="Offset angle" value={offset} min={0} max={180} step={1} onChange={setOffset} />
-      <SliderField label="Points" value={points} min={3} max={12} step={1} onChange={setPoints} />
-      <SliderField label="Repeats" value={repeats} min={1} max={10} step={1} onChange={setRepeats} />
-    </Modal>
+    <WinDialog title="Create Polygon Circles" width={360} onClose={() => ed.openDialog(null)} footer={<OkCancel onOk={create} onCancel={() => ed.openDialog(null)} />}>
+      <div className="win-pad">
+        <p className="win-muted">Circles go around the playfield centre, starting at the current time and spaced by the beat snap divisor (1/{ed.beatDivisor}).</p>
+        <TrackRow label="Distance Snap" value={spacing} min={0.1} max={6} step={0.1} onChange={setSpacing} />
+        <TrackRow label="Offset Angle" value={offset} min={0} max={180} step={1} onChange={setOffset} />
+        <TrackRow label="Points" value={points} min={3} max={12} step={1} onChange={(v) => setPoints(Math.round(v))} />
+        <TrackRow label="Repeats" value={repeats} min={1} max={10} step={1} onChange={(v) => setRepeats(Math.round(v))} />
+      </div>
+    </WinDialog>
   );
 }
 
 export function StreamDialog() {
   const ed = useEditor();
+  const [by, setBy] = useState<'divisor' | 'count'>('divisor');
   const [divisor, setDivisor] = useState(ed.beatDivisor);
+  const [count, setCount] = useState(8);
   const [keepSounds, setKeepSounds] = useState(true);
   const sliders = ed.selectedObjects.filter((o) => o.kind === 'slider');
 
@@ -139,9 +169,9 @@ export function StreamDialog() {
     for (const s of sliders) {
       if (s.kind !== 'slider') continue;
       const span = sliderSpanDuration(bm, s);
-      const end = s.time + span * s.slides;
-      const step = beatLengthAt(bm, s.time) / divisor;
-      for (let t = s.time, i = 0; t <= end + 1; t += step, i++) {
+      const total = span * s.slides;
+      const step = by === 'divisor' ? beatLengthAt(bm, s.time) / divisor : total / Math.max(1, count - 1);
+      for (let t = s.time, i = 0; t <= s.time + total + 1; t += step, i++) {
         const pos = sliderPositionAtSpan(s, Math.min(s.slides, (t - s.time) / span));
         const edgeIndex = Math.round((t - s.time) / span);
         const atEdge = Math.abs(s.time + edgeIndex * span - t) < 2;
@@ -168,132 +198,205 @@ export function StreamDialog() {
   };
 
   return (
-    <Modal
-      title="Convert slider to stream"
-      footer={
-        <>
-          <button onClick={() => ed.openDialog(null)}>Cancel</button>
-          <button className="primary" onClick={convert} disabled={!sliders.length}>Convert</button>
-        </>
-      }
-    >
-      {!sliders.length && <p>Select one or more sliders first.</p>}
-      <Field label="Beat snap divisor">
-        <select value={divisor} onChange={(e) => setDivisor(Number(e.target.value))}>
-          {[1, 2, 3, 4, 6, 8, 12, 16].map((d) => <option key={d} value={d}>1/{d}</option>)}
-        </select>
-      </Field>
-      <Field label="Keep hitsounds on slider edges">
-        <input type="checkbox" checked={keepSounds} onChange={(e) => setKeepSounds(e.target.checked)} />
-      </Field>
-    </Modal>
+    <WinDialog title="Convert slider to stream" width={340} onClose={() => ed.openDialog(null)} footer={<OkCancel onOk={convert} onCancel={() => ed.openDialog(null)} okDisabled={!sliders.length} />}>
+      <div className="win-pad">
+        {!sliders.length && <p className="win-note">Select one or more sliders first.</p>}
+        <GroupBox title="Spacing">
+          <div className="tsd-custom">
+            <Radio name="sby" label="Beat snap divisor" checked={by === 'divisor'} onChange={() => setBy('divisor')} />
+            <select value={divisor} disabled={by !== 'divisor'} onChange={(e) => setDivisor(Number(e.target.value))}>
+              {DIVISORS.map((d) => <option key={d} value={d}>1/{d}</option>)}
+            </select>
+          </div>
+          <div className="tsd-custom">
+            <Radio name="sby" label="Number of objects" checked={by === 'count'} onChange={() => setBy('count')} />
+            <NumberBox value={count} min={2} max={64} step={1} width={56} disabled={by !== 'count'} onChange={(v) => setCount(Math.round(v))} />
+          </div>
+        </GroupBox>
+        <Check label="Keep the hitsounds of slider edges" checked={keepSounds} onChange={setKeepSounds} />
+      </div>
+    </WinDialog>
   );
 }
 
+/** Ctrl+O: pick another difficulty of this set to edit. */
 export function DifficultiesDialog() {
   const ed = useEditor();
   const p = ed.project!;
+  const [sel, setSel] = useState(ed.diffIndex);
+  const open = () => {
+    ed.openDialog(null);
+    void ed.requestSwitchDifficulty(p.difficulties[sel].id);
+  };
   return (
-    <Modal title="Difficulties" footer={<button onClick={() => ed.openDialog('newDifficulty')}>Create new difficulty…</button>}>
-      <ul className="diff-list">
-        {p.difficulties.map((d, i) => (
-          <li key={d.id} className={i === ed.diffIndex ? 'current' : ''}>
-            <button className="diff-open" onClick={() => { void ed.switchDifficulty(i); ed.openDialog(null); }}>
-              <b>{d.beatmap.metadata.version}</b>
-              <span className="muted"> · {['osu!', 'taiko', 'catch', 'mania'][d.beatmap.general.mode]} · {d.beatmap.hitObjects.length} objects</span>
-            </button>
-            <button
-              className="danger small"
-              disabled={p.difficulties.length <= 1}
-              onClick={() => confirm(`Delete difficulty "${d.beatmap.metadata.version}"?`) && ed.deleteDifficulty(i)}
-            >
-              Delete
-            </button>
-          </li>
-        ))}
-      </ul>
-    </Modal>
+    <WinDialog title="Open Difficulty" width={380} onClose={() => ed.openDialog(null)} footer={<OkCancel okLabel="Open" onOk={open} onCancel={() => ed.openDialog(null)} />}>
+      <div className="win-list" style={{ height: 220 }}>
+        <table>
+          <thead><tr><th>Difficulty</th><th>Mode</th><th>Objects</th></tr></thead>
+          <tbody>
+            {p.difficulties.map((d, i) => (
+              <tr key={d.id} className={i === sel ? 'sel focus' : ''} onMouseDown={() => setSel(i)} onDoubleClick={open}>
+                <td>{d.beatmap.metadata.version || '(unnamed)'}{i === ed.diffIndex ? ' (current)' : ''}</td>
+                <td>{['osu!', 'osu!taiko', 'osu!catch', 'osu!mania'][d.beatmap.general.mode]}</td>
+                <td>{d.beatmap.hitObjects.length}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="win-buttonrow">
+        <button onClick={() => { ed.openDialog(null); void ed.beginNewDifficulty(); }}>Create a new Difficulty...</button>
+        <button
+          disabled={p.difficulties.length <= 1}
+          onClick={async () => {
+            const d = p.difficulties[sel];
+            if (await confirmBox('osu!', `Delete the difficulty "${d.beatmap.metadata.version}"? It is removed when you save.`)) {
+              ed.deleteDifficulty(sel);
+              setSel(Math.min(sel, p.difficulties.length - 1));
+            }
+          }}
+        >
+          Delete...
+        </button>
+      </div>
+    </WinDialog>
   );
 }
 
-export function NewDifficultyDialog() {
-  const ed = useEditor();
-  const [name, setName] = useState('');
-  const [copy, setCopy] = useState(false);
-  const [mode, setMode] = useState(ed.bm.general.mode);
-  return (
-    <Modal
-      title="Create new difficulty"
-      footer={
-        <>
-          <button onClick={() => ed.openDialog(null)}>Cancel</button>
-          <button className="primary" onClick={() => { ed.addDifficulty(name.trim(), { copyObjects: copy, mode }); ed.openDialog(null); }}>Create</button>
-        </>
-      }
-    >
-      <Field label="Difficulty name"><input autoFocus value={name} placeholder="Insane" onChange={(e) => setName(e.target.value)} /></Field>
-      <Field label="Game mode">
-        <select value={mode} onChange={(e) => setMode(Number(e.target.value) as typeof mode)}>
-          <option value={0}>osu!</option>
-          <option value={1}>osu!taiko</option>
-          <option value={2}>osu!catch</option>
-          <option value={3}>osu!mania</option>
-        </select>
-      </Field>
-      <Field label="Copy hit objects from current difficulty" hint="Timing (red lines) and song setup are always copied">
-        <input type="checkbox" checked={copy} onChange={(e) => setCopy(e.target.checked)} />
-      </Field>
-    </Modal>
-  );
-}
-
+/** View → Volume... / Options...: the web editor's own settings. */
 export function PreferencesDialog() {
   const ed = useEditor();
   const p = ed.prefs;
+  const close = () => ed.openDialog(null);
   return (
-    <Modal title="Preferences" footer={<button className="primary" onClick={() => ed.openDialog(null)}>Done</button>}>
-      <SliderField label="Music volume" value={p.musicVolume} min={0} max={1} step={0.01} onChange={(v) => ed.setPrefs({ musicVolume: v })} />
-      <SliderField label="Hitsound volume" value={p.hitsoundVolume} min={0} max={1} step={0.01} onChange={(v) => ed.setPrefs({ hitsoundVolume: v })} />
-      <SliderField label="Audio offset (ms)" value={p.audioOffset} min={-200} max={200} step={1} onChange={(v) => ed.setPrefs({ audioOffset: v })} hint="Positive if hitsounds play too early compared to the music" />
-      <SliderField label="Background dim" value={p.backgroundDim} min={0} max={1} step={0.05} onChange={(v) => ed.setPrefs({ backgroundDim: v })} />
-      <Field label="Hit animations"><input type="checkbox" checked={p.showHitAnimations} onChange={(e) => ed.setPrefs({ showHitAnimations: e.target.checked })} /></Field>
-      <Field label="Follow points"><input type="checkbox" checked={p.showFollowPoints} onChange={(e) => ed.setPrefs({ showFollowPoints: e.target.checked })} /></Field>
-      <Field label="Snaking sliders"><input type="checkbox" checked={p.snakingSliders} onChange={(e) => ed.setPrefs({ snakingSliders: e.target.checked })} /></Field>
-      <Field label="Timeline waveform"><input type="checkbox" checked={p.showWaveform} onChange={(e) => ed.setPrefs({ showWaveform: e.target.checked })} /></Field>
-      <Field label="Show storyboard"><input type="checkbox" checked={p.showStoryboard} onChange={(e) => ed.setPrefs({ showStoryboard: e.target.checked })} /></Field>
-      <Field label="Show background video"><input type="checkbox" checked={p.showVideo} onChange={(e) => ed.setPrefs({ showVideo: e.target.checked })} /></Field>
-      <Field label="Invert mouse wheel seeking"><input type="checkbox" checked={p.invertScroll} onChange={(e) => ed.setPrefs({ invertScroll: e.target.checked })} /></Field>
-      <Field label="Creator name (when not logged in)"><input value={p.creatorName} onChange={(e) => ed.setPrefs({ creatorName: e.target.value })} /></Field>
-    </Modal>
+    <WinDialog title="Options" width={420} onClose={close} footer={<OkCancel onOk={close} onCancel={close} />}>
+      <GroupBox title="Volume">
+        <TrackRow label="Music" value={Math.round(p.musicVolume * 100)} min={0} max={100} step={1} onChange={(v) => ed.setPrefs({ musicVolume: v / 100 })} />
+        <TrackRow label="Effects (hitsounds)" value={Math.round(p.hitsoundVolume * 100)} min={0} max={100} step={1} onChange={(v) => ed.setPrefs({ hitsoundVolume: v / 100 })} />
+        <TrackRow label="Audio offset (ms): positive if hitsounds play too early" value={p.audioOffset} min={-200} max={200} step={1} onChange={(v) => ed.setPrefs({ audioOffset: v })} />
+      </GroupBox>
+      <GroupBox title="Display">
+        <TrackRow label="Background dim (%)" value={Math.round(p.backgroundDim * 100)} min={0} max={100} step={5} onChange={(v) => ed.setPrefs({ backgroundDim: v / 100 })} />
+        <Check label="Hit animations" checked={p.showHitAnimations} onChange={(v) => ed.setPrefs({ showHitAnimations: v })} />
+        <Check label="Follow points" checked={p.showFollowPoints} onChange={(v) => ed.setPrefs({ showFollowPoints: v })} />
+        <Check label="Snaking sliders" checked={p.snakingSliders} onChange={(v) => ed.setPrefs({ snakingSliders: v })} /><br />
+        <Check label="Timeline waveform" checked={p.showWaveform} onChange={(v) => ed.setPrefs({ showWaveform: v })} />
+        <Check label="Storyboard" checked={p.showStoryboard} onChange={(v) => ed.setPrefs({ showStoryboard: v })} />
+        <Check label="Video" checked={p.showVideo} onChange={(v) => ed.setPrefs({ showVideo: v })} />
+      </GroupBox>
+      <GroupBox title="Input">
+        <Check label="Invert mouse wheel seeking" checked={p.invertScroll} onChange={(v) => ed.setPrefs({ invertScroll: v })} />
+        <Row label="Creator name"><input value={p.creatorName} placeholder="used when not logged in" onChange={(e) => ed.setPrefs({ creatorName: e.target.value })} /></Row>
+      </GroupBox>
+    </WinDialog>
   );
 }
 
+/** File → Open Song Folder: the files in the beatmap set. */
 export function FilesDialog() {
   const ed = useEditor();
   const files = [...ed.project!.files.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const [sel, setSel] = useState<string | null>(null);
+  const add = async () => {
+    const picked = await pickFiles('*', { multiple: true });
+    for (const f of picked) ed.setFile(f.name, f);
+    if (picked.length) {
+      ed.toast(`Added ${picked.length} file${picked.length > 1 ? 's' : ''}. Custom hitsounds are picked up by name (e.g. soft-hitclap2.wav).`);
+      const { hitsounds } = await import('../../../audio/hitsounds');
+      await hitsounds.setCustomSamples(ed.project!.files, ed.bm.general.audioFilename);
+    }
+  };
+  const remove = async () => {
+    if (!sel) return;
+    if (sel === ed.bm.general.audioFilename) return ed.toast('This is the audio file; replace it from Song Setup → Audio instead.', 'error');
+    if (await confirmBox('osu!', `Remove ${sel} from the beatmap folder?`)) {
+      ed.setFile(sel, null);
+      setSel(null);
+    }
+  };
   return (
-    <Modal title="Beatmap folder" footer={<button className="primary" onClick={() => ed.openDialog(null)}>Done</button>}>
-      <table className="file-table">
-        <tbody>
-          {files.map(([name, blob]) => (
-            <tr key={name}>
-              <td className="mono">{name}</td>
-              <td className="muted">{(blob.size / 1024).toFixed(0)} KB</td>
-              <td>
-                <button
-                  className="danger small"
-                  onClick={() => {
-                    if (name === ed.bm.general.audioFilename) return editor.toast('This is the audio file; replace it from Song Setup instead.', 'error');
-                    if (confirm(`Remove ${name}?`)) ed.setFile(name, null);
-                  }}
-                >
-                  Remove
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Modal>
+    <WinDialog title="Song Folder" width={520} onClose={() => ed.openDialog(null)} footer={<OkCancel onOk={() => ed.openDialog(null)} onCancel={() => ed.openDialog(null)} />}>
+      <div className="win-list" style={{ height: 300 }}>
+        <table>
+          <thead><tr><th>Name</th><th>Size</th></tr></thead>
+          <tbody>
+            {files.map(([name, blob]) => (
+              <tr key={name} className={sel === name ? 'sel focus' : ''} onMouseDown={() => setSel(name)}>
+                <td className="win-mono">{name}</td>
+                <td>{Math.max(1, Math.round(blob.size / 1024)).toLocaleString()} KB</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="win-buttonrow">
+        <button onClick={() => void add()}>Add files...</button>
+        <button onClick={() => void remove()} disabled={!sel}>Remove</button>
+      </div>
+    </WinDialog>
+  );
+}
+
+/** File → Open .osu / .osb in Notepad: the raw text, editable. */
+export function NotepadDialog({ kind }: { kind: 'osu' | 'osb' }) {
+  const ed = useEditor();
+  const [text, setText] = useState(kind === 'osu' ? serializeBeatmap(ed.bm) : '');
+  storyboard.sync();
+  const osbName = storyboard.osbName;
+  useEffect(() => {
+    if (kind !== 'osb') return;
+    const blob = ed.project!.files.get(osbName);
+    if (blob) void blob.text().then(setText);
+    else setText('[Events]\n//Background and Video events\n//Storyboard Layer 0 (Background)\n//Storyboard Layer 1 (Fail)\n//Storyboard Layer 2 (Pass)\n//Storyboard Layer 3 (Foreground)\n//Storyboard Layer 4 (Overlay)\n//Storyboard Sound Samples\n');
+  }, [kind, osbName]); // eslint-disable-line react-hooks/exhaustive-deps
+  const apply = () => {
+    if (kind === 'osu') {
+      try {
+        const parsed = parseOsu(text);
+        ed.commit((b) => Object.assign(b, parsed));
+        ed.select([]);
+      } catch (e) {
+        return ed.toast(`Couldn't read that .osu: ${(e as Error).message}`, 'error');
+      }
+    } else {
+      ed.setFile(osbName, new Blob([text.replace(/\r?\n/g, '\r\n')], { type: 'text/plain' }));
+      design.select(null);
+    }
+    ed.openDialog(null);
+  };
+  return (
+    <WinDialog title={`${kind === 'osu' ? 'Difficulty' : osbName} - Notepad`} width={760} onClose={() => ed.openDialog(null)} footer={<OkCancel okLabel="Apply" onOk={apply} onCancel={() => ed.openDialog(null)} />}>
+      <textarea className="win-textarea" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
+    </WinDialog>
+  );
+}
+
+/** Per-object sample volume, custom sample index and combo colour skip for the selection. */
+export function ObjectSettingsDialog() {
+  const ed = useEditor();
+  const sel = ed.selectedObjects;
+  const same = <T,>(f: (o: HitObject) => T) => (sel.every((o) => f(o) === f(sel[0])) ? f(sel[0]) : null);
+  const [vol, setVol] = useState(same((o) => o.sample.volume) ?? 0);
+  const [idx, setIdx] = useState(same((o) => o.sample.index) ?? 0);
+  const [skip, setSkip] = useState(same((o) => o.comboSkip) ?? 0);
+  const ok = () => {
+    ed.commit(() =>
+      sel.forEach((o) => {
+        o.sample.volume = vol;
+        o.sample.index = idx;
+        if (o.newCombo) o.comboSkip = skip;
+      }),
+    );
+    ed.openDialog(null);
+  };
+  return (
+    <WinDialog title="Sample volume and colour skip" width={360} onClose={() => ed.openDialog(null)} footer={<OkCancel onOk={ok} onCancel={() => ed.openDialog(null)} okDisabled={!sel.length} />}>
+      <div className="win-pad">
+        <p className="win-muted">{sel.length} selected object{sel.length === 1 ? '' : 's'}. 0 means "use the timing section".</p>
+        <Row label="Sample volume"><NumberBox value={vol} min={0} max={100} step={5} onChange={(v) => setVol(Math.round(v))} /></Row>
+        <Row label="Custom sample index"><NumberBox value={idx} min={0} step={1} onChange={(v) => setIdx(Math.round(v))} /></Row>
+        <Row label="Combo colour skip" hint="Only for objects that start a new combo"><NumberBox value={skip} min={0} max={7} step={1} onChange={(v) => setSkip(Math.round(v))} /></Row>
+      </div>
+    </WinDialog>
   );
 }

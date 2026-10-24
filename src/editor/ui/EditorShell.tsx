@@ -10,7 +10,7 @@ import { expectedDistance } from '../playfield/snapping';
 import { DIVISORS } from '../shortcuts';
 import { editor, formatTimestamp, useEditor, type Tool } from '../store';
 import { Dialogs } from './dialogs/Dialogs';
-import { DesignScreen } from './DesignScreen';
+import { DesignScreen, DesignTimeline, DesignTopRight } from './DesignScreen';
 import {
   CircleIcon, ClapIcon, DistanceSnapIcon, FinishIcon, GridSnapIcon, LockIcon, MinusIcon, NewComboIcon, PauseIcon,
   PlayIcon, PlusIcon, SelectIcon, SliderIcon, SpinnerIcon, StopIcon, TestIcon, WhistleIcon,
@@ -56,11 +56,11 @@ function TopPanel() {
     <div className="ed-top">
       <ScreenTabs />
       <ZoomButtons />
-      <div className="ed-timeline">{ed.screen === 'design' ? <div id="design-timeline-slot" /> : <Timeline />}</div>
+      <div className="ed-timeline">{ed.screen === 'design' ? <DesignTimeline /> : <Timeline />}</div>
       <div className="ed-top-right">
         {ed.screen === 'compose' && <ComposeTopRight />}
         {ed.screen === 'timing' && <TimingTopRight />}
-        {ed.screen === 'design' && <div id="design-top-right-slot" />}
+        {ed.screen === 'design' && <DesignTopRight />}
       </div>
     </div>
   );

@@ -146,8 +146,11 @@ class StoryboardRuntime {
   }
 
   /** All elements in draw order (per layer: .osb first, then the difficulty's). */
+  /** Layers to draw instead of a passing play's (Design tab layer toggles). */
+  layers: readonly SbLayer[] | null = null;
+
   *drawOrder(): Generator<{ ref: SbRef; el: SbSprite }> {
-    for (const layer of DRAW_LAYERS) {
+    for (const layer of this.layers ?? DRAW_LAYERS) {
       for (const source of ['osb', 'diff'] as const) {
         const els = this[source].elements;
         for (let i = 0; i < els.length; i++) {

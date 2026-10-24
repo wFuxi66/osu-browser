@@ -8,6 +8,7 @@ import {
   propValue,
   serializeOsb,
   spriteStateAt,
+  type Prop,
   type SbCommand,
   type SbCommandType,
   type SbElement,
@@ -19,6 +20,9 @@ import { editor } from '../store';
 import { storyboard, type SbRef, type SbSource } from './runtime';
 
 export type KeyframeType = Exclude<SbCommandType, 'P' | 'MX' | 'MY'>;
+
+/** Design tab options for new keyframes: Tweening (ease from the previous keyframe) and Easing In/Out. */
+export const keyframeStyle = { tween: true, easing: 0 };
 
 /**
  * Set a property's value at time t the way stable's design mode keyframes: edit a command that starts/ends
@@ -53,12 +57,13 @@ export function setKeyframe(el: SbSprite, type: KeyframeType, t: number, values:
     el.commands.splice(el.commands.indexOf(inside) + 1, 0, second);
     return;
   }
+  const { tween, easing } = keyframeStyle;
   const before = [...cmds].reverse().find((c) => c.end < t);
   if (before) {
-    el.commands.push({ type, easing: 0, start: before.end, end: t, from: before.to.slice(), to: v() });
+    el.commands.push(tween ? { type, easing, start: before.end, end: t, from: before.to.slice(), to: v() } : { type, easing: 0, start: t, end: t, from: v(), to: v() });
     return;
   }
-  el.commands.push({ type, easing: 0, start: t, end: cmds[0].start, from: v(), to: cmds[0].from.slice() });
+  el.commands.push(tween ? { type, easing, start: t, end: cmds[0].start, from: v(), to: cmds[0].from.slice() } : { type, easing: 0, start: t, end: t, from: v(), to: v() });
 }
 
 /** Shift a sprite's whole motion (base position and every move command) by a delta. */
@@ -99,7 +104,7 @@ type HistoryEntry = { source: 'osb'; before: string; after?: string } | { source
 
 interface Drag {
   ref: SbRef;
-  mode: 'move' | 'scale' | 'rotate';
+  mode: 'move' | 'scale' | 'rotate' | 'fade';
   start: { x: number; y: number };
   snapshot: SbSprite;
   t: number;
@@ -112,6 +117,15 @@ class DesignState {
   /** Keyframe moves at the current time (stable's behaviour) instead of shifting the whole path. */
   autoKeyframe = true;
   showPlayfield = true;
+  /** Design tab: what dragging a sprite changes (Transformation). */
+  transform: 'move' | 'scale' | 'fade' | 'rotate' | 'colour' = 'move';
+  /** Origin for new sprites. */
+  newOrigin: 'TopLeft' | 'Centre' = 'TopLeft';
+  /** Layer Toggles. */
+  visibleLayers = new Set<SbLayer>(['Background', 'Fail', 'Pass', 'Foreground', 'Overlay']);
+  showHitObjects = false;
+  /** "Background Image/Video" behind the storyboard. */
+  showBackground = true;
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
   private drag: Drag | null = null;
@@ -184,6 +198,64 @@ class DesignState {
     editor.emit();
   }
 
+  // ---------------------------------------------------------------- keyframe control (Design tab)
+
+  private get keyframeType(): KeyframeType {
+    return ({ move: 'M', scale: 'S', fade: 'F', rotate: 'R', colour: 'C' } as const)[this.transform];
+  }
+
+  /** "+": add a keyframe for the active transformation at the current time, keeping the current value. */
+  addKeyframe() {
+    const el = this.selectedElement;
+    if (!el || el.kind === 'sample') return;
+    const t = Math.round(music.time);
+    const c = storyboard.compiledFor(el);
+    const v = (p: Prop, i = 0, fb = 0) => Math.round(propValue(c, p, t, i, fb) * 1000) / 1000;
+    const type = this.keyframeType;
+    const values =
+      type === 'M' ? [v('x', 0, el.x), v('y', 0, el.y)]
+      : type === 'S' ? [v('scale', 0, 1)]
+      : type === 'F' ? [v('alpha', 0, 1)]
+      : type === 'R' ? [v('rotation')]
+      : [v('colour', 0, 255), v('colour', 1, 255), v('colour', 2, 255)];
+    this.editSelected((x) => x.kind !== 'sample' && setKeyframe(x, type, t, values));
+  }
+
+  /** "−": remove the active transformation's keyframe at the current time, joining the commands around it. */
+  removeKeyframe() {
+    const el = this.selectedElement;
+    if (!el || el.kind === 'sample') return;
+    const t = Math.round(music.time);
+    const type = this.keyframeType;
+    this.editSelected((x) => {
+      if (x.kind === 'sample') return;
+      const cmds = x.commands.filter((c): c is SbCommand => c.type === type);
+      const near = (a: number) => Math.abs(a - t) <= 2;
+      const ending = cmds.find((c) => near(c.end) && !near(c.start));
+      const starting = cmds.find((c) => near(c.start) && !near(c.end));
+      if (ending && starting) {
+        ending.end = starting.end;
+        ending.to = starting.to;
+        x.commands = x.commands.filter((c) => c !== starting);
+      } else {
+        x.commands = x.commands.filter((c) => !(c.type === type && (near((c as SbCommand).start) || near((c as SbCommand).end))));
+      }
+    });
+  }
+
+  /** "|◀" / "▶|": seek to the selected sprite's previous / next keyframe. */
+  seekKeyframe(dir: 1 | -1) {
+    const el = this.selectedElement;
+    if (!el || el.kind === 'sample') return;
+    const c = storyboard.compiledFor(el);
+    const times = new Set<number>();
+    for (const segs of Object.values(c.timelines)) for (const s of segs ?? []) times.add(Math.round(s.start)).add(Math.round(s.end));
+    const t = music.time;
+    const sorted = [...times].sort((a, b) => a - b);
+    const target = dir > 0 ? sorted.find((x) => x > t + 1) : [...sorted].reverse().find((x) => x < t - 1);
+    if (target !== undefined) music.seek(target);
+  }
+
   /** Design → Move all elements in time: shift every command, loop, trigger and sample of both storyboards. */
   shiftAllInTime(ms: number) {
     const shiftEntry = (e: SbEntry) => {
@@ -217,7 +289,7 @@ class DesignState {
       kind: animation ? 'animation' : 'sprite',
       id: newSbId(),
       layer,
-      origin: 'Centre',
+      origin: this.newOrigin,
       file,
       x: Math.round(x),
       y: Math.round(y),
@@ -312,6 +384,10 @@ class DesignState {
         const k = Math.hypot(p.x - sx, p.y - sy) / base;
         const s = propValue(storyboard.compiledFor(el), 'scale', d.t, 0, 1);
         setKeyframe(el, 'S', d.t, [Math.round(Math.max(0.001, s * k) * 1000) / 1000]);
+      } else if (d.mode === 'fade') {
+        // Drag up to fade in, down to fade out.
+        const a = propValue(storyboard.compiledFor(el), 'alpha', d.t, 0, 1);
+        setKeyframe(el, 'F', d.t, [Math.round(Math.max(0, Math.min(1, a - dy / 200)) * 1000) / 1000]);
       } else {
         const a0 = Math.atan2(d.start.y - sy, d.start.x - sx);
         const a1 = Math.atan2(p.y - sy, p.x - sx);

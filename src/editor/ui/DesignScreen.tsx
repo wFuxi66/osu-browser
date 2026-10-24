@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { music } from '../../audio/music';
+import { fmt } from '../../osu/info';
 import {
   EASING_NAMES,
   ORIGIN_ANCHOR,
@@ -19,36 +20,282 @@ import {
 } from '../../osu/storyboard';
 import { redLineAt } from '../../osu/timing';
 import { onFrame } from '../playback';
+import { StdPlayfield } from '../playfield/stdPlayfield';
+import { layoutCode } from '../shortcuts';
 import { editor, formatTimestamp, useEditor } from '../store';
-import { design, setKeyframe, setPositionAt, type KeyframeType } from '../storyboard/design';
+import { design, keyframeStyle, setKeyframe, setPositionAt, type KeyframeType } from '../storyboard/design';
 import { fitFrame, SB_H, SB_W, SB_WIDE_MARGIN, storyboard, type SbFrame, type SbRef, type SbSource } from '../storyboard/runtime';
 import { drawBackground } from './Playfield';
 
 const IMAGE_RE = /\.(png|jpe?g|gif|bmp|webp)$/i;
 const SOUND_RE = /\.(wav|ogg|mp3)$/i;
 
+/** Cursor in storyboard coordinates, for the top-right readout. */
+const cursor = { x: 0, y: 0, inside: false };
+
 /**
- * F2 design mode: a storyboard preview you can click and drag sprites in (keyframing at the current time,
- * like stable), element/command editing, and the raw script for anything else.
+ * F2 design mode laid out like stable: the storyboard fills the stage, the left panel holds layer toggles and
+ * keyframing options, and the top timeline shows the selected sprite's keyframes. Clicking and dragging a sprite
+ * keyframes it at the current time. The sprite library (I) holds element/command editing and the raw script.
  */
 export function DesignScreen() {
+  const ed = useEditor();
+  const [library, setLibrary] = useState(false);
   const [tab, setTab] = useState<'visual' | 'script'>('visual');
-  useEditor();
+
+  useEffect(() => {
+    storyboard.layers = SB_LAYERS.filter((l) => design.visibleLayers.has(l));
+  }, [ed.rev]);
+  useEffect(() => () => void (storyboard.layers = null), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (editor.dialog || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || e.ctrlKey || e.altKey) return;
+      const code = layoutCode(e);
+      if (code === 'KeyI') setLibrary((v) => !v);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
-    <div className="design-screen">
-      <div className="design-main">
-        <SbPreview />
-        <SpriteTimeline />
-      </div>
-      <div className="design-side">
-        <div className="tabs">
-          <button className={tab === 'visual' ? 'active' : ''} onClick={() => setTab('visual')}>Sprites</button>
-          <button className={tab === 'script' ? 'active' : ''} onClick={() => setTab('script')}>Script</button>
+    <div className="dz">
+      <SbPreview />
+      <DesignLeft />
+      <KeyframeControl />
+      <LayerList />
+      <button className={`dz-library-btn ${library ? 'on' : ''}`} onClick={() => setLibrary(!library)} title="Sprite Library (I)">
+        Sprite<br />Library
+      </button>
+      {library && (
+        <div className="dz-drawer design-side">
+          <div className="tabs">
+            <button className={tab === 'visual' ? 'active' : ''} onClick={() => setTab('visual')}>Sprites</button>
+            <button className={tab === 'script' ? 'active' : ''} onClick={() => setTab('script')}>Script</button>
+            <button className="dz-drawer-close" onClick={() => setLibrary(false)} aria-label="Close">✕</button>
+          </div>
+          {tab === 'visual' ? <VisualPanel /> : <ScriptPanel />}
         </div>
-        {tab === 'visual' ? <VisualPanel /> : <ScriptPanel />}
-      </div>
+      )}
     </div>
   );
+}
+
+// ------------------------------------------------------------------ left panel
+
+function Dot({ on, label, onClick, title }: { on: boolean; label: string; onClick: () => void; title?: string }) {
+  return (
+    <button className={`dz-opt ${on ? 'on' : ''}`} onClick={onClick} title={title}>
+      <span className="dz-dot" /> {label}
+    </button>
+  );
+}
+
+function DesignLeft() {
+  const ed = useEditor();
+  const toggleLayer = (l: SbLayer) => {
+    if (design.visibleLayers.has(l)) design.visibleLayers.delete(l);
+    else design.visibleLayers.add(l);
+    ed.emit();
+  };
+  const set = (fn: () => void) => {
+    fn();
+    ed.emit();
+  };
+  const layerLabels: [SbLayer, string][] = [['Background', 'Background'], ['Fail', 'Failing'], ['Pass', 'Passing'], ['Foreground', 'Foreground'], ['Overlay', 'Overlay']];
+  return (
+    <div className="dz-left">
+      <div className="dz-head">Layer Toggles</div>
+      {layerLabels.map(([l, label]) => <Dot key={l} on={design.visibleLayers.has(l)} label={label} onClick={() => toggleLayer(l)} />)}
+      <Dot on={design.showHitObjects} label="HitObjects" onClick={() => set(() => (design.showHitObjects = !design.showHitObjects))} />
+      <div className="dz-head">Transformation</div>
+      {(['move', 'scale', 'fade', 'rotate', 'colour'] as const).map((t) => (
+        <Dot key={t} on={design.transform === t} label={t[0].toUpperCase() + t.slice(1)} onClick={() => set(() => (design.transform = t))} title={t === 'colour' ? 'Click a sprite to pick its colour at the current time' : `Drag a sprite to ${t} it at the current time`} />
+      ))}
+      <div className="dz-head">Tweening</div>
+      <Dot on={keyframeStyle.tween} label="Enabled" onClick={() => set(() => (keyframeStyle.tween = !keyframeStyle.tween))} title="New keyframes ease from the previous one" />
+      <div className="dz-head">Easing</div>
+      <Dot on={keyframeStyle.easing === 2} label="In" onClick={() => set(() => (keyframeStyle.easing = keyframeStyle.easing === 2 ? 0 : 2))} />
+      <Dot on={keyframeStyle.easing === 1} label="Out" onClick={() => set(() => (keyframeStyle.easing = keyframeStyle.easing === 1 ? 0 : 1))} />
+      <div className="dz-head">Origin</div>
+      <Dot on={design.newOrigin === 'TopLeft'} label="Top-Left" onClick={() => set(() => (design.newOrigin = 'TopLeft'))} title="Origin of new sprites" />
+      <Dot on={design.newOrigin === 'Centre'} label="Centre" onClick={() => set(() => (design.newOrigin = 'Centre'))} title="Origin of new sprites" />
+      <div className="dz-head">Advanced</div>
+      <Dot on={design.target === 'diff'} label="Diff. Specific" onClick={() => set(() => (design.target = design.target === 'diff' ? 'osb' : 'diff'))} title="New sprites go into this difficulty instead of the shared .osb" />
+    </div>
+  );
+}
+
+function KeyframeControl() {
+  useEditor();
+  const has = !!design.selectedElement && design.selectedElement.kind !== 'sample';
+  return (
+    <div className="dz-keyframes">
+      <span className="dz-order">
+        <button onClick={() => design.reorderSelected(-1)} disabled={!has} title="Draw further back">▼</button>
+        <button onClick={() => design.reorderSelected(1)} disabled={!has} title="Draw further front">▲</button>
+      </span>
+      <span className="dz-kf-label">Keyframe Control</span>
+      <button onClick={() => design.addKeyframe()} disabled={!has} title="Add a keyframe at the current time">+</button>
+      <button onClick={() => design.removeKeyframe()} disabled={!has} title="Remove the keyframe at the current time">−</button>
+      <button onClick={() => design.seekKeyframe(-1)} disabled={!has} title="Previous keyframe">⏮</button>
+      <button onClick={() => design.seekKeyframe(1)} disabled={!has} title="Next keyframe">⏭</button>
+    </div>
+  );
+}
+
+/** Right-hand layer list: the selected sprite's layer, click to move it. */
+function LayerList() {
+  useEditor();
+  const el = design.selectedElement;
+  return (
+    <div className="dz-layers">
+      {SB_LAYERS.map((l) => (
+        <button key={l} className={el?.layer === l ? 'on' : ''} disabled={!el} onClick={() => design.editSelected((x) => (x.layer = l))}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+/** Top right of the design view: background toggle and cursor/time/SB load readout. */
+export function DesignTopRight() {
+  const ed = useEditor();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let last = 0;
+    let load = 0;
+    return onFrame((t) => {
+      const el = ref.current;
+      if (!el || !editor.hasProject) return;
+      const now = performance.now();
+      if (now - last > 250) {
+        last = now;
+        load = sbLoad(t);
+      }
+      el.textContent = `${cursor.inside ? `x:${Math.round(cursor.x)} y:${Math.round(cursor.y)}` : ''}\n${fmt(Math.round(t), 0)}ms\n\nSB Load: ${fmt(load, 2)}x`;
+    });
+  }, []);
+  return (
+    <>
+      <button className={`dz-bg-btn ${design.showBackground ? 'on' : ''}`} onClick={() => { design.showBackground = !design.showBackground; ed.emit(); }} title="Show the background image and video behind the storyboard">
+        Background Image/Video
+      </button>
+      <div className="dz-readout" ref={ref} />
+    </>
+  );
+}
+
+/** Rough storyboard load: total area of visible sprites relative to the 640x480 screen. */
+function sbLoad(t: number): number {
+  let area = 0;
+  for (const { el } of storyboard.drawOrder()) {
+    const c = storyboard.compiledFor(el);
+    const s = spriteStateAt(c, t);
+    if (!s || s.alpha <= 0.001) continue;
+    const fi = storyboard.frameImage(c, t);
+    if (!fi) continue;
+    area += Math.abs(fi.img.naturalWidth * s.scaleX * fi.img.naturalHeight * s.scaleY);
+  }
+  return area / (SB_W * SB_H);
+}
+
+// ------------------------------------------------------------------ top timeline: the selected sprite's keyframes
+
+const LANES: { label: string; props: Prop[]; colour: string }[] = [
+  { label: 'Movement', props: ['x', 'y'], colour: '#66b8ff' },
+  { label: 'Scale', props: ['scale', 'vscale'], colour: '#7ad97a' },
+  { label: 'Fade', props: ['alpha'], colour: '#d0d0d0' },
+  { label: 'Rotation', props: ['rotation'], colour: '#ffcc55' },
+];
+
+export function DesignTimeline() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current!;
+    const ctx = canvas.getContext('2d')!;
+    let w = 0;
+    let h = 0;
+    const ro = new ResizeObserver(() => {
+      const dpr = window.devicePixelRatio || 1;
+      w = canvas.clientWidth;
+      h = canvas.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    });
+    ro.observe(canvas);
+    const ppm = () => (w / 5000) * (editor.hasProject ? editor.bm.editor.timelineZoom : 1);
+    const off = onFrame((t) => {
+      if (!w || !editor.hasProject) return;
+      const k = ppm();
+      const X = (time: number) => w / 2 + (time - t) * k;
+      ctx.clearRect(0, 0, w, h);
+      const lane = (h - 4) / LANES.length;
+      // Beat ticks along the bottom.
+      const red = redLineAt(editor.bm, t);
+      if (red.beatLength > 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        const t0 = t - w / 2 / k;
+        for (let n = Math.ceil((t0 - red.time) / red.beatLength); ; n++) {
+          const bt = red.time + n * red.beatLength;
+          const x = X(bt);
+          if (x > w) break;
+          ctx.fillRect(x, h - (n % red.meter === 0 ? 7 : 4), 1, n % red.meter === 0 ? 7 : 4);
+        }
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillRect(0, h - 1, w, 1);
+      ctx.font = `700 ${Math.max(9, lane * 0.62)}px Ubuntu, "Segoe UI", sans-serif`;
+      ctx.textBaseline = 'middle';
+      const el = design.selectedElement;
+      LANES.forEach((ln, i) => {
+        const y = i * lane;
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(0, y + lane - 1, w, 1);
+        if (el && el.kind !== 'sample') {
+          const c = storyboard.compiledFor(el);
+          for (const p of ln.props) {
+            for (const s of c.timelines[p] ?? []) {
+              const a = X(s.start);
+              const b = X(s.end);
+              if (b < -10 || a > w + 10) continue;
+              ctx.fillStyle = ln.colour;
+              ctx.globalAlpha = 0.45;
+              ctx.fillRect(a, y + lane * 0.3, Math.max(1, b - a), lane * 0.4);
+              ctx.globalAlpha = 1;
+              for (const x of [a, b]) {
+                ctx.beginPath();
+                ctx.arc(x, y + lane / 2, lane * 0.28, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        }
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 3;
+        ctx.fillText(ln.label, 2, y + lane / 2);
+        ctx.shadowBlur = 0;
+      });
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(w / 2 - 1, 0, 2, h);
+    });
+    const down = (e: PointerEvent) => {
+      if (!editor.hasProject) return;
+      const r = canvas.getBoundingClientRect();
+      music.seek(Math.max(0, music.time + (e.clientX - r.left - w / 2) / ppm()));
+    };
+    canvas.addEventListener('pointerdown', down);
+    return () => {
+      off();
+      ro.disconnect();
+      canvas.removeEventListener('pointerdown', down);
+    };
+  }, []);
+  return <canvas ref={ref} className="timeline-canvas" data-wheel="timeline" />;
 }
 
 // ------------------------------------------------------------------ preview canvas
@@ -61,9 +308,9 @@ function useSongTime(intervalWhilePlaying = 100): number {
       onFrame((now) => {
         const r = Math.round(now);
         if (r === last.current.t) return;
-        const at = performance.now();
-        if (music.playing && at - last.current.at < intervalWhilePlaying) return;
-        last.current = { t: r, at };
+        const tNow = performance.now();
+        if (music.playing && tNow - last.current.at < intervalWhilePlaying) return;
+        last.current = { t: r, at: tNow };
         setT(r);
       }),
     [intervalWhilePlaying],
@@ -73,12 +320,12 @@ function useSongTime(intervalWhilePlaying = 100): number {
 
 function SbPreview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const coordRef = useRef<HTMLSpanElement>(null);
-  const ed = useEditor();
+  const colourRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext('2d')!;
+    const objects = new StdPlayfield();
     let w = 0;
     let h = 0;
     let frame: SbFrame = { ox: 0, oy: 0, scale: 1 };
@@ -125,7 +372,7 @@ function SbPreview() {
       if (!w || !editor.hasProject) return;
       const wide = editor.bm.general.widescreenStoryboard;
       frame = fitFrame(w, h, true);
-      drawBackground(ctx, w, h, 0, t, { frame, storyboard: true });
+      drawBackground(ctx, w, h, 0, t, { frame, storyboard: true, background: design.showBackground });
       const X = (x: number) => frame.ox + x * frame.scale;
       const Y = (y: number) => frame.oy + y * frame.scale;
       ctx.save();
@@ -134,14 +381,10 @@ function SbPreview() {
       const m = wide ? SB_WIDE_MARGIN : 0;
       ctx.fillRect(0, 0, X(-m), h);
       ctx.fillRect(X(SB_W + m), 0, w - X(SB_W + m), h);
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-      ctx.strokeRect(X(0), Y(0), SB_W * frame.scale, SB_H * frame.scale);
-      if (design.showPlayfield) {
-        ctx.strokeStyle = 'rgba(102,204,255,0.35)';
-        ctx.strokeRect(X(64), Y(56), 512 * frame.scale, 384 * frame.scale);
-      }
       ctx.restore();
+      if (design.showHitObjects && editor.bm.general.mode === 0) {
+        objects.draw(ctx, { scale: frame.scale, ox: X(64), oy: Y(56) }, t);
+      }
       if (hover && (!design.selected || hover.index !== design.selected.index || hover.source !== design.selected.source)) outline(hover, t, 'rgba(255,255,255,0.5)', false);
       outline(design.selected, t, '#ff66aa', true);
     });
@@ -160,14 +403,28 @@ function SbPreview() {
         return;
       }
       if (!sel || sel.index !== ref.index || sel.source !== ref.source) design.select(ref);
-      design.beginDrag(ref, p, e.shiftKey ? 'scale' : e.ctrlKey || e.altKey ? 'rotate' : 'move');
+      if (design.transform === 'colour' && !e.shiftKey && !e.ctrlKey) {
+        const el = storyboard.get(ref);
+        if (el && el.kind !== 'sample' && colourRef.current) {
+          const s = spriteStateAt(storyboard.compiledFor(el), t);
+          const c = s?.colour ?? [255, 255, 255];
+          colourRef.current.value = `#${c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+          colourRef.current.click();
+        }
+        return;
+      }
+      const mode = e.shiftKey ? 'scale' : e.ctrlKey || e.altKey ? 'rotate' : design.transform === 'colour' ? 'move' : design.transform;
+      design.beginDrag(ref, p, mode);
     };
     const move = (e: PointerEvent) => {
       const p = toSb(e);
-      if (coordRef.current) coordRef.current.textContent = `x ${Math.round(p.x)}  y ${Math.round(p.y)}`;
+      cursor.x = p.x;
+      cursor.y = p.y;
+      cursor.inside = true;
       if (design.dragging) design.dragTo(p);
       else hover = storyboard.hitTest(p, music.time);
     };
+    const leave = () => (cursor.inside = false);
     const up = () => design.endDrag();
     const over = (e: DragEvent) => {
       if (e.dataTransfer?.types.includes('text/x-sb-file')) e.preventDefault();
@@ -182,6 +439,7 @@ function SbPreview() {
     };
     canvas.addEventListener('pointerdown', down);
     canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerleave', leave);
     canvas.addEventListener('pointerup', up);
     canvas.addEventListener('pointercancel', up);
     canvas.addEventListener('dragover', over);
@@ -191,6 +449,7 @@ function SbPreview() {
       ro.disconnect();
       canvas.removeEventListener('pointerdown', down);
       canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerleave', leave);
       canvas.removeEventListener('pointerup', up);
       canvas.removeEventListener('pointercancel', up);
       canvas.removeEventListener('dragover', over);
@@ -199,21 +458,19 @@ function SbPreview() {
   }, []);
 
   return (
-    <div className="sb-preview">
-      <canvas ref={canvasRef} data-wheel="playfield" />
-      <div className="sb-preview-bar">
-        <span ref={coordRef} className="mono muted" />
-        <span className="muted">Drag: move · Shift+drag: scale · Ctrl+drag: rotate</span>
-        <label className="check">
-          <input type="checkbox" checked={design.autoKeyframe} onChange={(e) => { design.autoKeyframe = e.target.checked; ed.emit(); }} />
-          Keyframe moves at current time
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={design.showPlayfield} onChange={(e) => { design.showPlayfield = e.target.checked; ed.emit(); }} />
-          Playfield outline
-        </label>
-      </div>
-    </div>
+    <>
+      <canvas ref={canvasRef} className="dz-canvas" data-wheel="playfield" />
+      <input
+        ref={colourRef}
+        type="color"
+        className="dz-colour-input"
+        onChange={(e) => {
+          const v = e.target.value;
+          const rgb = [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16));
+          design.editSelected((x) => x.kind !== 'sample' && setKeyframe(x, 'C', Math.round(music.time), rgb));
+        }}
+      />
+    </>
   );
 }
 
@@ -234,95 +491,6 @@ function isUnder(ref: SbRef, p: { x: number; y: number }, t: number): boolean {
     sign ||= cr;
   }
   return true;
-}
-
-// ------------------------------------------------------------------ per-sprite command timeline
-
-const TIMELINE_ROWS: { prop: Prop; label: string; colour: string }[] = [
-  { prop: 'alpha', label: 'Fade', colour: '#bbbbbb' },
-  { prop: 'x', label: 'Move X', colour: '#66ccff' },
-  { prop: 'y', label: 'Move Y', colour: '#4aa3d8' },
-  { prop: 'scale', label: 'Scale', colour: '#66dd88' },
-  { prop: 'vscale', label: 'Vec scale', colour: '#4fb36b' },
-  { prop: 'rotation', label: 'Rotate', colour: '#ffcc55' },
-  { prop: 'colour', label: 'Colour', colour: '#ff66aa' },
-  { prop: 'flipH', label: 'Flip H', colour: '#aa88ff' },
-  { prop: 'flipV', label: 'Flip V', colour: '#9977ee' },
-  { prop: 'additive', label: 'Additive', colour: '#ff8866' },
-];
-
-/** Bars for every (loop-expanded) command of the selected sprite over its lifetime; click to seek. */
-function SpriteTimeline() {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const ed = useEditor();
-  const el = design.selectedElement;
-  const sprite = el && el.kind !== 'sample' ? el : null;
-
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas || !sprite) return;
-    const ctx = canvas.getContext('2d')!;
-    const LABEL = 70;
-    const ROW = 14;
-    let range = { a: 0, b: 1 };
-    const off = onFrame((t) => {
-      const dpr = window.devicePixelRatio || 1;
-      const w = canvas.clientWidth;
-      const c = storyboard.compiledFor(sprite);
-      const rows = TIMELINE_ROWS.filter((r) => c.timelines[r.prop]?.length);
-      const h = Math.max(1, rows.length) * ROW + 6;
-      if (canvas.height !== h * dpr || canvas.width !== w * dpr) {
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        canvas.style.height = `${h}px`;
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-      if (!Number.isFinite(c.start)) return;
-      const pad = Math.max(200, (c.end - c.start) * 0.04);
-      range = { a: c.start - pad, b: c.end + pad };
-      const X = (time: number) => LABEL + ((time - range.a) / (range.b - range.a)) * (w - LABEL - 4);
-      ctx.font = '10px Segoe UI, sans-serif';
-      ctx.fillStyle = 'rgba(255,255,255,0.05)';
-      ctx.fillRect(X(c.start), 0, X(c.end) - X(c.start), h);
-      rows.forEach((r, i) => {
-        const y = 3 + i * ROW;
-        ctx.fillStyle = '#8a8aa0';
-        ctx.fillText(r.label, 4, y + 10);
-        ctx.fillStyle = r.colour;
-        for (const s of c.timelines[r.prop]!) {
-          const x0 = X(s.start);
-          const x1 = Math.max(x0 + 2, X(s.end));
-          ctx.globalAlpha = 0.8;
-          ctx.fillRect(x0, y + 2, x1 - x0, ROW - 5);
-        }
-        ctx.globalAlpha = 1;
-      });
-      ctx.fillStyle = '#ff66aa';
-      ctx.fillRect(X(t) - 1, 0, 2, h);
-    });
-    const seek = (e: PointerEvent) => {
-      if (e.type === 'pointermove' && !(e.buttons & 1)) return;
-      const r = canvas.getBoundingClientRect();
-      const x = e.clientX - r.left;
-      if (x < LABEL) return;
-      music.seek(range.a + ((x - LABEL) / (r.width - LABEL - 4)) * (range.b - range.a));
-    };
-    canvas.addEventListener('pointerdown', seek);
-    canvas.addEventListener('pointermove', seek);
-    return () => {
-      off();
-      canvas.removeEventListener('pointerdown', seek);
-      canvas.removeEventListener('pointermove', seek);
-    };
-  }, [sprite, ed.rev]);
-
-  if (!sprite) return <div className="sb-timeline empty muted">Select a sprite to see its commands over time.</div>;
-  return (
-    <div className="sb-timeline">
-      <canvas ref={ref} />
-    </div>
-  );
 }
 
 // ------------------------------------------------------------------ side panel

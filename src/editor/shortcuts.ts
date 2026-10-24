@@ -262,7 +262,8 @@ export function handleWheel(e: WheelEvent) {
   const area = target.closest<HTMLElement>('[data-wheel]')?.dataset.wheel;
   if (!area) return;
   e.preventDefault();
-  const dir: 1 | -1 = (e.deltaY || e.deltaX) > 0 ? 1 : -1;
+  const dir = wheelStep(e);
+  if (!dir) return;
   const ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && e.altKey) {
     const tools: Tool[] = ['select', 'circle', 'slider', 'spinner'];
@@ -284,9 +285,27 @@ export function handleWheel(e: WheelEvent) {
     }
     return;
   }
-  // Wheel up seeks forward, as in stable (can be inverted in preferences).
-  const seekDir: 1 | -1 = editor.prefs.invertScroll ? dir : dir > 0 ? -1 : 1;
+  // Wheel down seeks forward (can be inverted in preferences).
+  const seekDir: 1 | -1 = editor.prefs.invertScroll ? (dir > 0 ? -1 : 1) : dir;
   editor.seekTick(seekDir, e.shiftKey ? 4 : 1);
+}
+
+// Touchpads send many small deltas: they add up to one step per mouse-wheel notch.
+const NOTCH = 50;
+let wheelRest = 0;
+
+/** The wheel direction this event steps in (1 = down), or 0 while small deltas are still adding up. */
+function wheelStep(e: WheelEvent): 1 | -1 | 0 {
+  const d = (e.deltaY || e.deltaX) * (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 1 : 100);
+  if (Math.abs(d) >= NOTCH) {
+    wheelRest = 0;
+    return d > 0 ? 1 : -1;
+  }
+  if (Math.sign(d) !== Math.sign(wheelRest)) wheelRest = 0;
+  wheelRest += d;
+  if (Math.abs(wheelRest) < NOTCH) return 0;
+  wheelRest = 0;
+  return d > 0 ? 1 : -1;
 }
 
 export function installShortcuts() {

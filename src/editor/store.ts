@@ -611,7 +611,7 @@ class Editor {
       return;
     }
     for (let i = 0; i < multiplier; i++) t = stepTick(this.bm, t, this.beatDivisor, direction);
-    music.seek(t);
+    music.seek(t, true);
   }
 
   seekTimingPoint(direction: 1 | -1) {

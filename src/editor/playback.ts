@@ -118,9 +118,10 @@ function frame() {
   } catch (e) {
     report(e);
   }
+  const shown = music.displayTime;
   for (const cb of callbacks) {
     try {
-      cb(t);
+      cb(shown);
     } catch (e) {
       report(e);
     }

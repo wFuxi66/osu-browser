@@ -4,6 +4,9 @@
 
 type Listener = () => void;
 
+/** How long a smooth seek takes to ease into place (out-quint, like lazer's editor). */
+const GLIDE_MS = 200;
+
 class MusicClock {
   readonly el: HTMLAudioElement;
   private url: string | null = null;
@@ -11,6 +14,7 @@ class MusicClock {
   private anchorPerf = 0;
   private lastReported = -1;
   private pausedTime = 0;
+  private glide: { from: number; start: number } | null = null;
   private listeners = new Set<Listener>();
   duration = 0;
   /** The currently loaded audio file. */
@@ -100,6 +104,18 @@ class MusicClock {
     return Math.min(this.anchorAudio + (now - this.anchorPerf) * this.el.playbackRate, this.duration || Infinity) - this.offset;
   }
 
+  /** Song time to draw: `time`, except that it eases there after a smooth seek. */
+  get displayTime(): number {
+    const t = this.time;
+    if (!this.glide) return t;
+    const k = (performance.now() - this.glide.start) / GLIDE_MS;
+    if (k >= 1 || this.playing) {
+      this.glide = null;
+      return t;
+    }
+    return t + (this.glide.from - t) * (1 - k) ** 5;
+  }
+
   private resync() {
     this.anchorAudio = this.el.currentTime * 1000;
     this.anchorPerf = performance.now();
@@ -135,7 +151,9 @@ class MusicClock {
     this.seek(0);
   }
 
-  seek(ms: number) {
+  /** Jumps to `ms`; with `smooth` while paused, only the drawn time eases there (see displayTime). */
+  seek(ms: number, smooth = false) {
+    this.glide = smooth && !this.playing ? { from: this.displayTime, start: performance.now() } : null;
     const t = Math.max(0, Math.min(ms, this.duration || ms));
     this.pausedTime = t;
     this.el.currentTime = Math.max(0, t + this.offset) / 1000;

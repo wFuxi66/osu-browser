@@ -184,6 +184,25 @@ class DesignState {
     editor.emit();
   }
 
+  /** Design → Move all elements in time: shift every command, loop, trigger and sample of both storyboards. */
+  shiftAllInTime(ms: number) {
+    const shiftEntry = (e: SbEntry) => {
+      e.start += ms;
+      if (e.type === 'T') e.end += ms;
+      if (e.type !== 'L' && e.type !== 'T') e.end += ms;
+    };
+    for (const source of ['osb', 'diff'] as SbSource[]) {
+      const els = storyboard[source].elements;
+      if (!els.length) continue;
+      this.edit(source, () => {
+        for (const el of els) {
+          if (el.kind === 'sample') el.time += ms;
+          else el.commands.forEach(shiftEntry);
+        }
+      });
+    }
+  }
+
   // ---------------------------------------------------------------- element management
 
   /** Default lifetime for new sprites: four measures from now. */

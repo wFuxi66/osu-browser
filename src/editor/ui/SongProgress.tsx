@@ -28,36 +28,35 @@ export function SongProgress() {
       const dur = music.duration || 1;
       const X = (time: number) => (time / dur) * w;
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = '#101014';
-      ctx.fillRect(0, 0, w, h);
+      // Stable's colours: grey breaks, orange kiai, red/green timing points, blue bookmarks, yellow preview point.
+      const mid = h * 0.5;
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(0, mid - 0.5, w, 1);
       const tps = bm.timingPoints;
       for (let i = 0; i < tps.length; i++) {
-        if (!tps[i].kiai) continue;
+        if (!tps[i].kiai || (i > 0 && tps[i - 1].kiai)) continue;
         const next = tps.slice(i + 1).find((p) => !p.kiai);
-        ctx.fillStyle = 'rgba(255,140,0,0.35)';
-        ctx.fillRect(X(tps[i].time), h * 0.55, X(next ? next.time : dur) - X(tps[i].time), h * 0.2);
+        ctx.fillStyle = 'rgba(255,150,30,0.55)';
+        ctx.fillRect(X(tps[i].time), mid - h * 0.12, X(next ? next.time : dur) - X(tps[i].time), h * 0.24);
       }
       for (const br of bm.events.breaks) {
-        ctx.fillStyle = 'rgba(140,140,255,0.35)';
-        ctx.fillRect(X(br.start), h * 0.3, X(br.end) - X(br.start), h * 0.2);
+        ctx.fillStyle = 'rgba(200,200,200,0.45)';
+        ctx.fillRect(X(br.start), mid - h * 0.12, X(br.end) - X(br.start), h * 0.24);
       }
-      // Object density
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      for (const o of bm.hitObjects) ctx.fillRect(X(o.time), h * 0.78, 1, h * 0.22);
       for (const tp of tps) {
-        ctx.fillStyle = tp.uninherited ? '#ff3c3c' : 'rgba(70,210,70,0.8)';
-        ctx.fillRect(X(tp.time), tp.uninherited ? 0 : h * 0.12, tp.uninherited ? 2 : 1, tp.uninherited ? h * 0.3 : h * 0.18);
+        ctx.fillStyle = tp.uninherited ? 'rgba(255,60,60,0.9)' : 'rgba(110,190,60,0.75)';
+        ctx.fillRect(X(tp.time), tp.uninherited ? h * 0.1 : h * 0.25, 1, tp.uninherited ? h * 0.8 : h * 0.5);
       }
       for (const b of bm.editor.bookmarks) {
-        ctx.fillStyle = '#4aa8ff';
-        ctx.fillRect(X(b), h * 0.5, 2, h * 0.5);
+        ctx.fillStyle = '#3d9bff';
+        ctx.fillRect(X(b) - 0.5, h * 0.15, 2, h * 0.7);
       }
       if (bm.general.previewTime >= 0) {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(X(bm.general.previewTime), 0, 1, h);
+        ctx.fillStyle = '#ffd400';
+        ctx.fillRect(X(bm.general.previewTime) - 0.5, h * 0.1, 2, h * 0.8);
       }
-      ctx.fillStyle = '#ffd400';
-      ctx.fillRect(X(t) - 1, 0, 3, h);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(X(t) - 1.5, 0, 3, h);
     });
 
     let dragging = false;

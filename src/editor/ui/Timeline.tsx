@@ -3,10 +3,15 @@ import { music } from '../../audio/music';
 import { waveformFor, WAVEFORM_BUCKET_MS } from '../../audio/waveform';
 import { comboColourIndex } from '../../osu/processing';
 import { objectEndTime, sliderSpanDuration, snapTime, tickColour, tickDivisorOf } from '../../osu/timing';
-import { DEFAULT_COMBO_COLOURS, type HitObject } from '../../osu/types';
+import { DEFAULT_COMBO_COLOURS, type HitObject, type Rgb, type TimingPoint } from '../../osu/types';
 import { onFrame } from '../playback';
 import { rgba, shade } from '../render/draw';
 import { editor, shiftObjectTime, snapSliderLength } from '../store';
+import { fmt } from '../../osu/info';
+
+/** Object row geometry as fractions of the timeline height. */
+const OBJ_R = 0.32;
+const OBJ_Y = 0.5;
 
 type Drag =
   | { kind: 'move'; startTime: number; anchorTime: number; originals: Map<number, HitObject>; moved: boolean }
@@ -49,8 +54,8 @@ export function Timeline() {
       const bm = editor.bm;
       const t = music.time;
       const ppm = pxPerMs();
-      const r = h * 0.26;
-      const cy = h * 0.5;
+      const r = h * OBJ_R;
+      const cy = h * OBJ_Y;
       if (Math.abs(y - cy) > r * 1.3) return null;
       let best: { obj: HitObject; part: 'body' | 'end' | 'edge'; edge?: number } | null = null;
       for (const o of bm.hitObjects) {
@@ -79,6 +84,14 @@ export function Timeline() {
     const onDown = (e: PointerEvent) => {
       if (!editor.hasProject) return;
       const { x, y } = local(e);
+      // The timing view's timeline only seeks.
+      if (editor.screen === 'timing') {
+        if (e.button !== 0) return;
+        canvas.setPointerCapture(e.pointerId);
+        dragRef.current = { kind: 'scrub' };
+        music.seek(Math.round(snapTime(editor.bm, timeAt(x), editor.beatDivisor)));
+        return;
+      }
       const hit = hitTest(x, y);
       if (e.button === 2) {
         if (hit) editor.deleteObject(hit.obj.id);
@@ -122,7 +135,9 @@ export function Timeline() {
       const bm = editor.bm;
       const raw = timeAt(x);
       const snap = (t: number) => (e.shiftKey ? Math.round(t) : Math.round(snapTime(bm, t, editor.beatDivisor)));
-      if (d.kind === 'box') {
+      if (d.kind === 'scrub') {
+        // Seeking already happened on press; moving the strip under the cursor would run away.
+      } else if (d.kind === 'box') {
         d.t1 = raw;
         const a = Math.min(d.t0, d.t1);
         const b = Math.max(d.t0, d.t1);
@@ -225,15 +240,15 @@ function drawWaveform(ctx: CanvasRenderingContext2D, w: number, h: number, tStar
   ctx.fill();
 }
 
+
 function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, drag: Drag | null) {
   const bm = editor.bm;
   const ppm = (w / 5000) * bm.editor.timelineZoom;
   const tStart = t - w / 2 / ppm;
   const tEnd = t + w / 2 / ppm;
   const X = (time: number) => w / 2 + (time - t) * ppm;
+  const timingView = editor.screen === 'timing';
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#16161c';
-  ctx.fillRect(0, 0, w, h);
 
   // Kiai and break shading
   const tps = bm.timingPoints;
@@ -242,17 +257,20 @@ function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: nu
     const next = tps.slice(i + 1).find((p) => !p.kiai);
     const a = X(tps[i].time);
     const b = X(next ? next.time : music.duration || tEnd);
-    ctx.fillStyle = 'rgba(255,140,0,0.08)';
+    ctx.fillStyle = 'rgba(255,140,0,0.12)';
     ctx.fillRect(a, 0, b - a, h);
   }
   for (const br of bm.events.breaks) {
-    ctx.fillStyle = 'rgba(120,120,255,0.08)';
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
     ctx.fillRect(X(br.start), 0, X(br.end) - X(br.start), h);
   }
 
   if (editor.prefs.showWaveform && music.blob) drawWaveform(ctx, w, h, tStart, ppm);
 
-  // Divisor ticks
+  // Baseline and divisor ticks rising from it, coloured by snap like stable.
+  const base = h - 1.5;
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillRect(0, base, w, 1.5);
   const divisor = editor.beatDivisor;
   const reds = tps.filter((p) => p.uninherited);
   for (let i = 0; i < reds.length; i++) {
@@ -269,56 +287,83 @@ function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: nu
       const kk = ((k % perBar) + perBar) % perBar;
       const d = tickDivisorOf(kk, divisor);
       const isBar = kk === 0;
-      const len = isBar ? h * 0.42 : d === 1 ? h * 0.32 : d === 2 ? h * 0.24 : h * 0.18;
+      const len = isBar ? h * 0.3 : d === 1 ? h * 0.22 : d === 2 ? h * 0.16 : h * 0.11;
       ctx.strokeStyle = tickColour(d);
-      ctx.globalAlpha = isBar ? 1 : 0.8;
-      ctx.lineWidth = isBar ? 2 : 1;
+      ctx.lineWidth = isBar ? 2 : 1.25;
       ctx.beginPath();
-      ctx.moveTo(x, h);
-      ctx.lineTo(x, h - len);
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, len * 0.35);
+      ctx.moveTo(x, base);
+      ctx.lineTo(x, base - len);
       ctx.stroke();
     }
   }
-  ctx.globalAlpha = 1;
 
-  // Timing points
-  for (const tp of tps) {
-    const x = X(tp.time);
-    if (x < -2 || x > w + 2) continue;
-    ctx.strokeStyle = tp.uninherited ? '#ff3c3c' : '#46d246';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h * 0.18);
-    ctx.stroke();
+  if (timingView) drawTimingFlags(ctx, h, tps, X, w);
+  else {
+    // Timing points as short marks along the top.
+    for (const tp of tps) {
+      const x = X(tp.time);
+      if (x < -2 || x > w + 2) continue;
+      ctx.strokeStyle = tp.uninherited ? '#ff3c3c' : '#46d246';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h * 0.12);
+      ctx.stroke();
+    }
   }
   for (const b of bm.editor.bookmarks) {
     const x = X(b);
     ctx.strokeStyle = '#4aa8ff';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x, h * 0.82);
+    ctx.moveTo(x, h * 0.86);
     ctx.lineTo(x, h);
     ctx.stroke();
   }
 
+  if (!timingView) drawObjects(ctx, h, t, tStart, tEnd, X);
+
+  if (drag?.kind === 'box') {
+    const a = X(Math.min(drag.t0, drag.t1));
+    const b = X(Math.max(drag.t0, drag.t1));
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(a, 0, b - a, h);
+  }
+
+  // Current time marker
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(w / 2 - 1, 0, 2, h);
+}
+
+function drawObjects(ctx: CanvasRenderingContext2D, h: number, t: number, tStart: number, tEnd: number, X: (time: number) => number) {
+  const bm = editor.bm;
   // A spinner waiting for its end click spans from its start to now.
   if (editor.placing?.kind === 'spinner') {
     const a = X(editor.placing.time);
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillRect(a, h * 0.25, X(t) - a, h * 0.5);
-    ctx.strokeRect(a, h * 0.25, X(t) - a, h * 0.5);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(a, h * (OBJ_Y - OBJ_R), X(t) - a, h * OBJ_R * 2);
   }
-
-  // Objects
   const proc = editor.processed;
   const cols = bm.colours.combo.length ? bm.colours.combo : DEFAULT_COMBO_COLOURS;
-  const r = h * 0.26;
-  const cy = h * 0.5;
+  const r = h * OBJ_R;
+  const cy = h * OBJ_Y;
   const objs = bm.hitObjects;
+  const ring = (x: number, rad: number, colour: string, width: number) => {
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.arc(x, cy, rad, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+  const disc = (x: number, rad: number, c: Rgb) => {
+    const g = ctx.createRadialGradient(x, cy - rad * 0.3, rad * 0.1, x, cy, rad);
+    g.addColorStop(0, rgba(shade(c, 0.3)));
+    g.addColorStop(1, rgba(shade(c, -0.15)));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, cy, rad, 0, Math.PI * 2);
+    ctx.fill();
+  };
   for (let i = objs.length - 1; i >= 0; i--) {
     const o = objs[i];
     const end = proc.info.get(o.id)?.endTime ?? o.time;
@@ -326,15 +371,15 @@ function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: nu
     const x0 = X(o.time);
     const x1 = X(end);
     const sel = editor.selection.has(o.id);
-    const colour = bm.general.mode === 1
+    const colour: Rgb = bm.general.mode === 1
       ? (o.hitSound & 10 ? { r: 68, g: 138, b: 202 } : { r: 235, g: 69, b: 44 })
       : o.kind === 'spinner'
-        ? { r: 160, g: 160, b: 160 }
+        ? { r: 200, g: 200, b: 200 }
         : cols[comboColourIndex(bm, o, proc)];
+    const big = bm.general.mode === 1 && o.hitSound & 4 ? 1.2 : 1;
     if (o.kind !== 'circle') {
-      ctx.fillStyle = rgba(shade(colour, -0.35));
-      ctx.strokeStyle = sel ? '#ffd400' : '#fff';
-      ctx.lineWidth = sel ? 3 : 1.5;
+      // Body: a rounded bar in the combo colour, like stable's timeline sliders.
+      ctx.fillStyle = rgba(colour, 0.55);
       ctx.beginPath();
       ctx.moveTo(x0, cy - r);
       ctx.lineTo(x1, cy - r);
@@ -343,66 +388,74 @@ function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: nu
       ctx.arc(x0, cy, r, Math.PI / 2, -Math.PI / 2);
       ctx.closePath();
       ctx.fill();
-      ctx.stroke();
+      if (sel) {
+        ctx.strokeStyle = '#ffa500';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
       if (o.kind === 'slider') {
         const span = sliderSpanDuration(bm, o);
         for (let s = 1; s <= o.slides; s++) {
           const xe = X(o.time + span * s);
           const edgeSel = editor.selectedEdge?.id === o.id && editor.selectedEdge.edge === s;
-          ctx.fillStyle = rgba(colour);
-          ctx.strokeStyle = edgeSel ? '#ffd400' : '#fff';
-          ctx.lineWidth = edgeSel ? 3 : 1.5;
-          ctx.beginPath();
-          ctx.arc(xe, cy, s === o.slides ? r * 0.85 : r * 0.55, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+          const rad = s === o.slides ? r * 0.92 : r * 0.6;
+          disc(xe, rad, colour);
+          ring(xe, rad - 1.5, edgeSel ? '#ffa500' : '#fff', edgeSel ? 4 : 2.5);
         }
+      } else {
+        disc(x1, r * 0.92, colour);
+        ring(x1, r * 0.92 - 1.5, sel ? '#ffa500' : '#fff', sel ? 4 : 2.5);
       }
     }
     // Head
-    ctx.fillStyle = rgba(colour);
-    ctx.strokeStyle = sel ? '#ffd400' : '#fff';
     const headSel = editor.selectedEdge?.id === o.id && editor.selectedEdge.edge === 0;
-    ctx.lineWidth = sel || headSel ? 3 : 2;
-    ctx.beginPath();
-    const big = bm.general.mode === 1 && o.hitSound & 4 ? 1.25 : 1;
-    ctx.arc(x0, cy, r * big, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    disc(x0, r * big * 0.92, colour);
+    ring(x0, r * big * 0.92 - 1.5, sel || headSel ? '#ffa500' : '#fff', sel || headSel ? 4 : 2.5);
     if (bm.general.mode === 0 || bm.general.mode === 2) {
       const n = proc.info.get(o.id)?.comboNumber;
       if (n && o.kind !== 'spinner') {
         ctx.fillStyle = '#fff';
-        ctx.font = `600 ${Math.round(r * 1.05)}px system-ui, sans-serif`;
+        ctx.font = `400 ${Math.round(r * 1.05)}px Ubuntu, "Segoe UI", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 3;
         ctx.fillText(String(n), x0, cy + 1);
+        ctx.shadowBlur = 0;
       }
     }
     // Hitsound additions as small letters under the object
     const add = o.kind === 'slider' ? o.edgeSounds[0] ?? o.hitSound : o.hitSound;
     const letters = `${add & 2 ? 'W' : ''}${add & 4 ? 'F' : ''}${add & 8 ? 'C' : ''}`;
     if (letters && bm.general.mode !== 1) {
-      ctx.fillStyle = '#ddd';
-      ctx.font = `600 ${Math.round(h * 0.16)}px system-ui, sans-serif`;
+      ctx.fillStyle = '#fff';
+      ctx.font = `700 ${Math.round(h * 0.13)}px Ubuntu, "Segoe UI", sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(letters, x0, cy + r + 2);
+      ctx.fillText(letters, x0, cy + r + 1);
     }
   }
+}
 
-  if (drag?.kind === 'box') {
-    const a = X(Math.min(drag.t0, drag.t1));
-    const b = X(Math.max(drag.t0, drag.t1));
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(a, 0, b - a, h);
+/** Timing view: each timing point as a line with a flag showing its BPM (red) or slider velocity (green). */
+function drawTimingFlags(ctx: CanvasRenderingContext2D, h: number, tps: TimingPoint[], X: (time: number) => number, w: number) {
+  ctx.font = `400 ${Math.round(h * 0.2)}px Ubuntu, "Segoe UI", sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  for (const tp of tps) {
+    const x = X(tp.time);
+    if (x < -200 || x > w + 10) continue;
+    const label = tp.uninherited ? `${fmt(60000 / tp.beatLength, 2)}` : `${fmt(-100 / tp.beatLength, 2)}X`;
+    const fy = tp.uninherited ? h * 0.06 : h * 0.3;
+    const fh = h * 0.3;
+    const tw = ctx.measureText(label).width + h * 0.3;
+    ctx.fillStyle = tp.uninherited ? '#e03030' : '#3a9a3a';
+    ctx.fillRect(x - 1, 0, 2, h);
+    ctx.fillStyle = tp.uninherited ? 'rgba(230,80,80,0.95)' : 'rgba(205,225,250,0.92)';
+    ctx.beginPath();
+    ctx.roundRect(x, fy, tw, fh, [0, fh / 2, fh / 2, 0]);
+    ctx.fill();
+    ctx.fillStyle = tp.uninherited ? '#fff' : '#334';
+    ctx.fillText(label, x + h * 0.12, fy + fh / 2 + 1);
   }
-
-  // Current time marker
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(w / 2, 0);
-  ctx.lineTo(w / 2, h);
-  ctx.stroke();
 }

@@ -15,10 +15,15 @@ export class StdMode implements PlayfieldMode {
     this.pf.mods = m;
   }
 
+  get cursor() {
+    return this.pf.hover;
+  }
+
   layout(w: number, h: number) {
-    // Same framing as stable: a 640x480 virtual screen with the 512x384 playfield centred (slightly low).
+    // Same framing as the stable editor: a 640x480 virtual screen over the whole stage, with the 512x384
+    // playfield centred and pushed down 24 osu!pixels so it clears the top panel.
     const scale = Math.min(w / 640, h / 480);
-    this.view = { scale, ox: (w - PLAYFIELD_W * scale) / 2, oy: (h - PLAYFIELD_H * scale) / 2 + 8 * scale };
+    this.view = { scale, ox: (w - PLAYFIELD_W * scale) / 2, oy: (h - PLAYFIELD_H * scale) / 2 + 24 * scale };
   }
 
   draw(ctx: CanvasRenderingContext2D, t: number) {

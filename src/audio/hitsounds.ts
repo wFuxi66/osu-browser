@@ -13,6 +13,7 @@ class HitsoundEngine {
   private defaults = new Map<string, AudioBuffer>();
   private custom = new Map<string, AudioBuffer>();
   private loadingDefaults: Promise<void> | null = null;
+  private loops = new Set<AudioBufferSourceNode>();
   volume = 0.8;
   enabled = true;
 
@@ -54,6 +55,13 @@ class HitsoundEngine {
         );
       }
     }
+    jobs.push(
+      fetch('/samples/spinnerspin.wav')
+        .then((r) => r.arrayBuffer())
+        .then((b) => ctx.decodeAudioData(b))
+        .then((buf) => void this.defaults.set('spinnerspin', buf))
+        .catch(() => undefined),
+    );
     this.loadingDefaults = Promise.all(jobs).then(() => undefined);
     return this.loadingDefaults;
   }
@@ -142,6 +150,58 @@ class HitsoundEngine {
     this.playBuffer(this.lookup(SET_NAMES[ns], 'slidertick', idx), (volume || tp.volume) / 100, delay);
   }
 
+  /**
+   * Loop a sample for a while (slider slide/whistle, spinner spin). The playback rate can ramp over the
+   * loop; all loops stop when playback pauses or seeks (see stopLoops).
+   */
+  playLoop(buf: AudioBuffer | undefined, volume: number, delay: number, duration: number, rate: [number, number] = [1, 1]) {
+    if (!buf || !this.enabled || duration <= 0) return;
+    const ctx = this.ensureCtx();
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const t0 = ctx.currentTime + Math.max(0, delay);
+    src.playbackRate.setValueAtTime(rate[0], t0);
+    if (rate[1] !== rate[0]) src.playbackRate.linearRampToValueAtTime(rate[1], t0 + duration);
+    const g = ctx.createGain();
+    g.gain.value = Math.max(0, Math.min(1, volume));
+    src.connect(g).connect(this.master!);
+    src.start(t0);
+    src.stop(t0 + duration);
+    this.loops.add(src);
+    src.onended = () => this.loops.delete(src);
+  }
+
+  stopLoops() {
+    for (const src of this.loops) {
+      try {
+        src.stop();
+      } catch {
+        /* not started yet */
+      }
+    }
+    this.loops.clear();
+  }
+
+  /** Slider body sounds: sliderslide in the normal set, plus sliderwhistle if the body has a whistle. */
+  playSliderBody(bm: Beatmap, time: number, hitSound: number, normalSet: SampleSet, additionSet: SampleSet, index: number, volume: number, delay: number, duration: number) {
+    const tp = controlPointAt(bm, time);
+    const defaultSet = bm.general.sampleSet === 'Normal' ? 1 : bm.general.sampleSet === 'Drum' ? 3 : 2;
+    const ns = normalSet || tp.sampleSet || defaultSet;
+    const as = additionSet || ns;
+    const idx = index || tp.sampleIndex;
+    const vol = (volume || tp.volume) / 100;
+    this.playLoop(this.lookup(SET_NAMES[ns], 'sliderslide', idx), vol, delay, duration);
+    if (hitSound & HitSound.Whistle) this.playLoop(this.lookup(SET_NAMES[as], 'sliderwhistle', idx), vol, delay, duration);
+  }
+
+  /** The spinner whirr, rising in pitch as the spinner progresses (from fraction p0 to p1 of the spin). */
+  playSpinnerSpin(bm: Beatmap, time: number, delay: number, duration: number, p0: number, p1: number) {
+    const vol = controlPointAt(bm, time).volume / 100;
+    const buf = this.custom.get('spinnerspin') ?? this.defaults.get('spinnerspin');
+    this.playLoop(buf, vol * 0.8, delay, duration, [0.5 + p0 * 1.5, 0.5 + p1 * 1.5]);
+  }
+
   /** Play a beatmap file by name (storyboard samples). */
   playFile(name: string, volume: number, delay = 0) {
     const key = name.toLowerCase().replace(/\\/g, '/');
@@ -166,6 +226,29 @@ export const hitsounds = new HitsoundEngine();
 export interface SoundEvent {
   time: number;
   play: (delay: number) => void;
+}
+
+/** A sound that lasts from start to end; play() may begin partway through (offset ms into it). */
+export interface SustainedSound {
+  start: number;
+  end: number;
+  play: (delay: number, offset: number, rate: number) => void;
+}
+
+/** Looping sounds of an object (osu!standard sliders and spinners, like stable). */
+export function objectSustainedSounds(bm: Beatmap, o: HitObject): SustainedSound[] {
+  if (bm.general.mode !== 0) return [];
+  if (o.kind === 'slider') {
+    const end = o.time + sliderSpanDuration(bm, o) * o.slides;
+    const s = o.sample;
+    return [{ start: o.time, end, play: (d, off, rate) => hitsounds.playSliderBody(bm, o.time, o.hitSound, s.normalSet, s.additionSet, s.index, s.volume, d, (end - o.time - off) / 1000 / rate) }];
+  }
+  if (o.kind === 'spinner') {
+    const len = o.endTime - o.time;
+    if (len <= 0) return [];
+    return [{ start: o.time, end: o.endTime, play: (d, off, rate) => hitsounds.playSpinnerSpin(bm, o.time, d, (len - off) / 1000 / rate, off / len, 1) }];
+  }
+  return [];
 }
 
 /** Every sound an object makes over its lifetime (head, ticks, repeats, tail). */

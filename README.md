@@ -61,7 +61,8 @@ The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API d
 - [x] Polygon circles (Ctrl+Shift+D), convert slider to stream (Ctrl+Shift+F), resnap notes
 - [x] New combo (Q), colour skip
 - [x] Hitsounds: whistle/finish/clap (W/E/R), sampleset and addition set (Shift/Ctrl+Q–R), per-object volume and custom index, per-edge slider hitsounds (click an edge in the timeline)
-- [x] Hitsound playback with default samples and beatmap custom samples (`soft-hitclap2.wav` etc.)
+- [x] Hitsound playback with default samples and beatmap custom samples (`soft-hitclap2.wav` etc.), slider slide/whistle loops, spinner spin sound
+- [x] Optional song waveform in the timeline (View → Timeline waveform)
 - [x] AiMod (Ctrl+Shift+A): unsnapped objects, overlaps, off-screen, missing files/metadata, breaks…
 - [x] osu!taiko (don/kat/big, drumrolls, dendens), osu!mania (columns, notes, holds), osu!catch (scrolling catch view: fruits/juice streams/banana showers, juice streams placed by clicking (time, x) vertices, catch-style distance snap, hyperdash highlighting, catcher preview)
 
@@ -88,4 +89,4 @@ The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API d
 
 ## Credits
 
-Default hitsound samples are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0). Slider maths follows osu-framework's `PathApproximator`. This project isn't affiliated with ppy.
+Default hitsound samples (including `spinnerspin.wav`) are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0). Slider maths follows osu-framework's `PathApproximator`. This project isn't affiliated with ppy.

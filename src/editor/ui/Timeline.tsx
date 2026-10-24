@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { music } from '../../audio/music';
+import { waveformFor, WAVEFORM_BUCKET_MS } from '../../audio/waveform';
 import { comboColourIndex } from '../../osu/processing';
 import { objectEndTime, sliderSpanDuration, snapTime, tickColour, tickDivisorOf } from '../../osu/timing';
 import { DEFAULT_COMBO_COLOURS, type HitObject } from '../../osu/types';
@@ -207,6 +208,23 @@ export function Timeline() {
   return <canvas ref={canvasRef} className="timeline-canvas" data-wheel="timeline" />;
 }
 
+function drawWaveform(ctx: CanvasRenderingContext2D, w: number, h: number, tStart: number, ppm: number) {
+  const wf = waveformFor(music.blob!);
+  if (!wf) return;
+  const { peaks } = wf;
+  const mid = h / 2;
+  ctx.fillStyle = 'rgba(102,204,255,0.22)';
+  ctx.beginPath();
+  for (let x = 0; x < w; x++) {
+    const a = Math.floor((tStart + x / ppm) / WAVEFORM_BUCKET_MS);
+    const b = Math.max(a + 1, Math.floor((tStart + (x + 1) / ppm) / WAVEFORM_BUCKET_MS));
+    let m = 0;
+    for (let i = Math.max(0, a); i < Math.min(peaks.length, b); i++) if (peaks[i] > m) m = peaks[i];
+    if (m > 0) ctx.rect(x, mid - m * mid * 0.9, 1, m * h * 0.9);
+  }
+  ctx.fill();
+}
+
 function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, drag: Drag | null) {
   const bm = editor.bm;
   const ppm = (w / 5000) * bm.editor.timelineZoom;
@@ -231,6 +249,8 @@ function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: nu
     ctx.fillStyle = 'rgba(120,120,255,0.08)';
     ctx.fillRect(X(br.start), 0, X(br.end) - X(br.start), h);
   }
+
+  if (editor.prefs.showWaveform && music.blob) drawWaveform(ctx, w, h, tStart, ppm);
 
   // Divisor ticks
   const divisor = editor.beatDivisor;

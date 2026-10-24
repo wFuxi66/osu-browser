@@ -13,6 +13,8 @@ class MusicClock {
   private pausedTime = 0;
   private listeners = new Set<Listener>();
   duration = 0;
+  /** The currently loaded audio file. */
+  blob: Blob | null = null;
   /** User-configurable latency compensation in ms (positive = hitsounds/visuals later). */
   offset = 0;
 
@@ -42,6 +44,7 @@ class MusicClock {
   }
 
   async load(blob: Blob | null): Promise<void> {
+    this.blob = blob;
     this.pause();
     if (this.url) URL.revokeObjectURL(this.url);
     this.url = null;

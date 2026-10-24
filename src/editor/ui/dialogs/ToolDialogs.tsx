@@ -259,6 +259,7 @@ export function PreferencesDialog() {
       <Field label="Hit animations"><input type="checkbox" checked={p.showHitAnimations} onChange={(e) => ed.setPrefs({ showHitAnimations: e.target.checked })} /></Field>
       <Field label="Follow points"><input type="checkbox" checked={p.showFollowPoints} onChange={(e) => ed.setPrefs({ showFollowPoints: e.target.checked })} /></Field>
       <Field label="Snaking sliders"><input type="checkbox" checked={p.snakingSliders} onChange={(e) => ed.setPrefs({ snakingSliders: e.target.checked })} /></Field>
+      <Field label="Timeline waveform"><input type="checkbox" checked={p.showWaveform} onChange={(e) => ed.setPrefs({ showWaveform: e.target.checked })} /></Field>
       <Field label="Show storyboard"><input type="checkbox" checked={p.showStoryboard} onChange={(e) => ed.setPrefs({ showStoryboard: e.target.checked })} /></Field>
       <Field label="Show background video"><input type="checkbox" checked={p.showVideo} onChange={(e) => ed.setPrefs({ showVideo: e.target.checked })} /></Field>
       <Field label="Invert mouse wheel seeking"><input type="checkbox" checked={p.invertScroll} onChange={(e) => ed.setPrefs({ invertScroll: e.target.checked })} /></Field>

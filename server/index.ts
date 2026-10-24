@@ -56,6 +56,8 @@ app.use('/api/*', async (c, next) => {
 
 // ------------------------------------------------------------------ auth
 
+app.get('/api/health', (c) => c.json({ ok: true, oauthConfigured: OAUTH_CONFIGURED }));
+
 app.get('/api/auth/me', (c) => {
   const u = currentUser(c);
   return c.json({

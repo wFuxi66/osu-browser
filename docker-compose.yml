@@ -1,0 +1,35 @@
+# Production setup: the editor + Caddy for automatic HTTPS.
+# 1. Point your domain's DNS (A/AAAA record) at this server.
+# 2. cp .env.example .env and fill it in (PUBLIC_URL=https://your-domain, OSU_* from your osu! OAuth app).
+# 3. DOMAIN=your-domain docker compose up -d --build
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      PORT: "8787"
+    volumes:
+      - editor-data:/data
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN to your domain, e.g. DOMAIN=editor.example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  editor-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,8 @@
+{$DOMAIN} {
+	encode zstd gzip
+	# Uploaded beatmap packages can be large.
+	request_body {
+		max_size 250MB
+	}
+	reverse_proxy app:8787
+}

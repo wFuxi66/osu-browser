@@ -18,17 +18,27 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` the
 
 ### Enabling "Log in with osu!"
 
-1. Go to <https://osu.ppy.sh/home/account/edit#oauth> → **New OAuth Application**.
-2. Set the callback URL to `http://localhost:5173/api/auth/callback` (or `https://your-domain/api/auth/callback` in production).
-3. Put the client id and secret in `.env` (`OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`). In production also set `PUBLIC_URL` and `OSU_REDIRECT_URI` to your domain.
+1. Sign in on osu.ppy.sh and open <https://osu.ppy.sh/home/account/edit#oauth>, then click **New OAuth Application**.
+2. Name it (e.g. "osu! web editor"). For **Application Callback URL**, use `http://localhost:5173/api/auth/callback` for local development, or `https://your-domain/api/auth/callback` in production. It must match `OSU_REDIRECT_URI` exactly. You can register both: create a second application for production.
+3. Copy the **Client ID** and **Client Secret** into `.env` (`OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`). In production also set `PUBLIC_URL=https://your-domain` and `OSU_REDIRECT_URI=https://your-domain/api/auth/callback`.
 
-osu!'s OAuth needs a client secret for the token exchange, which is why there's a small backend. Without it, the editor still works fully offline/local.
+osu!'s OAuth needs a client secret for the token exchange, which is why there's a small backend. The editor only asks for the `identify public` scopes (username and avatar). Without OAuth configured, the editor still works fully offline/local.
 
 ### Deploying
 
-`docker build -t osu-web-editor . && docker run -p 8787:8787 -v osu-editor-data:/data --env-file .env osu-web-editor`
+**Docker Compose with automatic HTTPS (any VPS):**
 
-Any host that runs a Node/Docker container with a persistent volume works (Fly.io, Railway, Render, a VPS). The SQLite database and uploaded `.osz` packages live in `DATA_DIR`.
+1. Point a domain (A/AAAA record) at the server, and open ports 80 and 443.
+2. On the server: `git clone` this repo, then `cp .env.example .env` and fill in the production values above.
+3. `DOMAIN=editor.example.com docker compose up -d --build`
+
+Caddy obtains the TLS certificate and proxies to the app. The SQLite database and uploaded `.osz` packages live in the `editor-data` volume. Check it with `curl https://editor.example.com/api/health`. To update: `git pull && DOMAIN=… docker compose up -d --build`.
+
+**Plain Docker (behind your own proxy, or on Fly.io/Railway/Render):**
+
+`docker build -t osu-web-editor . && docker run -d -p 8787:8787 -v osu-editor-data:/data --env-file .env osu-web-editor`
+
+The container listens on `PORT` (8787), stores data in `/data` (mount a persistent volume there), and exposes `/api/health` for health checks. Allow request bodies up to about 250 MB on your proxy for cloud sync of large maps.
 
 ### Opening published maps
 

@@ -237,12 +237,20 @@ function handleDesignKey(code: string, ctrl: boolean, shift: boolean): boolean {
     if (code === 'KeyZ' && !shift) design.undo();
     else if (code === 'KeyY' || (code === 'KeyZ' && shift)) design.redo();
     else if (code === 'KeyD') design.duplicateSelected();
-    else if (code === 'KeyA' || code === 'KeyC' || code === 'KeyX' || code === 'KeyV') return true;
+    else if (code === 'KeyC' || code === 'KeyX') design.copySelected(code === 'KeyX');
+    else if (code === 'KeyV') design.paste();
+    else if (code === 'KeyA') return true;
     else return false;
     return true;
   }
   if (code === 'Delete' || code === 'Backspace') {
     design.deleteSelected();
+    return true;
+  }
+  // W/A/S/D nudge the selected sprite, like stable.
+  const nudge: Record<string, [number, number]> = { KeyW: [0, -1], KeyA: [-1, 0], KeyS: [0, 1], KeyD: [1, 0] };
+  if (nudge[code] && !shift) {
+    design.nudgeSelected(...nudge[code]);
     return true;
   }
   return /^(Digit[1-4]|Key[QWERTYGLJK])$/.test(code);

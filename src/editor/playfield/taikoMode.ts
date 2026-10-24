@@ -13,16 +13,21 @@ const isBig = (o: HitObject) => (o.hitSound & 4) !== 0;
 export class TaikoMode implements PlayfieldMode {
   mods: Modifiers = { shift: false, alt: false, ctrl: false };
   private w = 0;
+  /** Left edge of the lane, clear of the toolbox. */
+  private x0 = 0;
   private laneY = 0;
   private laneH = 120;
   private hitX = 0;
   private box: { x0: number; x1: number; additive: boolean } | null = null;
 
   layout(w: number, h: number) {
-    this.w = w;
-    this.laneH = Math.min(140, h * 0.3);
-    this.laneY = h / 2 - this.laneH / 2;
-    this.hitX = Math.max(90, w * 0.15);
+    // The stage is a 768-osu!pixel tall screen; keep the lane between the toolbox (84) and the toggles (76).
+    const u = h / 768;
+    this.x0 = 86 * u;
+    this.w = w - 78 * u;
+    this.laneH = Math.min(150, h * 0.22);
+    this.laneY = h * 0.42 - this.laneH / 2;
+    this.hitX = this.x0 + Math.max(60, this.laneH * 0.75);
   }
 
   private speed(time: number) {
@@ -41,9 +46,12 @@ export class TaikoMode implements PlayfieldMode {
     const r = this.laneH * 0.28;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(0, this.laneY, this.w, this.laneH);
+    ctx.fillRect(this.x0, this.laneY, this.w - this.x0, this.laneH);
     ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.strokeRect(-1, this.laneY, this.w + 2, this.laneH);
+    ctx.strokeRect(this.x0, this.laneY, this.w - this.x0, this.laneH);
+    ctx.beginPath();
+    ctx.rect(this.x0, this.laneY - this.laneH, this.w - this.x0, this.laneH * 3);
+    ctx.clip();
     const cy = this.laneY + this.laneH / 2;
 
     // Bar lines

@@ -198,6 +198,47 @@ class DesignState {
     editor.emit();
   }
 
+  // ---------------------------------------------------------------- keyboard editing (Design tab)
+
+  private clipboard: SbSprite | null = null;
+
+  /** W/A/S/D: nudge the selected sprite by one osu!pixel (keyframed at the current time). */
+  nudgeSelected(dx: number, dy: number) {
+    const el = this.selectedElement;
+    if (!el || el.kind === 'sample') return;
+    const t = Math.round(music.time);
+    this.editSelected((x) => {
+      if (x.kind === 'sample') return;
+      const s = spriteStateAt(storyboard.compiledFor(x), t);
+      if (this.autoKeyframe && s) setPositionAt(x, t, Math.round(s.x + dx), Math.round(s.y + dy), s);
+      else translateSprite(x, dx, dy);
+    });
+  }
+
+  /** Ctrl+C / Ctrl+X: copy (or cut) the selected sprite. */
+  copySelected(cut: boolean) {
+    const el = this.selectedElement;
+    if (!el || el.kind === 'sample') return;
+    this.clipboard = structuredClone(el);
+    if (cut) this.deleteSelected();
+  }
+
+  /** Ctrl+V: paste the copied sprite so its first command starts at the current time. */
+  paste() {
+    const src = this.clipboard;
+    if (!src) return;
+    const el: SbSprite = { ...structuredClone(src), id: newSbId() };
+    const first = Math.min(...el.commands.map((c) => c.start));
+    const delta = Number.isFinite(first) ? Math.round(music.time) - first : 0;
+    for (const c of el.commands) {
+      c.start += delta;
+      if (c.type !== 'L') c.end += delta;
+    }
+    const source = this.target;
+    this.edit(source, () => storyboard[source].elements.push(el));
+    this.select({ source, index: storyboard[source].elements.indexOf(el) });
+  }
+
   // ---------------------------------------------------------------- keyframe control (Design tab)
 
   private get keyframeType(): KeyframeType {

@@ -3,7 +3,8 @@ import { music } from '../../audio/music';
 import { waveformFor, WAVEFORM_BUCKET_MS } from '../../audio/waveform';
 import { comboColourIndex } from '../../osu/processing';
 import { objectEndTime, sliderSpanDuration, snapTime, tickColour, tickDivisorOf } from '../../osu/timing';
-import { DEFAULT_COMBO_COLOURS, type HitObject, type Rgb, type TimingPoint } from '../../osu/types';
+import type { HitObject, Rgb, TimingPoint } from '../../osu/types';
+import { comboColours } from '../../skin/skin';
 import { onFrame } from '../playback';
 import { rgba, shade } from '../render/draw';
 import { editor, shiftObjectTime, snapSliderLength } from '../store';
@@ -344,7 +345,7 @@ function drawObjects(ctx: CanvasRenderingContext2D, h: number, t: number, tStart
     ctx.fillRect(a, h * (OBJ_Y - OBJ_R), X(t) - a, h * OBJ_R * 2);
   }
   const proc = editor.processed;
-  const cols = bm.colours.combo.length ? bm.colours.combo : DEFAULT_COMBO_COLOURS;
+  const cols = comboColours(bm);
   const r = h * OBJ_R;
   const cy = h * OBJ_Y;
   const objs = bm.hitObjects;
@@ -375,7 +376,7 @@ function drawObjects(ctx: CanvasRenderingContext2D, h: number, t: number, tStart
       ? (o.hitSound & 10 ? { r: 68, g: 138, b: 202 } : { r: 235, g: 69, b: 44 })
       : o.kind === 'spinner'
         ? { r: 200, g: 200, b: 200 }
-        : cols[comboColourIndex(bm, o, proc)];
+        : cols[comboColourIndex(o, proc, cols.length)];
     const big = bm.general.mode === 1 && o.hitSound & 4 ? 1.2 : 1;
     if (o.kind !== 'circle') {
       // Body: a rounded bar in the combo colour, like stable's timeline sliders.

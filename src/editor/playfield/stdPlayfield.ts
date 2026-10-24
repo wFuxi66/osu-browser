@@ -3,15 +3,18 @@ import { music } from '../../audio/music';
 import { autoCurveType, computeRawPath, dist, getSliderPath, sliderPositionAtSpan } from '../../osu/curves';
 import { comboColourIndex, sliderTickProgresses, stackedPosition } from '../../osu/processing';
 import { sliderSpanDuration } from '../../osu/timing';
-import { defaultSample, DEFAULT_COMBO_COLOURS, newObjectId, type HitObject, type Rgb, type Slider, type Vec2 } from '../../osu/types';
+import { comboColours, sliderColours } from '../../skin/skin';
+import { defaultSample, newObjectId, type HitObject, type Rgb, type Slider, type Vec2 } from '../../osu/types';
 import {
   drawApproachCircle,
   drawFollowPoints,
   drawHitCircle,
   drawReverseArrow,
   drawSelectionRing,
+  drawSkinSpinner,
+  drawSliderBall,
   drawSliderBody,
-  rgba,
+  drawSliderTick,
   strokePolyline,
   toScreen,
   type View,
@@ -40,8 +43,8 @@ export class StdPlayfield {
   }
 
   private comboColour(o: HitObject): Rgb {
-    const cols = editor.bm.colours.combo.length ? editor.bm.colours.combo : DEFAULT_COMBO_COLOURS;
-    return cols[comboColourIndex(editor.bm, o, editor.processed)];
+    const cols = comboColours(editor.bm);
+    return cols[comboColourIndex(o, editor.processed, cols.length)];
   }
 
   /** Alpha of an object at time t (0 = invisible). */
@@ -193,8 +196,7 @@ export class StdPlayfield {
     const toS = (q: Vec2) => toScreen(v, { x: q.x + sh, y: q.y + sh });
     const r = p.radius * v.scale;
     const colour = this.comboColour(o);
-    const track = bm.colours.sliderTrackOverride ?? colour;
-    const border = bm.colours.sliderBorder ?? { r: 255, g: 255, b: 255 };
+    const { track, border } = sliderColours(bm, colour);
     let pts = path.points;
     if (editor.prefs.snakingSliders && t < o.time) {
       const appear = o.time - p.preempt;
@@ -206,17 +208,10 @@ export class StdPlayfield {
 
     // Ticks
     const span = sliderSpanDuration(bm, o);
-    const ticks = sliderTickProgresses(bm, o);
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#fff';
-    for (const tp of ticks) {
+    for (const tp of sliderTickProgresses(bm, o)) {
       const q = toS(path.positionAt(tp));
-      ctx.beginPath();
-      ctx.arc(q.x, q.y, r * 0.12, 0, Math.PI * 2);
-      ctx.fill();
+      drawSliderTick(ctx, q.x, q.y, r, alpha);
     }
-    ctx.restore();
 
     // Reverse arrows
     if (o.slides > 1) {
@@ -245,28 +240,29 @@ export class StdPlayfield {
 
     // Slider ball while active
     if (t >= o.time && t <= info.endTime && span > 0) {
-      const ball = toS(sliderPositionAtSpan(o, (t - o.time) / span));
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = rgba(colour, 0.9);
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = r * 0.1;
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, r * 0.85, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-      ctx.lineWidth = r * 0.08;
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, r * 2.2, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
+      const at = (t - o.time) / span;
+      const ball = toS(sliderPositionAtSpan(o, at));
+      const ahead = toS(sliderPositionAtSpan(o, at + 0.01));
+      drawSliderBall(ctx, ball, Math.atan2(ahead.y - ball.y, ahead.x - ball.x), r, colour, alpha);
     }
   }
 
   private drawSpinner(ctx: CanvasRenderingContext2D, v: View, o: HitObject & { kind: 'spinner' }, t: number, alpha: number, selected: boolean) {
     const c = toScreen(v, { x: 256, y: 192 });
     const R = SPINNER_RADIUS * v.scale;
+    const prog = t < o.time ? 1 : Math.max(0, 1 - (t - o.time) / Math.max(1, o.endTime - o.time));
+    if (drawSkinSpinner(ctx, c, v.scale, prog, alpha, SPINNER_RADIUS)) {
+      if (selected) {
+        ctx.save();
+        ctx.strokeStyle = '#ffd400';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, R, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      return;
+    }
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.fillStyle = 'rgba(20,20,30,0.55)';
@@ -276,7 +272,6 @@ export class StdPlayfield {
     ctx.strokeStyle = selected ? '#ffd400' : '#fff';
     ctx.lineWidth = selected ? 4 : 2;
     ctx.stroke();
-    const prog = t < o.time ? 1 : Math.max(0, 1 - (t - o.time) / Math.max(1, o.endTime - o.time));
     ctx.strokeStyle = 'rgba(255,255,255,0.8)';
     ctx.lineWidth = 2;
     ctx.beginPath();

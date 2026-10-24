@@ -3,11 +3,12 @@ import { music } from '../../audio/music';
 import { dist, getSliderPath, sliderPositionAtSpan } from '../../osu/curves';
 import { comboColourIndex, hitWindows, sliderTickProgresses, stackedPosition } from '../../osu/processing';
 import { objectEndTime, sliderSpanDuration } from '../../osu/timing';
-import { DEFAULT_COMBO_COLOURS, type HitObject, type Vec2 } from '../../osu/types';
+import type { HitObject, Vec2 } from '../../osu/types';
+import { comboColours, skins, sliderColours } from '../../skin/skin';
 import { onFrame } from '../playback';
 import { ManiaMode } from '../playfield/maniaMode';
 import { TaikoMode } from '../playfield/taikoMode';
-import { drawApproachCircle, drawFollowPoints, drawHitCircle, drawReverseArrow, drawSliderBody, rgba, toOsu, toScreen, type View } from '../render/draw';
+import { drawApproachCircle, drawFollowPoints, drawHitCircle, drawReverseArrow, drawSkinSpinner, drawSliderBall, drawSliderBody, drawTexture, toOsu, toScreen, type View } from '../render/draw';
 import { editor, PLAYFIELD_H, PLAYFIELD_W } from '../store';
 import { drawBackground } from './Playfield';
 
@@ -189,7 +190,7 @@ export function TestPlay() {
         const end = objectEndTime(bm, o);
         return o.time - proc.preempt <= t && end + 200 >= t;
       });
-      const cols = bm.colours.combo.length ? bm.colours.combo : DEFAULT_COMBO_COLOURS;
+      const cols = comboColours(bm);
       const R = r * view.scale;
       for (let i = 0; i < visible.length - 1; i++) {
         const a = visible[i];
@@ -204,17 +205,19 @@ export function TestPlay() {
         const appear = o.time - proc.preempt;
         const alpha = Math.min(1, (t - appear) / proc.fadeIn);
         if (s.judged && o.kind !== 'slider') continue;
-        const colour = cols[comboColourIndex(bm, o, proc)];
+        const colour = cols[comboColourIndex(o, proc, cols.length)];
         if (o.kind === 'spinner') {
           const c = toScreen(view, { x: 256, y: 192 });
+          const prog = t < o.time ? 1 : Math.max(0, 1 - (t - o.time) / (o.endTime - o.time));
           ctx.save();
           ctx.globalAlpha = alpha;
-          ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          const prog = t < o.time ? 1 : Math.max(0, 1 - (t - o.time) / (o.endTime - o.time));
-          ctx.arc(c.x, c.y, 180 * view.scale * prog + 4, 0, Math.PI * 2);
-          ctx.stroke();
+          if (!drawSkinSpinner(ctx, c, view.scale, prog, 1, 180)) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, 180 * view.scale * prog + 4, 0, Math.PI * 2);
+            ctx.stroke();
+          }
           ctx.fillStyle = '#fff';
           ctx.font = `600 ${Math.round(24 * view.scale)}px system-ui`;
           ctx.textAlign = 'center';
@@ -230,24 +233,17 @@ export function TestPlay() {
           const pts = path.points.map((q) => toScreen(view, { x: q.x + sh, y: q.y + sh }));
           const end = objectEndTime(bm, o);
           const fade = t > end ? Math.max(0, 1 - (t - end) / 200) : 1;
-          drawSliderBody(ctx, pts, R, bm.colours.sliderTrackOverride ?? colour, bm.colours.sliderBorder ?? { r: 255, g: 255, b: 255 }, alpha * fade * 0.9, false);
+          const { track, border } = sliderColours(bm, colour);
+          drawSliderBody(ctx, pts, R, track, border, alpha * fade * 0.9, false);
           const span = sliderSpanDuration(bm, o);
           if (o.slides > 1 && t < o.time + span * (o.slides - 1)) drawReverseArrow(ctx, pts[pts.length - 1], pts[Math.max(0, pts.length - 2)], R, alpha * fade);
           if (t < o.time && !s.headHit) drawHitCircle(ctx, sp.x, sp.y, R, colour, alpha, String(proc.info.get(o.id)?.comboNumber ?? ''), false);
           if (t >= o.time && t <= end && span > 0) {
-            const b = sliderPositionAtSpan(o, (t - o.time) / span);
+            const at = (t - o.time) / span;
+            const b = sliderPositionAtSpan(o, at);
+            const n = sliderPositionAtSpan(o, at + 0.01);
             const bp = toScreen(view, { x: b.x + sh, y: b.y + sh });
-            ctx.save();
-            ctx.fillStyle = rgba(colour, 0.9);
-            ctx.beginPath();
-            ctx.arc(bp.x, bp.y, R * 0.85, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(bp.x, bp.y, R * 2.4, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.restore();
+            drawSliderBall(ctx, bp, Math.atan2(n.y - b.y, n.x - b.x), R, colour, 1);
           }
         } else {
           drawHitCircle(ctx, sp.x, sp.y, R, colour, alpha, String(proc.info.get(o.id)?.comboNumber ?? ''), false);
@@ -264,6 +260,13 @@ export function TestPlay() {
         const s = toScreen(view, p.pos);
         ctx.save();
         ctx.globalAlpha = 1 - age / 600;
+        const judgement = skins.current?.get(`hit${p.value}`);
+        if (judgement) {
+          // Judgements and the cursor are sized for 1024x768 in stable: 0.625 osu!pixel per skin pixel.
+          drawTexture(ctx, judgement, s.x, s.y, 0.625 * view.scale);
+          ctx.restore();
+          continue;
+        }
         ctx.font = `700 ${Math.round(22 * view.scale)}px system-ui`;
         ctx.textAlign = 'center';
         ctx.fillStyle = p.value === 300 ? '#66ccff' : p.value === 100 ? '#88ff66' : p.value === 50 ? '#ffcc44' : '#ff4444';
@@ -272,6 +275,13 @@ export function TestPlay() {
       }
       // Cursor
       const c = toScreen(view, cursor);
+      const cursorTex = skins.current?.get('cursor');
+      if (cursorTex) {
+        drawTexture(ctx, cursorTex, c.x, c.y, 0.625 * view.scale);
+        const middle = skins.current?.get('cursormiddle');
+        if (middle) drawTexture(ctx, middle, c.x, c.y, 0.625 * view.scale);
+        return;
+      }
       ctx.save();
       ctx.fillStyle = '#ffd400';
       ctx.strokeStyle = '#fff';

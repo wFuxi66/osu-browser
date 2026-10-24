@@ -107,6 +107,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Slider repeats by dragging the tail in the timeline
 - [x] Hovering a slider with the select tool shows its control points (draggable right away)
 - [x] Grid snap (T, Shift to toggle temporarily), grid sizes (G, Ctrl+1–4), distance snap (Y, Alt temporarily) with distance spacing (Alt+wheel)
+- [x] Skins (View → Options): osu!default (stable's default skin from osu-resources), a drawn style, or your own skin imported from an .osk or skin folder (kept in this browser, never uploaded); missing elements fall back to osu!default, skin.ini combo/slider colours and HitCircleOverlap/prefix are read, skin hitsounds replace the defaults. osu!standard compose and test mode use it (taiko/mania/catch and the timeline are still drawn)
 - [x] Approach circles, follow points, combo numbers & colours (stable colour indexing), stacking (stable algorithm), slider ticks/reverse arrows/ball, hit animations, snaking sliders
 - [x] Selection: click, Ctrl/Shift+click, box select on playfield and timeline, Ctrl+A
 - [x] Move (drag, Ctrl+arrows), time-move in timeline (drag, J/K), lock notes (L)
@@ -150,4 +151,4 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 
 ## Credits
 
-Default hitsound samples (including `spinnerspin.wav`) are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0). Slider maths follows osu-framework's `PathApproximator`. Star ratings are a TypeScript port of the difficulty calculators in [ppy/osu](https://github.com/ppy/osu) (lazer, MIT licence, version 2026.730.0, which is what osu.ppy.sh runs), together with lazer's `SliderPath` and osu-framework's `PathApproximator` (also MIT) in single precision. The UI font is [Ubuntu](https://design.ubuntu.com/font) (Ubuntu Font Licence), standing in for stable's Aller; icons are drawn in SVG, no skin files are copied. This project isn't affiliated with ppy.
+Default hitsound samples (including `spinnerspin.wav`) and the osu!default skin images in `public/skins/default` are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0), unmodified. Slider maths follows osu-framework's `PathApproximator`. Star ratings are a TypeScript port of the difficulty calculators in [ppy/osu](https://github.com/ppy/osu) (lazer, MIT licence, version 2026.730.0, which is what osu.ppy.sh runs), together with lazer's `SliderPath` and osu-framework's `PathApproximator` (also MIT) in single precision. The UI font is [Ubuntu](https://design.ubuntu.com/font) (Ubuntu Font Licence), standing in for stable's Aller; icons are drawn in SVG, and no files are copied from an osu! install. This project isn't affiliated with ppy.

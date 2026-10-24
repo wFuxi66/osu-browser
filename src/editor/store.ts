@@ -16,6 +16,7 @@ import {
 import { cloneBeatmap, findFile, uid, uniqueVersionName, type Project } from '../project/project';
 import { loadPrefs, loadProjectLocal, saveProjectLocal, savePrefs, type Prefs } from '../project/storage';
 import { cloud } from '../project/cloud';
+import { skins } from '../skin/skin';
 import { ask } from '../ui/prompt';
 
 export type Screen = 'compose' | 'design' | 'timing';
@@ -123,6 +124,7 @@ class Editor {
     this.prefs = { ...this.prefs, ...p };
     savePrefs(this.prefs);
     this.applyAudioPrefs();
+    void skins.use(this.prefs.skin);
     this.emit();
   }
 

@@ -12,6 +12,9 @@ class HitsoundEngine {
   private master: GainNode | null = null;
   private defaults = new Map<string, AudioBuffer>();
   private custom = new Map<string, AudioBuffer>();
+  /** Samples from the selected skin; they replace the defaults, beatmap samples still win. */
+  private skin = new Map<string, AudioBuffer>();
+  private skinRev = 0;
   private loadingDefaults: Promise<void> | null = null;
   private loops = new Set<AudioBufferSourceNode>();
   volume = 0.8;
@@ -90,6 +93,27 @@ class HitsoundEngine {
     await Promise.all(jobs);
   }
 
+  /** Decode a skin's hitsound samples (normal-hitclap.wav, spinnerspin.ogg, …); file names are lower-case. */
+  async setSkinSamples(files: Map<string, Blob>) {
+    const rev = ++this.skinRev;
+    const ctx = this.ensureCtx();
+    const next = new Map<string, AudioBuffer>();
+    const jobs: Promise<void>[] = [];
+    for (const [name, blob] of files) {
+      const m = /^((?:normal|soft|drum)-(?:hit|slider)w+|spinnerspin).(wav|ogg|mp3)$/.exec(name);
+      if (!m || blob.size === 0) continue;
+      jobs.push(
+        blob
+          .arrayBuffer()
+          .then((b) => ctx.decodeAudioData(b))
+          .then((buf) => void next.set(m[1], buf))
+          .catch(() => undefined),
+      );
+    }
+    await Promise.all(jobs);
+    if (rev === this.skinRev) this.skin = next;
+  }
+
   private lookup(set: string, name: string, index: number): AudioBuffer | undefined {
     if (index > 1) {
       const c = this.custom.get(`${set}-${name}${index}`);
@@ -99,7 +123,7 @@ class HitsoundEngine {
       const c = this.custom.get(`${set}-${name}`);
       if (c) return c;
     }
-    return this.defaults.get(`${set}-${name}`);
+    return this.skin.get(`${set}-${name}`) ?? this.defaults.get(`${set}-${name}`);
   }
 
   playBuffer(buf: AudioBuffer | undefined, volume: number, when = 0, rate = 1) {
@@ -198,7 +222,7 @@ class HitsoundEngine {
   /** The spinner whirr, rising in pitch as the spinner progresses (from fraction p0 to p1 of the spin). */
   playSpinnerSpin(bm: Beatmap, time: number, delay: number, duration: number, p0: number, p1: number) {
     const vol = controlPointAt(bm, time).volume / 100;
-    const buf = this.custom.get('spinnerspin') ?? this.defaults.get('spinnerspin');
+    const buf = this.custom.get('spinnerspin') ?? this.skin.get('spinnerspin') ?? this.defaults.get('spinnerspin');
     this.playLoop(buf, vol * 0.8, delay, duration, [0.5 + p0 * 1.5, 0.5 + p1 * 1.5]);
   }
 

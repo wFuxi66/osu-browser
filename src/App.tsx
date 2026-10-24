@@ -2,8 +2,9 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { hitsounds } from './audio/hitsounds';
 import { EditorShell } from './editor/ui/EditorShell';
 import { Toasts } from './editor/ui/Toasts';
-import { useEditor } from './editor/store';
+import { editor, useEditor } from './editor/store';
 import { cloud } from './project/cloud';
+import { skins } from './skin/skin';
 import { SongSelect } from './songselect/SongSelect';
 import { PromptHost } from './ui/PromptHost';
 import { VolumeControl } from './ui/VolumeControl';
@@ -20,6 +21,7 @@ export function App() {
   const ed = useEditor();
   useEffect(() => {
     void cloud.init();
+    void skins.use(editor.prefs.skin);
     // The AudioContext can only start after a user gesture.
     const unlock = () => hitsounds.unlock();
     window.addEventListener('pointerdown', unlock, { once: true });

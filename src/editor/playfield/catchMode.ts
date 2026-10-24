@@ -13,7 +13,8 @@ import {
 } from '../../osu/catch';
 import { comboColourIndex } from '../../osu/processing';
 import { redLineAt } from '../../osu/timing';
-import { DEFAULT_COMBO_COLOURS, defaultSample, newObjectId, type HitObject, type Rgb } from '../../osu/types';
+import { defaultSample, newObjectId, type HitObject, type Rgb } from '../../osu/types';
+import { comboColours } from '../../skin/skin';
 import { rgba, shade } from '../render/draw';
 import { editor, shiftObjectTime, translateObject } from '../store';
 import { drawBeatLines } from './scrolling';
@@ -72,8 +73,8 @@ export class CatchMode implements PlayfieldMode {
   }
 
   private comboColour(o: HitObject): Rgb {
-    const cols = editor.bm.colours.combo.length ? editor.bm.colours.combo : DEFAULT_COMBO_COLOURS;
-    return cols[comboColourIndex(editor.bm, o, editor.processed) % cols.length];
+    const cols = comboColours(editor.bm);
+    return cols[comboColourIndex(o, editor.processed, cols.length)];
   }
 
   // ------------------------------------------------------------------ snapping

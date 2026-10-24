@@ -115,9 +115,9 @@ export function stackedPosition(o: HitObject, p: ProcessedBeatmap): Vec2 {
   return { x: o.x + h * p.stackOffset, y: o.y + h * p.stackOffset };
 }
 
-export function comboColourIndex(bm: Beatmap, o: HitObject, p: ProcessedBeatmap): number {
-  const n = bm.colours.combo.length || 1;
-  return (p.info.get(o.id)?.comboIndex ?? 0) % n;
+/** Index into a combo colour palette of `count` colours (the beatmap's, or the skin's when it has none). */
+export function comboColourIndex(o: HitObject, p: ProcessedBeatmap, count: number): number {
+  return (p.info.get(o.id)?.comboIndex ?? 0) % Math.max(1, count);
 }
 
 /** Slider tick positions within one span, as progress values in (0, 1). */

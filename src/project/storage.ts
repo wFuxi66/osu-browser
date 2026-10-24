@@ -225,6 +225,8 @@ export interface Prefs {
   showVideo: boolean;
   creatorName: string;
   invertScroll: boolean;
+  /** Skin id: 'default' (osu!default), 'drawn', or an imported skin's id. */
+  skin: string;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -241,6 +243,7 @@ export const DEFAULT_PREFS: Prefs = {
   showVideo: true,
   creatorName: '',
   invertScroll: false,
+  skin: 'default',
 };
 
 export function loadPrefs(): Prefs {

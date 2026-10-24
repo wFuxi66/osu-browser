@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { hitsounds } from '../../../audio/hitsounds';
 import { music } from '../../../audio/music';
 import { sliderPositionAtSpan } from '../../../osu/curves';
 import { parseOsu } from '../../../osu/parser';
@@ -302,7 +303,6 @@ export function FilesDialog() {
     for (const f of picked) ed.setFile(f.name, f);
     if (picked.length) {
       ed.toast(`Added ${picked.length} file${picked.length > 1 ? 's' : ''}. Custom hitsounds are picked up by name (e.g. soft-hitclap2.wav).`);
-      const { hitsounds } = await import('../../../audio/hitsounds');
       await hitsounds.setCustomSamples(ed.project!.files, ed.bm.general.audioFilename);
     }
   };

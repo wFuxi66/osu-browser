@@ -272,6 +272,7 @@ export function PreferencesDialog() {
   return (
     <WinDialog title="Options" width={420} onClose={close} footer={<OkCancel onOk={close} onCancel={close} />}>
       <GroupBox title="Volume">
+        <TrackRow label="Master" value={Math.round(p.masterVolume * 100)} min={0} max={100} step={1} onChange={(v) => ed.setPrefs({ masterVolume: v / 100 })} />
         <TrackRow label="Music" value={Math.round(p.musicVolume * 100)} min={0} max={100} step={1} onChange={(v) => ed.setPrefs({ musicVolume: v / 100 })} />
         <TrackRow label="Effects (hitsounds)" value={Math.round(p.hitsoundVolume * 100)} min={0} max={100} step={1} onChange={(v) => ed.setPrefs({ hitsoundVolume: v / 100 })} />
         <TrackRow label="Audio offset (ms): positive if hitsounds play too early" value={p.audioOffset} min={-200} max={200} step={1} onChange={(v) => ed.setPrefs({ audioOffset: v })} />

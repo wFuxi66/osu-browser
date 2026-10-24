@@ -212,6 +212,7 @@ export async function deleteProjectLocal(id: string): Promise<void> {
 const PREFS_KEY = 'osu-web-editor:prefs';
 
 export interface Prefs {
+  masterVolume: number;
   musicVolume: number;
   hitsoundVolume: number;
   audioOffset: number;
@@ -227,6 +228,7 @@ export interface Prefs {
 }
 
 export const DEFAULT_PREFS: Prefs = {
+  masterVolume: 1,
   musicVolume: 0.6,
   hitsoundVolume: 0.8,
   audioOffset: 0,

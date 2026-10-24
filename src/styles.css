@@ -118,3 +118,16 @@ kbd { background: #2a2a38; border: 1px solid var(--border); border-radius: 3px; 
 .sb-cmd-table select { max-width: 92px; font-size: 11px; padding: 0; }
 .sb-cmd-table input.cell { width: 64px; font-size: 11px; padding: 1px 3px; }
 .sb-cmd-table input.cell.num { width: 52px; }
+
+/* stable's volume overlay (Alt+wheel), anchored to the bottom-right corner; sizes scale with the window height. */
+.volume-control { position: fixed; right: 0; bottom: 0; width: 42vh; height: 42vh; pointer-events: none; z-index: 900; opacity: 0; transition: opacity 0.4s ease-out; }
+.volume-control.shown { opacity: 1; transition-duration: 0.12s; }
+.volume-control svg { width: 100%; height: 100%; overflow: visible; }
+.vc-backdrop { fill: #c24a7c; fill-opacity: 0.78; }
+.vc-disc { fill: #111; fill-opacity: 0.9; }
+.vc-track { fill: none; stroke: #2a3a44; }
+.vc-arc { fill: none; stroke: #8fd8ff; stroke-linecap: butt; transition: stroke-dasharray 0.1s ease-out; }
+.vc-pct { fill: #fff; font-family: Ubuntu, sans-serif; }
+.vc-label { fill: #fff; font-family: Ubuntu, sans-serif; letter-spacing: 0.02em; }
+.vc-meter.hover .vc-disc { fill: #1d2a33; }
+.vc-meter.hover .vc-arc { stroke: #c8eeff; }

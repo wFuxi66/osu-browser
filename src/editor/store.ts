@@ -122,10 +122,15 @@ class Editor {
   setPrefs(p: Partial<Prefs>) {
     this.prefs = { ...this.prefs, ...p };
     savePrefs(this.prefs);
-    music.el.volume = this.prefs.musicVolume;
-    music.offset = this.prefs.audioOffset;
-    hitsounds.setVolume(this.prefs.hitsoundVolume);
+    this.applyAudioPrefs();
     this.emit();
+  }
+
+  /** Volumes (master × music/effect) and offset; song select's preview uses them too. */
+  applyAudioPrefs() {
+    music.el.volume = this.prefs.masterVolume * this.prefs.musicVolume;
+    music.offset = this.prefs.audioOffset;
+    hitsounds.setVolume(this.prefs.masterVolume * this.prefs.hitsoundVolume);
   }
 
   // ---------------------------------------------------------------- project lifecycle
@@ -1118,6 +1123,7 @@ export function formatTimestamp(ms: number): string {
 }
 
 export const editor = new Editor();
+editor.applyAudioPrefs();
 (window as unknown as { editor: Editor }).editor = editor;
 
 export function useEditor(): Editor {

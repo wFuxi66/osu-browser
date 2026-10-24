@@ -6,6 +6,7 @@ import { useEditor } from './editor/store';
 import { cloud } from './project/cloud';
 import { SongSelect } from './songselect/SongSelect';
 import { PromptHost } from './ui/PromptHost';
+import { VolumeControl } from './ui/VolumeControl';
 
 export function useCloud() {
   return useSyncExternalStore(
@@ -30,6 +31,7 @@ export function App() {
       {ed.hasProject ? <EditorShell /> : <SongSelect />}
       <Toasts />
       <PromptHost />
+      <VolumeControl />
     </>
   );
 }

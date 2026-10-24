@@ -6,6 +6,46 @@ type Listener = () => void;
 
 /** How long a smooth seek takes to ease into place (out-quint, like lazer's editor). */
 const GLIDE_MS = 200;
+/** How long the clock may run ahead of every position the audio element reports before it steps back. */
+const AHEAD_WINDOW_MS = 300;
+const MAX_STEP_BACK_MS = 8;
+
+// Browsers seek compressed audio only approximately: in VBR mp3s a seek can land a few hundred ms away from
+// the requested time (measured in Edge), which leaves the objects out of sync with the music until the next
+// seek. A WAV copy of the decoded song seeks to the exact sample, and playing it back matches the mp3 played
+// from the start to within a few ms. The editor uses one; the original file is what gets saved and exported.
+const exactCopies = new WeakMap<Blob, Promise<Blob>>();
+
+function exactCopy(blob: Blob): Promise<Blob> {
+  let p = exactCopies.get(blob);
+  if (!p) {
+    p = blob.arrayBuffer().then(async (data) => {
+      const buf = await new OfflineAudioContext(2, 1, 44100).decodeAudioData(data);
+      const n = buf.length;
+      const channels = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
+      const header = new DataView(new ArrayBuffer(44));
+      const pcm = new Int16Array(n * channels.length);
+      for (let i = 0, o = 0; i < n; i++)
+        for (const ch of channels) pcm[o++] = Math.max(-1, Math.min(1, ch[i])) * 32767;
+      const text = (at: number, s: string) => [...s].forEach((c, k) => header.setUint8(at + k, c.charCodeAt(0)));
+      text(0, 'RIFF');
+      header.setUint32(4, 36 + pcm.byteLength, true);
+      text(8, 'WAVEfmt ');
+      header.setUint32(16, 16, true);
+      header.setUint16(20, 1, true);
+      header.setUint16(22, channels.length, true);
+      header.setUint32(24, buf.sampleRate, true);
+      header.setUint32(28, buf.sampleRate * channels.length * 2, true);
+      header.setUint16(32, channels.length * 2, true);
+      header.setUint16(34, 16, true);
+      text(36, 'data');
+      header.setUint32(40, pcm.byteLength, true);
+      return new Blob([header, pcm], { type: 'audio/wav' });
+    });
+    exactCopies.set(blob, p);
+  }
+  return p;
+}
 
 class MusicClock {
   readonly el: HTMLAudioElement;
@@ -13,6 +53,8 @@ class MusicClock {
   private anchorAudio = 0;
   private anchorPerf = 0;
   private lastReported = -1;
+  /** How far the clock has been ahead of the element's reports, at least, since `since`. */
+  private ahead = { min: Infinity, since: 0 };
   private pausedTime = 0;
   private glide: { from: number; start: number } | null = null;
   private listeners = new Set<Listener>();
@@ -47,7 +89,8 @@ class MusicClock {
     for (const l of this.listeners) l();
   }
 
-  async load(blob: Blob | null): Promise<void> {
+  /** Loads an audio file. With `exact` (the editor), playback switches to an exact-seeking copy once it's decoded. */
+  async load(blob: Blob | null, exact = false): Promise<void> {
     this.blob = blob;
     this.pause();
     if (this.url) URL.revokeObjectURL(this.url);
@@ -61,7 +104,12 @@ class MusicClock {
     }
     this.url = URL.createObjectURL(blob);
     this.el.src = this.url;
-    await new Promise<void>((resolve) => {
+    await this.metadata();
+    if (exact && !blob.type.includes('wav')) void this.switchToExactCopy(blob);
+  }
+
+  private metadata(): Promise<void> {
+    return new Promise<void>((resolve) => {
       const done = () => {
         this.el.removeEventListener('loadedmetadata', done);
         this.el.removeEventListener('error', done);
@@ -70,6 +118,25 @@ class MusicClock {
       this.el.addEventListener('loadedmetadata', done);
       this.el.addEventListener('error', done);
     });
+  }
+
+  private async switchToExactCopy(blob: Blob) {
+    let wav: Blob;
+    try {
+      wav = await exactCopy(blob);
+    } catch {
+      return; // undecodable here: keep playing the original
+    }
+    if (this.blob !== blob) return;
+    const wasPlaying = this.playing;
+    if (wasPlaying) this.pause();
+    if (this.url) URL.revokeObjectURL(this.url);
+    this.url = URL.createObjectURL(wav);
+    this.el.src = this.url;
+    await this.metadata();
+    if (this.blob !== blob) return;
+    this.el.currentTime = Math.max(0, this.pausedTime + this.offset) / 1000;
+    if (wasPlaying) await this.play();
   }
 
   get playing(): boolean {
@@ -99,6 +166,16 @@ class MusicClock {
       if (Math.abs(predicted - reported) > 40 || reported > predicted) {
         this.anchorAudio = reported;
         this.anchorPerf = now;
+        this.ahead = { min: Infinity, since: now };
+      } else {
+        // Reports are stale by a varying amount, so the clock reads ahead of most of them. If it stays ahead
+        // of even the freshest one for a while (the audio took a moment to resume after a seek), step back,
+        // in small steps so the time between two frames never goes backwards enough to look like a seek.
+        this.ahead.min = Math.min(this.ahead.min, predicted - reported);
+        if (now - this.ahead.since > AHEAD_WINDOW_MS) {
+          if (this.ahead.min > 2) this.anchorAudio -= Math.min(this.ahead.min, MAX_STEP_BACK_MS);
+          this.ahead = { min: Infinity, since: now };
+        }
       }
     }
     return Math.min(this.anchorAudio + (now - this.anchorPerf) * this.el.playbackRate, this.duration || Infinity) - this.offset;
@@ -120,6 +197,7 @@ class MusicClock {
     this.anchorAudio = this.el.currentTime * 1000;
     this.anchorPerf = performance.now();
     this.lastReported = this.anchorAudio;
+    this.ahead = { min: Infinity, since: this.anchorPerf };
   }
 
   async play() {

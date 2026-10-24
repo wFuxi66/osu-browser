@@ -136,6 +136,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Play/pause/stop, 25/50/75/100% playback (pitch preserved), Ctrl+↑/↓ speed
 - [x] Volume overlay like stable: Alt+wheel shows master/music/effect meters in the bottom right and changes master, or the meter under the cursor (in the editor only in the bottom-right corner; elsewhere Alt+wheel keeps distance spacing / timeline zoom, as in stable)
 - [x] Wheel seeking by beat snap (wheel down = forward), eased like lazer, touchpad deltas grouped per notch, Shift 4x, Ctrl+wheel divisor, timing point / bookmark jumps, Z/X/C/V
+- [x] Exact seeking: browsers seek compressed audio only approximately (in VBR mp3s up to a few hundred ms off, measured in Edge), so the editor plays a decoded WAV copy of the song, which seeks to the sample; the clock also corrects itself when the audio is slow to resume after a seek
 - [x] Coloured beat snap ticks (1/1 … 1/16), timeline zoom, song overview with kiai/breaks/bookmarks
 - [x] Test mode (F5): playable osu!standard with judgements and autoplay; preview for other modes
 

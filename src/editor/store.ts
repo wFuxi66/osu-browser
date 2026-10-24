@@ -152,7 +152,7 @@ class Editor {
     this.contentRev++;
     this.setPrefs({});
     const audio = findFile(p, this.bm.general.audioFilename);
-    await music.load(audio ?? null);
+    await music.load(audio ?? null, true);
     void hitsounds.setCustomSamples(p.files, this.bm.general.audioFilename);
     this.emit();
     if (!audio) this.toast(`Audio file "${this.bm.general.audioFilename}" is missing from this beatmap.`, 'error');
@@ -239,7 +239,7 @@ class Editor {
     this.placing = null;
     this.savedSnapshot = cloneBeatmap(this.bm);
     this.contentRev++;
-    if (this.bm.general.audioFilename !== prevAudio) await music.load(findFile(this.project, this.bm.general.audioFilename) ?? null);
+    if (this.bm.general.audioFilename !== prevAudio) await music.load(findFile(this.project, this.bm.general.audioFilename) ?? null, true);
     music.seek(t);
     this.emit();
   }
@@ -375,7 +375,7 @@ class Editor {
     }
     this.project.files.set(name, file);
     for (const d of this.project.difficulties) d.beatmap.general.audioFilename = name;
-    await music.load(file);
+    await music.load(file, true);
     this.markDirty();
   }
 
@@ -418,7 +418,7 @@ class Editor {
     if (!this.project) return;
     const t = music.time;
     await this.discardChanges();
-    if (this.project) await music.load(findFile(this.project, this.bm.general.audioFilename) ?? null);
+    if (this.project) await music.load(findFile(this.project, this.bm.general.audioFilename) ?? null, true);
     music.seek(t);
     this.toast('Reverted to the last save.');
   }

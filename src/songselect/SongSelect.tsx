@@ -90,6 +90,7 @@ export function SongSelect() {
     else if (result === 'noscope') editor.toast('Google Drive wasn\x27t connected: allow access to the files this editor creates, then try again.', 'error');
     else if (result === 'cancelled') editor.toast('Google Drive wasn\x27t connected.');
     if (!cloud.syncing) return;
+    void editor.syncSettings();
     setBusy('Syncing with Google Drive…');
     cloud
       .syncAll()
@@ -199,10 +200,13 @@ export function SongSelect() {
       const p = selSet.difficulties[0]?.previewTime ?? -1;
       return p >= 0 ? p : (music.duration || 0) * 0.4;
     };
+    // Back from the editor, the song carries on from where it was left, like stable; otherwise from the preview point.
+    const back = editor.returnTo?.projectId === selSet.id ? editor.returnTo.time : null;
+    editor.returnTo = null;
     const start = async () => {
       if (music.blob !== selSet.audio) await music.load(selSet.audio);
       if (cancelled) return;
-      music.seek(preview());
+      music.seek(back !== null && back < (music.duration || Infinity) - 1000 ? back : preview());
       await music.play();
     };
     void start();
@@ -258,7 +262,7 @@ export function SongSelect() {
 
   const openLink = (link: string) =>
     run('Downloading beatmap…', async () => {
-      const p = await projectFromLink(link);
+      const p = await projectFromLink(link, undefined, editor.prefs.downloadVideo);
       setLinkOpen(false);
       await selectImported(p.id);
     });

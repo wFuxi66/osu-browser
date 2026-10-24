@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { music } from '../../../audio/music';
 import { OkCancel, WinDialog, WinTabs } from '../../../ui/win';
 import { runAiMod } from '../../aimod';
+import { ACTIONS, keyLabel, keysFor, type Keybinds } from '../../keybinds';
 import { editor, formatTimestamp, useEditor } from '../../store';
 import { TestPlay } from '../TestPlay';
 import { SetupDialog } from './SetupDialog';
@@ -79,45 +80,29 @@ function AiModDialog() {
   );
 }
 
-const SHORTCUTS: [string, [string, string][]][] = [
-  ['General', [
-    ['Z / V', 'Jump to first / last note'], ['X', 'Play from start'], ['C or Space', 'Pause / resume'],
-    ['← / →', 'Seek by beat snap'], ['Shift + ← / →', 'Seek 4x'], ['↑ / ↓', 'Next / previous timing point'],
-    ['Ctrl + B / Ctrl + Shift + B', 'Add / remove bookmark'], ['Ctrl + ← / →', 'Previous / next bookmark (no selection)'],
-    ['Ctrl + S', 'Save (nothing saves automatically)'], ['Ctrl + L / Ctrl + Shift + L', 'Revert to saved / full revert'], ['Ctrl + O', 'Open difficulty'],
-    ['Ctrl + N', 'Clear all notes (or File menu; some browsers keep Ctrl+N)'], ['Esc', 'Back to song select (asks to save)'],
-    ['Ctrl + ↑ / ↓', 'Playback speed ±25% (no selection)'], ['Ctrl + Shift + ↑ / ↓', 'Playback speed ±5%'],
-    ['F1 / F2 / F3', 'Compose / Design / Timing'], ['F4', 'Song Setup'], ['F5', 'Test mode'], ['F6', 'Timing Setup'],
-    ['Ctrl + P / Ctrl + Shift + P', 'Add timing / inheriting section'], ['Ctrl + I', 'Delete timing section'],
-  ]],
+// What the key bindings (Options → Input) can't show: the mouse, and keys that act while held.
+const OTHER_CONTROLS: [string, [string, string][]][] = [
   ['Mouse', [
     ['Wheel', 'Seek'], ['Shift + Wheel', 'Seek 4x'], ['Ctrl + Wheel', 'Beat snap divisor'],
     ['Alt + Wheel', 'Distance snap (playfield) / zoom (timeline)'], ['Alt + Shift + Wheel', 'Distance snap, fine'], ['Ctrl + Alt + Wheel', 'Switch tool'],
     ['Double click', 'Jump to object / slider end'], ['Right click', 'Delete (select tool) / new combo or finish (placing)'],
   ]],
-  ['Compose', [
-    ['1 2 3 4', 'Select / circle / slider / spinner'], ['Ctrl + Z / Y', 'Undo / redo'], ['Ctrl + A X C V D', 'Select all / cut / copy / paste / clone'],
-    ['Delete', 'Delete selection'], ['Ctrl + Shift + A', 'AiMod'], ['Enter', 'Finish slider'],
-    ['T / Y', 'Grid snap / distance snap'], ['Shift (hold) / Alt (hold)', 'Toggle grid / distance snap temporarily'],
-    ['G', 'Cycle grid size'], ['Ctrl + 1–4', 'Grid size'], ['L', 'Lock notes'], ['Q', 'New combo'],
-    ['Ctrl + < / >', 'Rotate 90°'], ['Ctrl + H / J', 'Flip horizontally / vertically'], ['Ctrl + G', 'Reverse selection'],
-    ['Ctrl + Shift + R / S', 'Rotate by / scale by'], ['Ctrl + Shift + D', 'Polygon circles'], ['Ctrl + Shift + F', 'Slider to stream'],
-    ['Ctrl + arrows', 'Nudge selection'], ['J / K', 'Nudge by one beat snap'],
+  ['Held keys', [
+    ['Shift (hold)', 'Toggle grid snap while placing'], ['Alt (hold)', 'Toggle distance snap while placing'], ['Esc', 'Cancel, or back to song select (asks to save)'],
+    ['T (Timing screen)', 'Tap tempo'], ['Shift / Ctrl on ‹ ›', '5x / fine steps'],
   ]],
-  ['Hitsounds', [
-    ['W / E / R', 'Whistle / finish / clap'], ['Shift + Q W E R', 'Sampleset auto / normal / soft / drum'],
-    ['Ctrl (or Alt) + Q W E R', 'Addition set auto / normal / soft / drum'], ['Shift + 1–9', 'Beat snap divisor 1/1 – 1/9'],
-  ]],
-  ['Timing', [['T', 'Tap tempo'], ['Shift / Ctrl on ‹ ›', '5x / fine steps']]],
 ];
 
 function ShortcutsDialog() {
   const close = () => editor.openDialog(null);
   return (
     <WinDialog title="osu! editor help" width={760} onClose={close} footer={<OkCancel okLabel="Close" onOk={close} onCancel={close} />}>
-      <p className="win-muted">Letter keys follow your keyboard layout (on AZERTY, W is the key labelled W). Browsers keep Ctrl+W and sometimes Ctrl+N for themselves; Alt+W sets the normal addition set.</p>
+      <p className="win-muted">
+        Letter keys follow your keyboard layout (on AZERTY, W is the key labelled W). Browsers keep Ctrl+W and sometimes Ctrl+N for themselves;
+        Alt+W sets the normal addition set. Change any key in Options → Input.
+      </p>
       <div className="help-grid">
-        {SHORTCUTS.map(([group, list]) => (
+        {[...bindingGroups(editor.prefs.keybinds), ...OTHER_CONTROLS].map(([group, list]) => (
           <div key={group} className="win-group">
             <b>{group}</b>
             <table>
@@ -135,4 +120,15 @@ function ShortcutsDialog() {
       </div>
     </WinDialog>
   );
+}
+
+/** The keyboard shortcuts as currently bound, by group. */
+function bindingGroups(binds: Keybinds): [string, [string, string][]][] {
+  const groups = new Map<string, [string, string][]>();
+  for (const x of ACTIONS) {
+    const keys = keysFor(x.id, binds);
+    if (!groups.has(x.group)) groups.set(x.group, []);
+    groups.get(x.group)!.push([keys.length ? keys.map(keyLabel).join(' or ') : '(none)', x.label]);
+  }
+  return [...groups];
 }

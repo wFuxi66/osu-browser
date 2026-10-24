@@ -190,7 +190,7 @@ export function DirectPanel({ have, onImported, onOpen, onClose, mine: startMine
         if (f - last < 0.02 && f < 1) return;
         last = f;
         setDownload(id, { progress: f });
-      });
+      }, editor.prefs.downloadVideo);
       setDownload(id, { progress: 1, projectId: p.id });
       await onImported(p.id);
       editor.toast(`Downloaded ${label}.`);

@@ -86,14 +86,15 @@ export class StdPlayfield {
     const p = editor.processed;
     const r = p.radius * v.scale;
 
-    // Playfield border + grid
+    // Playfield border + grid. Like stable, the grid is always shown (G changes its size); grid snap only decides
+    // whether placing snaps to it.
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.25)';
     ctx.lineWidth = 1;
     ctx.strokeRect(v.ox, v.oy, PLAYFIELD_W * v.scale, PLAYFIELD_H * v.scale);
-    if (gridSnapActive(this.mods)) {
+    if (editor.prefs.showGrid) {
       const g = editor.gridSize;
-      ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
       ctx.beginPath();
       for (let x = g; x < PLAYFIELD_W; x += g) {
         ctx.moveTo(v.ox + x * v.scale, v.oy);

@@ -7,6 +7,7 @@ import { downloadBlob, downloadText, exportOsz, osuFilename, oszFilename } from 
 import { confirmBox, inputBox } from '../../ui/prompt';
 import { autoBreaks } from '../breaks';
 import { DIVISORS } from '../shortcuts';
+import { shortcutOf } from '../keybinds';
 import { design } from '../storyboard/design';
 import { editor, GRID_SIZES, useEditor } from '../store';
 import { onMenuChange, openMenu, setOpenMenu } from './menuState';
@@ -87,6 +88,7 @@ export function MenuBar() {
   const bm = ed.bm;
   const p = ed.prefs;
   const hasSel = ed.selection.size > 0;
+  const key = (id: string) => shortcutOf(id, p.keybinds);
   const mode = bm.general.mode;
   const setId = bm.metadata.beatmapSetId;
 
@@ -99,7 +101,7 @@ export function MenuBar() {
   const exportPackage = async () => downloadBlob(await exportOsz(ed.project!), oszFilename(ed.project!));
 
   const file: Item[] = [
-    { label: 'Clear All Notes', shortcut: 'Ctrl+N', action: () => void ed.clearAllNotes() },
+    { label: 'Clear All Notes', shortcut: key('clearAll'), action: () => void ed.clearAllNotes() },
     {
       label: 'Open Difficulty...',
       submenu: [
@@ -113,14 +115,14 @@ export function MenuBar() {
         },
       ],
     },
-    { label: 'Save', shortcut: 'Ctrl+S', action: () => void ed.save() },
+    { label: 'Save', shortcut: key('save'), action: () => void ed.save() },
     { label: 'Create a new Difficulty...', action: () => void ed.beginNewDifficulty() },
     sep,
-    { label: 'Revert to Saved', shortcut: 'Ctrl+L', action: () => ed.revertToSaved() },
-    { label: 'Revert to Saved (Full)', shortcut: 'Ctrl+Shift+L', action: () => void ed.revertToSavedFull() },
+    { label: 'Revert to Saved', shortcut: key('revert'), action: () => ed.revertToSaved() },
+    { label: 'Revert to Saved (Full)', shortcut: key('revertFull'), action: () => void ed.revertToSavedFull() },
     sep,
-    { label: 'Test Beatmap', shortcut: 'F5', action: () => { music.pause(); ed.openDialog('test'); } },
-    { label: 'Open AiMod', shortcut: 'Ctrl+Shift+A', action: () => ed.openDialog('aimod') },
+    { label: 'Test Beatmap', shortcut: key('test'), action: () => { music.pause(); ed.openDialog('test'); } },
+    { label: 'Open AiMod', shortcut: key('aimod'), action: () => ed.openDialog('aimod') },
     sep,
     { label: 'Export Package', action: () => void exportPackage() },
     { label: 'Export Difficulty (.osu)...', action: () => downloadText(serializeBeatmap(bm), osuFilename(bm)) },
@@ -133,24 +135,24 @@ export function MenuBar() {
   ];
 
   const edit: Item[] = [
-    { label: 'Undo', shortcut: 'Ctrl+Z', action: () => ed.undo(), disabled: !ed.canUndo },
-    { label: 'Redo', shortcut: 'Ctrl+Y', action: () => ed.redo(), disabled: !ed.canRedo },
+    { label: 'Undo', shortcut: key('undo'), action: () => ed.undo(), disabled: !ed.canUndo },
+    { label: 'Redo', shortcut: key('redo'), action: () => ed.redo(), disabled: !ed.canRedo },
     sep,
-    { label: 'Cut', shortcut: 'Ctrl+X', action: () => ed.copy(true), disabled: !hasSel },
-    { label: 'Copy', shortcut: 'Ctrl+C', action: () => ed.copy(), disabled: !hasSel },
-    { label: 'Paste', shortcut: 'Ctrl+V', action: () => ed.paste() },
-    { label: 'Delete', shortcut: 'Del', action: () => ed.deleteSelection(), disabled: !hasSel },
+    { label: 'Cut', shortcut: key('cut'), action: () => ed.copy(true), disabled: !hasSel },
+    { label: 'Copy', shortcut: key('copy'), action: () => ed.copy(), disabled: !hasSel },
+    { label: 'Paste', shortcut: key('paste'), action: () => ed.paste() },
+    { label: 'Delete', shortcut: key('delete'), action: () => ed.deleteSelection(), disabled: !hasSel },
     sep,
-    { label: 'Select All', shortcut: 'Ctrl+A', action: () => ed.selectAll() },
-    { label: 'Clone', shortcut: 'Ctrl+D', action: () => ed.cloneSelection(), disabled: !hasSel },
+    { label: 'Select All', shortcut: key('selectAll'), action: () => ed.selectAll() },
+    { label: 'Clone', shortcut: key('clone'), action: () => ed.cloneSelection(), disabled: !hasSel },
     sep,
-    { label: 'Reverse Selection', shortcut: 'Ctrl+G', action: () => ed.reverseSelection(), disabled: !hasSel },
-    { label: 'Flip Horizontally', shortcut: 'Ctrl+H', action: () => ed.flip(true), disabled: !hasSel },
-    { label: 'Flip Vertically', shortcut: 'Ctrl+J', action: () => ed.flip(false), disabled: !hasSel },
-    { label: 'Rotate 90° Clockwise', shortcut: 'Ctrl+>', action: () => ed.rotate(90, 'playfield'), disabled: !hasSel },
-    { label: 'Rotate 90° Anticlockwise', shortcut: 'Ctrl+<', action: () => ed.rotate(-90, 'playfield'), disabled: !hasSel },
-    { label: 'Rotate by...', shortcut: 'Ctrl+Shift+R', action: () => ed.openDialog('rotate'), disabled: !hasSel },
-    { label: 'Scale by...', shortcut: 'Ctrl+Shift+S', action: () => ed.openDialog('scale'), disabled: !hasSel },
+    { label: 'Reverse Selection', shortcut: key('reverse'), action: () => ed.reverseSelection(), disabled: !hasSel },
+    { label: 'Flip Horizontally', shortcut: key('flipH'), action: () => ed.flip(true), disabled: !hasSel },
+    { label: 'Flip Vertically', shortcut: key('flipV'), action: () => ed.flip(false), disabled: !hasSel },
+    { label: 'Rotate 90° Clockwise', shortcut: key('rotateCw'), action: () => ed.rotate(90, 'playfield'), disabled: !hasSel },
+    { label: 'Rotate 90° Anticlockwise', shortcut: key('rotateCcw'), action: () => ed.rotate(-90, 'playfield'), disabled: !hasSel },
+    { label: 'Rotate by...', shortcut: key('rotateBy'), action: () => ed.openDialog('rotate'), disabled: !hasSel },
+    { label: 'Scale by...', shortcut: key('scaleBy'), action: () => ed.openDialog('scale'), disabled: !hasSel },
     sep,
     { label: "Reset selected objects' samples", action: () => ed.resetSamples(false), disabled: !hasSel },
     { label: 'Reset all samples', action: async () => (await confirmBox('osu!', 'Reset the hitsounds and sample sets of every object?')) && ed.resetSamples(true) },
@@ -158,25 +160,26 @@ export function MenuBar() {
     { label: 'Reset breaks', action: () => ed.resetBreaks(autoBreaks(bm)) },
     { label: 'Sample volume and colour skip...', action: () => ed.openDialog('objectSettings'), disabled: !hasSel },
     sep,
-    { label: 'Nudge Backward', shortcut: 'J', action: () => ed.nudgeTime(-1), disabled: !hasSel },
-    { label: 'Nudge Forward', shortcut: 'K', action: () => ed.nudgeTime(1), disabled: !hasSel },
+    { label: 'Nudge Backward', shortcut: key('nudgeBack'), action: () => ed.nudgeTime(-1), disabled: !hasSel },
+    { label: 'Nudge Forward', shortcut: key('nudgeForward'), action: () => ed.nudgeTime(1), disabled: !hasSel },
   ];
 
   const dims = [0, 0.3, 0.5, 0.7, 0.8, 1];
   const view: Item[] = [
-    { label: 'Compose', shortcut: 'F1', action: () => ed.setScreen('compose'), checked: ed.screen === 'compose' },
-    { label: 'Design', shortcut: 'F2', action: () => ed.setScreen('design'), checked: ed.screen === 'design' },
-    { label: 'Timing', shortcut: 'F3', action: () => ed.setScreen('timing'), checked: ed.screen === 'timing' },
-    { label: 'Song Setup...', shortcut: 'F4', action: () => ed.openDialog('setup') },
-    { label: 'Timing Setup...', shortcut: 'F6', action: () => ed.openDialog('timingPoints') },
+    { label: 'Compose', shortcut: key('compose'), action: () => ed.setScreen('compose'), checked: ed.screen === 'compose' },
+    { label: 'Design', shortcut: key('design'), action: () => ed.setScreen('design'), checked: ed.screen === 'design' },
+    { label: 'Timing', shortcut: key('timing'), action: () => ed.setScreen('timing'), checked: ed.screen === 'timing' },
+    { label: 'Song Setup...', shortcut: key('setup'), action: () => ed.openDialog('setup') },
+    { label: 'Timing Setup...', shortcut: key('timingSetup'), action: () => ed.openDialog('timingPoints') },
     sep,
     { label: 'Volume...', action: () => ed.openDialog('preferences') },
     {
       label: 'Grid Level',
-      shortcut: 'G',
+      shortcut: key('gridCycle'),
       disabled: mode !== 0,
-      submenu: GRID_SIZES.map((g, i) => ({ label: ['Tiny', 'Small', 'Medium', 'Large'][i], shortcut: `Ctrl+${i + 1}`, checked: ed.gridSize === g, action: () => ed.setGridSize(g) })),
+      submenu: GRID_SIZES.map((g, i) => ({ label: ['Tiny', 'Small', 'Medium', 'Large'][i], shortcut: key(`grid${i + 1}`), checked: ed.gridSize === g, action: () => ed.setGridSize(g) })),
     },
+    { label: 'Show Grid', checked: p.showGrid, disabled: mode !== 0, action: () => ed.setPrefs({ showGrid: !p.showGrid }) },
     { label: 'Show Video/Storyboard', checked: p.showStoryboard && p.showVideo, action: () => { const on = !(p.showStoryboard && p.showVideo); ed.setPrefs({ showStoryboard: on, showVideo: on }); } },
     { label: 'Dim Background', submenu: dims.map((d) => ({ label: pct(d), checked: Math.abs(p.backgroundDim - d) < 0.01, action: () => ed.setPrefs({ backgroundDim: d }) })) },
     sep,
@@ -191,10 +194,10 @@ export function MenuBar() {
   const compose: Item[] = [
     { label: 'Snap Divisor', submenu: DIVISORS.map((d) => ({ label: `1/${d}`, checked: ed.beatDivisor === d, action: () => ed.setBeatDivisor(d) })) },
     { label: 'Audio Rate', submenu: [0.25, 0.5, 0.75, 1].map((r) => ({ label: pct(r), checked: Math.abs(music.rate - r) < 0.001, action: () => ed.setPlaybackRate(r) })) },
-    { label: 'Grid Snapping', shortcut: 'T', checked: ed.gridSnap, disabled: mode !== 0, action: () => { ed.gridSnap = !ed.gridSnap; ed.emit(); } },
+    { label: 'Grid Snapping', shortcut: key('gridSnap'), checked: ed.gridSnap, disabled: mode !== 0, action: () => { ed.gridSnap = !ed.gridSnap; ed.emit(); } },
     sep,
-    { label: 'Create Polygon Circles...', shortcut: 'Ctrl+Shift+D', action: () => ed.openDialog('polygon'), disabled: mode !== 0 },
-    { label: 'Convert slider to stream...', shortcut: 'Ctrl+Shift+F', action: () => ed.openDialog('stream'), disabled: !ed.selectedObjects.some((o) => o.kind === 'slider') },
+    { label: 'Create Polygon Circles...', shortcut: key('polygon'), action: () => ed.openDialog('polygon'), disabled: mode !== 0 },
+    { label: 'Convert slider to stream...', shortcut: key('stream'), action: () => ed.openDialog('stream'), disabled: !ed.selectedObjects.some((o) => o.kind === 'slider') },
   ];
 
   const designMenu: Item[] = [
@@ -213,12 +216,12 @@ export function MenuBar() {
     { label: 'Time Signature', disabled: !red, submenu: [4, 3].map((m) => ({ label: `${m}/4`, checked: currentMeter() === m, action: () => ed.setTimeSignature(m) })) },
     { label: 'Metronome Clicks', checked: ed.metronome, action: () => { ed.metronome = !ed.metronome; ed.emit(); } },
     sep,
-    { label: 'Add Timing Section', shortcut: 'Ctrl+P', action: () => ed.addTimingSection(true) },
-    { label: 'Add Inheriting Section', shortcut: 'Ctrl+Shift+P', action: () => ed.addTimingSection(false) },
-    { label: 'Delete Timing Section', shortcut: 'Ctrl+I', action: () => ed.deleteTimingSection() },
+    { label: 'Add Timing Section', shortcut: key('addTiming'), action: () => ed.addTimingSection(true) },
+    { label: 'Add Inheriting Section', shortcut: key('addInherited'), action: () => ed.addTimingSection(false) },
+    { label: 'Delete Timing Section', shortcut: key('deleteTiming'), action: () => ed.deleteTimingSection() },
     { label: 'Resnap Current Section', action: () => ed.resnapCurrentSection() },
     sep,
-    { label: 'Timing Setup...', shortcut: 'F6', action: () => ed.openDialog('timingPoints') },
+    { label: 'Timing Setup...', shortcut: key('timingSetup'), action: () => ed.openDialog('timingPoints') },
     sep,
     { label: 'Resnap All Notes', action: () => ed.resnapObjects(true) },
     {
@@ -234,8 +237,8 @@ export function MenuBar() {
     sep,
     { label: 'Set Current Position as Preview Point', action: () => ed.commit((b) => (b.general.previewTime = Math.round(music.time))) },
     sep,
-    { label: 'Add Bookmark', shortcut: 'Ctrl+B', action: () => ed.addBookmark() },
-    { label: 'Remove Bookmark', shortcut: 'Ctrl+Shift+B', action: () => ed.removeBookmark() },
+    { label: 'Add Bookmark', shortcut: key('addBookmark'), action: () => ed.addBookmark() },
+    { label: 'Remove Bookmark', shortcut: key('removeBookmark'), action: () => ed.removeBookmark() },
   ];
 
   const open = (url: string) => window.open(url, '_blank', 'noopener');
@@ -248,7 +251,7 @@ export function MenuBar() {
           ...(cloud.driveConfigured
             ? cloud.syncing
               ? [
-                  { label: 'Save and sync to Google Drive', shortcut: 'Ctrl+S', action: () => void ed.save() },
+                  { label: 'Save and sync to Google Drive', shortcut: key('save'), action: () => void ed.save() },
                   { label: 'Stop syncing with Google Drive', action: () => void cloud.disconnectDrive() },
                 ]
               : [{ label: 'Sync my maps with Google Drive...', action: async () => { if (await ed.resolveUnsaved()) cloud.connectDrive(); } }]

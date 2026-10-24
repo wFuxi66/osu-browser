@@ -2,7 +2,7 @@
 // (drive.ts). Published sets are synced as lite packages (see syncpack.ts) and rebuilt from the mirrors.
 import { drive, type DriveProject } from './drive';
 import { importOsz, oszFilename, type Project } from './project';
-import { listProjectsLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal } from './storage';
+import { listProjectsLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal, type Prefs } from './storage';
 import { buildSyncPackage, originOf, restoreSyncPackage, setIdOf } from './syncpack';
 
 /** How long to wait before asking the mirrors again for a set they didn't have. */
@@ -150,6 +150,20 @@ class Cloud {
     return { project: p, warnings };
   }
 
+  /**
+   * Newest-wins sync of the settings file in Drive. Returns the settings to apply when Drive's copy is newer;
+   * uploads ours when it is newer.
+   */
+  async syncSettings(local: Prefs): Promise<Partial<Prefs> | null> {
+    if (!this.syncing || !local.syncSettings) return null;
+    const remote = await drive.getSettings();
+    if (remote && remote.updatedAt > local.updatedAt && remote.data && typeof remote.data === 'object') {
+      return { ...syncedPrefs(remote.data as Prefs), updatedAt: remote.updatedAt };
+    }
+    if (remote ? local.updatedAt > remote.updatedAt : local.updatedAt > 0) await drive.putSettings(syncedPrefs(local), local.updatedAt);
+    return null;
+  }
+
   remove(id: string): Promise<void> {
     return drive.remove(id);
   }
@@ -196,10 +210,11 @@ class Cloud {
 
   /**
    * Fetch a published beatmapset (.osz) by id. Downloads straight from public mirrors that allow CORS,
-   * then falls back to the standalone server's mirror proxy (not available on the Vercel deployment).
+   * then falls back to the standalone server's mirror proxy (not available on the Vercel deployment). Without
+   * video, osu.direct leaves the set's video out; the fallbacks always include it.
    */
-  async fetchBeatmapset(setId: number, onProgress?: (fraction: number) => void): Promise<ArrayBuffer> {
-    for (const url of [...BROWSER_MIRRORS.map((m) => m(setId)), `/api/mirror/${setId}`]) {
+  async fetchBeatmapset(setId: number, onProgress?: (fraction: number) => void, video = true): Promise<ArrayBuffer> {
+    for (const url of [...BROWSER_MIRRORS.map((m) => m(setId, video)), `/api/mirror/${setId}`]) {
       try {
         const r = await fetch(url, { signal: AbortSignal.timeout(120_000) });
         if (!r.ok) continue;
@@ -214,7 +229,10 @@ class Cloud {
 }
 
 // Mirrors that send Access-Control-Allow-Origin (checked 2026-10-24; catboy.best doesn't, so it's proxy-only).
-const BROWSER_MIRRORS = [(id: number) => `https://osu.direct/api/d/${id}`, (id: number) => `https://api.nerinyan.moe/d/${id}`];
+const BROWSER_MIRRORS = [
+  (id: number, video: boolean) => `https://osu.direct/api/d/${id}${video ? '' : '?noVideo=1'}`,
+  (id: number) => `https://api.nerinyan.moe/d/${id}`,
+];
 
 /** Reads a response body, reporting progress when the size is known. */
 async function readWithProgress(r: Response, onProgress?: (fraction: number) => void): Promise<ArrayBuffer> {
@@ -232,3 +250,9 @@ async function readWithProgress(r: Response, onProgress?: (fraction: number) => 
 }
 
 export const cloud = new Cloud();
+
+/** The settings that follow the user between computers: not the audio offset (it depends on the device) or imported skins (they stay in each browser). */
+export function syncedPrefs(p: Partial<Prefs>): Partial<Prefs> {
+  const { audioOffset: _offset, syncSettings: _sync, updatedAt: _at, skin, ...rest } = p;
+  return skin === 'default' || skin === 'drawn' ? { ...rest, skin } : rest;
+}

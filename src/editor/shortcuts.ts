@@ -5,6 +5,7 @@ import { editor, maniaColumn, maniaX, type Tool } from './store';
 import { design } from './storyboard/design';
 import { promptOpen } from '../ui/prompt';
 import { closeMenus } from './ui/menuState';
+import { actionFor, comboOf } from './keybinds';
 
 export const DIVISORS = [1, 2, 3, 4, 6, 8, 12, 16];
 
@@ -53,31 +54,131 @@ export function layoutCode(e: KeyboardEvent): string {
   return e.code;
 }
 
+const SCREEN_ACTIONS = new Set(['compose', 'design', 'timing', 'setup', 'test', 'timingSetup']);
+
+/** What each bindable action does in the editor (see keybinds.ts for their keys). */
+const RUN: Record<string, () => void> = {
+  compose: () => editor.setScreen('compose'),
+  design: () => editor.setScreen('design'),
+  timing: () => editor.setScreen('timing'),
+  setup: () => editor.openDialog('setup'),
+  test: () => { music.pause(); editor.openDialog('test'); },
+  timingSetup: () => editor.openDialog('timingPoints'),
+
+  save: () => void editor.save(),
+  revert: () => editor.revertToSaved(),
+  revertFull: () => void editor.revertToSavedFull(),
+  openDifficulty: () => editor.openDialog('difficulties'),
+  clearAll: () => void editor.clearAllNotes(),
+  aimod: () => editor.openDialog('aimod'),
+
+  play: () => { if (music.playing) music.seek(0); void music.play(); },
+  pause: () => music.toggle(),
+  seekFirst: () => editor.seekFirstObject(),
+  seekLast: () => editor.seekLastObject(),
+  seekBack: () => editor.seekTick(-1),
+  seekForward: () => editor.seekTick(1),
+  seekBack4: () => editor.seekTick(-1, 4),
+  seekForward4: () => editor.seekTick(1, 4),
+  nextTimingPoint: () => editor.seekTimingPoint(1),
+  prevTimingPoint: () => editor.seekTimingPoint(-1),
+  faster: () => {
+    if (!hasSel()) editor.setPlaybackRate(music.rate + 0.25);
+    else if (isMania()) editor.nudgeTime(1);
+    else editor.nudgePosition(0, -1);
+  },
+  slower: () => {
+    if (!hasSel()) editor.setPlaybackRate(music.rate - 0.25);
+    else if (isMania()) editor.nudgeTime(-1);
+    else editor.nudgePosition(0, 1);
+  },
+  fasterFine: () => editor.setPlaybackRate(music.rate + 0.05),
+  slowerFine: () => editor.setPlaybackRate(music.rate - 0.05),
+
+  undo: () => editor.undo(),
+  redo: () => editor.redo(),
+  selectAll: () => editor.selectAll(),
+  cut: () => editor.copy(true),
+  copy: () => editor.copy(),
+  paste: () => editor.paste(),
+  clone: () => editor.cloneSelection(),
+  delete: () => editor.deleteSelection(),
+  nudgeLeft: () => {
+    if (!hasSel()) editor.seekBookmark(-1);
+    else if (isMania()) maniaShiftColumns(-1);
+    else editor.nudgePosition(-1, 0);
+  },
+  nudgeRight: () => {
+    if (!hasSel()) editor.seekBookmark(1);
+    else if (isMania()) maniaShiftColumns(1);
+    else editor.nudgePosition(1, 0);
+  },
+  nudgeBack: () => editor.nudgeTime(-1),
+  nudgeForward: () => editor.nudgeTime(1),
+  flipH: () => editor.flip(true),
+  flipV: () => editor.flip(false),
+  rotateCw: () => editor.rotate(90, 'playfield'),
+  rotateCcw: () => editor.rotate(-90, 'playfield'),
+  reverse: () => editor.reverseSelection(),
+  rotateBy: () => { if (hasSel()) editor.openDialog('rotate'); },
+  scaleBy: () => { if (hasSel()) editor.openDialog('scale'); },
+  polygon: () => editor.openDialog('polygon'),
+  stream: () => { if (hasSel()) editor.openDialog('stream'); },
+
+  toolSelect: () => setTool(1),
+  toolCircle: () => setTool(2),
+  toolSlider: () => setTool(3),
+  toolSpinner: () => setTool(4),
+  finishPlacing: () => activePlayfield.current?.commitPlacement?.(),
+  gridSnap: () => { editor.gridSnap = !editor.gridSnap; editor.emit(); },
+  distanceSnap: () => { editor.distanceSnap = !editor.distanceSnap; editor.emit(); },
+  gridCycle: () => editor.cycleGridSize(),
+  grid1: () => editor.setGridSize(4),
+  grid2: () => editor.setGridSize(8),
+  grid3: () => editor.setGridSize(16),
+  grid4: () => editor.setGridSize(32),
+  lock: () => { editor.locked = !editor.locked; editor.emit(); },
+  ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`divisor${n}`, () => editor.setBeatDivisor(n)])),
+
+  newCombo: () => editor.toggleNewCombo(),
+  whistle: () => editor.toggleAddition(2),
+  finish: () => editor.toggleAddition(4),
+  clap: () => editor.toggleAddition(8),
+  sampleAuto: () => editor.setSampleSet('normal', 0),
+  sampleNormal: () => editor.setSampleSet('normal', 1),
+  sampleSoft: () => editor.setSampleSet('normal', 2),
+  sampleDrum: () => editor.setSampleSet('normal', 3),
+  additionAuto: () => editor.setSampleSet('addition', 0),
+  additionNormal: () => editor.setSampleSet('addition', 1),
+  additionSoft: () => editor.setSampleSet('addition', 2),
+  additionDrum: () => editor.setSampleSet('addition', 3),
+
+  addTiming: () => editor.addTimingSection(true),
+  addInherited: () => editor.addTimingSection(false),
+  deleteTiming: () => editor.deleteTimingSection(),
+  addBookmark: () => editor.addBookmark(),
+  removeBookmark: () => editor.removeBookmark(),
+};
+
+const hasSel = () => editor.selection.size > 0;
+const isMania = () => editor.bm.general.mode === 3;
+
 export function handleKeyDown(e: KeyboardEvent) {
   if (!editor.hasProject || isTyping(e) || promptOpen()) return;
   if (editor.dialog && e.key !== 'Escape') return;
-  const ctrl = e.ctrlKey || e.metaKey;
-  const shift = e.shiftKey;
-  const alt = e.altKey;
-  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   const code = layoutCode(e);
-  let handled = true;
+  const combo = comboOf(e, code);
+  const action = combo ? actionFor(combo, editor.prefs.keybinds) : undefined;
 
-  // Function keys
-  switch (key) {
-    case 'F1': editor.setScreen('compose'); break;
-    case 'F2': editor.setScreen('design'); break;
-    case 'F3': editor.setScreen('timing'); break;
-    case 'F4': editor.openDialog('setup'); break;
-    case 'F5': music.pause(); editor.openDialog('test'); break;
-    case 'F6': editor.openDialog('timingPoints'); break;
-    default: handled = false;
+  // The screen keys work everywhere, before Design's own keys.
+  if (action && SCREEN_ACTIONS.has(action)) {
+    e.preventDefault();
+    RUN[action]();
+    return;
   }
-  if (handled) return e.preventDefault();
-  handled = true;
 
   // Esc cancels whatever is in progress first; otherwise it leaves the editor, like stable.
-  if (key === 'Escape') {
+  if (e.key === 'Escape') {
     e.preventDefault();
     if (editor.dialog) editor.openDialog(null);
     else if (closeMenus()) return;
@@ -87,148 +188,14 @@ export function handleKeyDown(e: KeyboardEvent) {
     return;
   }
 
-  if (editor.screen === 'design' && handleDesignKey(code, ctrl, shift)) return e.preventDefault();
+  if (editor.screen === 'design' && handleDesignKey(code, e.ctrlKey || e.metaKey, e.shiftKey)) return e.preventDefault();
+  if (editor.screen === 'timing' && code === 'KeyT' && combo === 'KeyT') return; // tap tempo is handled by the timing screen
 
-  const hasSel = editor.selection.size > 0;
-  const isMania = editor.bm.general.mode === 3;
-
-  if (ctrl) {
-    if (shift) {
-      switch (code) {
-        case 'KeyB': editor.removeBookmark(); break;
-        case 'KeyL': void editor.revertToSavedFull(); break;
-        case 'KeyP': editor.addTimingSection(false); break;
-        case 'Comma': editor.rotate(-90, 'playfield'); break;
-        case 'Period': editor.rotate(90, 'playfield'); break;
-        case 'KeyR': if (hasSel) editor.openDialog('rotate'); break;
-        case 'KeyS': if (hasSel) editor.openDialog('scale'); break;
-        case 'KeyD': editor.openDialog('polygon'); break;
-        case 'KeyF': if (hasSel) editor.openDialog('stream'); break;
-        case 'KeyA': editor.openDialog('aimod'); break;
-        case 'KeyZ': editor.redo(); break;
-        case 'ArrowUp': editor.setPlaybackRate(music.rate + 0.05); break;
-        case 'ArrowDown': editor.setPlaybackRate(music.rate - 0.05); break;
-        default: handled = false;
-      }
-    } else {
-      switch (code) {
-        case 'KeyZ': editor.undo(); break;
-        case 'KeyY': editor.redo(); break;
-        case 'KeyA': editor.selectAll(); break;
-        case 'KeyX': editor.copy(true); break;
-        case 'KeyC': editor.copy(); break;
-        case 'KeyV': editor.paste(); break;
-        case 'KeyD': editor.cloneSelection(); break;
-        case 'KeyS': void editor.save(); break;
-        case 'KeyB': editor.addBookmark(); break;
-        case 'KeyL': editor.revertToSaved(); break;
-        case 'KeyO': editor.openDialog('difficulties'); break;
-        case 'KeyN': void editor.clearAllNotes(); break;
-        case 'KeyP': editor.addTimingSection(true); break;
-        case 'KeyI': editor.deleteTimingSection(); break;
-        case 'KeyH': editor.flip(true); break;
-        case 'KeyJ': editor.flip(false); break;
-        case 'KeyG': editor.reverseSelection(); break;
-        case 'Comma': editor.rotate(-90, 'playfield'); break;
-        case 'Period': editor.rotate(90, 'playfield'); break;
-        case 'KeyQ': editor.setSampleSet('addition', 0); break;
-        case 'KeyW': editor.setSampleSet('addition', 1); break;
-        case 'KeyE': editor.setSampleSet('addition', 2); break;
-        case 'KeyR': editor.setSampleSet('addition', 3); break;
-        case 'Digit1': editor.setGridSize(4); break;
-        case 'Digit2': editor.setGridSize(8); break;
-        case 'Digit3': editor.setGridSize(16); break;
-        case 'Digit4': editor.setGridSize(32); break;
-        case 'ArrowLeft':
-          if (hasSel) isMania ? maniaShiftColumns(-1) : editor.nudgePosition(-1, 0);
-          else editor.seekBookmark(-1);
-          break;
-        case 'ArrowRight':
-          if (hasSel) isMania ? maniaShiftColumns(1) : editor.nudgePosition(1, 0);
-          else editor.seekBookmark(1);
-          break;
-        case 'ArrowUp':
-          if (hasSel) isMania ? editor.nudgeTime(1) : editor.nudgePosition(0, -1);
-          else editor.setPlaybackRate(music.rate + 0.25);
-          break;
-        case 'ArrowDown':
-          if (hasSel) isMania ? editor.nudgeTime(-1) : editor.nudgePosition(0, 1);
-          else editor.setPlaybackRate(music.rate - 0.25);
-          break;
-        default: handled = false;
-      }
-    }
-    if (handled) e.preventDefault();
-    return;
+  const run = action ? RUN[action] : undefined;
+  if (run) {
+    e.preventDefault();
+    run();
   }
-
-  // Alt+Q/W/E/R mirror Ctrl+Q/W/E/R, since browsers reserve Ctrl+W (close tab).
-  if (alt && !shift) {
-    switch (code) {
-      case 'KeyQ': editor.setSampleSet('addition', 0); break;
-      case 'KeyW': editor.setSampleSet('addition', 1); break;
-      case 'KeyE': editor.setSampleSet('addition', 2); break;
-      case 'KeyR': editor.setSampleSet('addition', 3); break;
-      default: handled = false;
-    }
-    if (handled) e.preventDefault();
-    return;
-  }
-
-  if (shift) {
-    if (/^Digit[1-9]$/.test(code)) {
-      editor.setBeatDivisor(Number(code.slice(5)));
-      return e.preventDefault();
-    }
-    switch (code) {
-      case 'KeyQ': editor.setSampleSet('normal', 0); break;
-      case 'KeyW': editor.setSampleSet('normal', 1); break;
-      case 'KeyE': editor.setSampleSet('normal', 2); break;
-      case 'KeyR': editor.setSampleSet('normal', 3); break;
-      case 'ArrowLeft': editor.seekTick(-1, 4); break;
-      case 'ArrowRight': editor.seekTick(1, 4); break;
-      default: handled = false;
-    }
-    if (handled) e.preventDefault();
-    return;
-  }
-
-  if (editor.screen === 'timing' && code === 'KeyT') return; // tap tempo is handled by the timing screen
-
-  switch (code) {
-    case 'KeyZ': editor.seekFirstObject(); break;
-    case 'KeyX':
-      if (music.playing) music.seek(0);
-      void music.play();
-      break;
-    case 'KeyC':
-    case 'Space': music.toggle(); break;
-    case 'KeyV': editor.seekLastObject(); break;
-    case 'ArrowLeft': editor.seekTick(-1); break;
-    case 'ArrowRight': editor.seekTick(1); break;
-    case 'ArrowUp': editor.seekTimingPoint(1); break;
-    case 'ArrowDown': editor.seekTimingPoint(-1); break;
-    case 'Digit1': setTool(1); break;
-    case 'Digit2': setTool(2); break;
-    case 'Digit3': setTool(3); break;
-    case 'Digit4': setTool(4); break;
-    case 'KeyQ': editor.toggleNewCombo(); break;
-    case 'KeyW': editor.toggleAddition(2); break;
-    case 'KeyE': editor.toggleAddition(4); break;
-    case 'KeyR': editor.toggleAddition(8); break;
-    case 'KeyT': editor.gridSnap = !editor.gridSnap; editor.emit(); break;
-    case 'KeyY': editor.distanceSnap = !editor.distanceSnap; editor.emit(); break;
-    case 'KeyG': editor.cycleGridSize(); break;
-    case 'KeyL': editor.locked = !editor.locked; editor.emit(); break;
-    case 'KeyJ': editor.nudgeTime(-1); break;
-    case 'KeyK': editor.nudgeTime(1); break;
-    case 'Delete':
-    case 'Backspace': editor.deleteSelection(); break;
-    case 'Enter':
-    case 'NumpadEnter': activePlayfield.current?.commitPlacement?.(); break;
-    default: handled = false;
-  }
-  if (handled) e.preventDefault();
 }
 
 /** Design mode edits storyboard elements instead of hit objects. */

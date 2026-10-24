@@ -48,6 +48,31 @@ export interface Toast {
 const MAX_UNDO = 200;
 /** Set once the first-save Drive prompt has been shown in this browser. */
 const NUDGED_KEY = 'osu-web-editor:drive-nudged';
+/** Where each difficulty was left in the editor (difficulty id → ms), so reopening it picks up there, like stable. */
+const TIMES_KEY = 'osu-web-editor:editor-times';
+const MAX_TIMES = 300;
+
+function editorTimes(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(TIMES_KEY) ?? '{}') as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+function rememberEditorTime(diffId: string, ms: number) {
+  try {
+    const times = editorTimes();
+    delete times[diffId];
+    times[diffId] = Math.round(ms);
+    // Insertion order is recency: forget the oldest.
+    const ids = Object.keys(times);
+    for (const id of ids.slice(0, Math.max(0, ids.length - MAX_TIMES))) delete times[id];
+    localStorage.setItem(TIMES_KEY, JSON.stringify(times));
+  } catch {
+    /* storage unavailable */
+  }
+}
 export const PLAYFIELD_W = 512;
 export const PLAYFIELD_H = 384;
 export const GRID_SIZES = [4, 8, 16, 32];
@@ -86,6 +111,8 @@ class Editor {
   private dirtyBeforeChange = false;
   /** The map last open in the editor, so song select can return to it. */
   lastOpened: { projectId: string; diffId: string } | null = null;
+  /** Set when leaving the editor, so song select carries on playing the song from there instead of the preview point. */
+  returnTo: { projectId: string; time: number } | null = null;
 
   get bm(): Beatmap {
     return this.project!.difficulties[this.diffIndex].beatmap;
@@ -122,12 +149,30 @@ class Editor {
     }, kind === 'error' ? 6000 : 2500);
   }
 
-  setPrefs(p: Partial<Prefs>) {
-    this.prefs = { ...this.prefs, ...p };
+  /** Changes settings. Changes the user makes are stamped and synced through Google Drive a few seconds later. */
+  setPrefs(p: Partial<Prefs>, fromSync = false) {
+    const changed = !fromSync && Object.keys(p).length > 0;
+    this.prefs = { ...this.prefs, ...p, ...(changed ? { updatedAt: Date.now() } : {}) };
     savePrefs(this.prefs);
     this.applyAudioPrefs();
     void skins.use(this.prefs.skin);
     this.emit();
+    if (changed && cloud.syncing && this.prefs.syncSettings) {
+      window.clearTimeout(this.settingsTimer);
+      this.settingsTimer = window.setTimeout(() => void this.syncSettings(), 4000);
+    }
+  }
+
+  private settingsTimer = 0;
+
+  /** Pulls newer settings from Google Drive, or pushes ours. */
+  async syncSettings() {
+    try {
+      const remote = await cloud.syncSettings(this.prefs);
+      if (remote) this.setPrefs(remote, true);
+    } catch (e) {
+      console.warn('Settings sync failed', e);
+    }
   }
 
   /** Volumes (master × music/effect) and offset; song select's preview uses them too. */
@@ -155,6 +200,8 @@ class Editor {
     this.setPrefs({});
     const audio = findFile(p, this.bm.general.audioFilename);
     await music.load(audio ?? null, true);
+    const left = editorTimes()[p.difficulties[this.diffIndex].id];
+    if (left > 0 && (!music.duration || left < music.duration)) music.seek(left);
     void hitsounds.setCustomSamples(p.files, this.bm.general.audioFilename);
     this.emit();
     if (!audio) this.toast(`Audio file "${this.bm.general.audioFilename}" is missing from this beatmap.`, 'error');
@@ -162,8 +209,14 @@ class Editor {
 
   /** Leave the editor without saving (unsaved changes only live in memory, so they are dropped). */
   closeProject() {
+    const time = music.time;
     music.pause();
-    if (this.project) this.lastOpened = { projectId: this.project.id, diffId: this.project.difficulties[this.diffIndex].id };
+    if (this.project) {
+      const diffId = this.project.difficulties[this.diffIndex].id;
+      this.lastOpened = { projectId: this.project.id, diffId };
+      this.returnTo = { projectId: this.project.id, time };
+      rememberEditorTime(diffId, time);
+    }
     this.project = null;
     this.dialog = null;
     this.placing = null;
@@ -233,6 +286,7 @@ class Editor {
     if (!this.project || i === this.diffIndex) return;
     const t = music.time;
     const prevAudio = this.bm.general.audioFilename;
+    rememberEditorTime(this.project.difficulties[this.diffIndex].id, t);
     this.diffIndex = i;
     this.selection.clear();
     this.selectedEdge = null;
@@ -1161,6 +1215,11 @@ export function formatTimestamp(ms: number): string {
 }
 
 export const editor = new Editor();
+
+// Closing or reloading the tab mid-edit also remembers where the map was left.
+window.addEventListener('pagehide', () => {
+  if (editor.project) rememberEditorTime(editor.project.difficulties[editor.diffIndex].id, music.time);
+});
 editor.applyAudioPrefs();
 (window as unknown as { editor: Editor }).editor = editor;
 

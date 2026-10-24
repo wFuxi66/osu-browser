@@ -53,11 +53,11 @@ function fillSetId(p: Project, setId: number) {
 }
 
 /** Download a published set by link or id and store it. */
-export async function projectFromLink(link: string, onProgress?: (fraction: number) => void): Promise<Project> {
+export async function projectFromLink(link: string, onProgress?: (fraction: number) => void, video = true): Promise<Project> {
   const m = /(?:beatmapsets\/|^)(\d+)/.exec(link.trim());
   if (!m) throw new Error('Paste a beatmapset link like https://osu.ppy.sh/beatmapsets/123456 or just the set id.');
   const setId = Number(m[1]);
-  const data = await cloud.fetchBeatmapset(setId, onProgress);
+  const data = await cloud.fetchBeatmapset(setId, onProgress, video);
   const p = await importOsz(data);
   fillSetId(p, setId);
   // These are exactly the mirror's files, so cloud sync can leave them out without asking the mirror again.

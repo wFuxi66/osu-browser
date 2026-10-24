@@ -21,6 +21,7 @@ import { SongProgress } from './SongProgress';
 import { Timeline } from './Timeline';
 import { TimingScreen, TimingTopRight } from './TimingScreen';
 import { StageBackground } from './StageBackground';
+import { shortcutOf } from '../keybinds';
 
 /** The stable editor layout: menu strip, then a full-window stage with the panels laid over the playfield. */
 export function EditorShell() {
@@ -380,7 +381,7 @@ function BottomBar() {
         <button onClick={() => void music.play()} title="Play (X)" className={music.playing ? 'lit' : ''}><PlayIcon /></button>
         <button onClick={() => music.pause()} title="Pause (C / Space)"><PauseIcon /></button>
         <button onClick={() => music.stop()} title="Stop"><StopIcon /></button>
-        <button className="ed-test" onClick={() => { music.pause(); ed.openDialog('test'); }} title="Test (F5)"><TestIcon /> Test</button>
+        <button className="ed-test" onClick={() => { music.pause(); ed.openDialog('test'); }} title={`Test (${shortcutOf('test', ed.prefs.keybinds)})`}><TestIcon /> Test</button>
       </div>
       <div className="ed-rate">
         <span className="ed-rate-label">Playback Rate</span>

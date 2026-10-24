@@ -5,10 +5,12 @@ import { comboColourIndex, hitWindows, sliderTickProgresses, stackedPosition } f
 import { objectEndTime, sliderSpanDuration } from '../../osu/timing';
 import type { HitObject, Vec2 } from '../../osu/types';
 import { comboColours, skins, sliderColours } from '../../skin/skin';
+import { comboOf, keysFor } from '../keybinds';
 import { onFrame } from '../playback';
 import { ManiaMode } from '../playfield/maniaMode';
 import { TaikoMode } from '../playfield/taikoMode';
 import { drawApproachCircle, drawFollowPoints, drawHitCircle, drawReverseArrow, drawSkinSpinner, drawSliderBall, drawSliderBody, drawTexture, toOsu, toScreen, type View } from '../render/draw';
+import { layoutCode } from '../shortcuts';
 import { editor, PLAYFIELD_H, PLAYFIELD_W } from '../store';
 import { drawBackground } from './Playfield';
 
@@ -314,25 +316,29 @@ export function TestPlay() {
       tryHit(music.time);
     };
     const release = () => (keysDown = Math.max(0, keysDown - 1));
+    // The hit keys (Z/X by default) count however they're pressed, with or without modifiers, like osu!.
+    const binds = editor.prefs.keybinds;
+    const hitKeys = new Set([...keysFor('hit1', binds), ...keysFor('hit2', binds)].map((k) => k.split('+').pop()));
+    const isHitKey = (e: KeyboardEvent) => hitKeys.has(layoutCode(e));
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
-      if (e.key === 'Escape' || e.key === 'F5') {
+      const combo = comboOf(e, layoutCode(e));
+      if (e.key === 'Escape' || (combo && keysFor('test', binds).includes(combo))) {
         e.preventDefault();
         e.stopPropagation();
         exit();
         return;
       }
-      if (['z', 'x', 'Z', 'X'].includes(e.key)) {
+      if (isHitKey(e)) {
         e.stopPropagation();
         press();
-      }
-      if (e.code === 'Space') {
+      } else if (e.code === 'Space') {
         e.preventDefault();
         e.stopPropagation();
         music.toggle();
       }
     };
-    const onKeyUp = (e: KeyboardEvent) => ['z', 'x', 'Z', 'X'].includes(e.key) && release();
+    const onKeyUp = (e: KeyboardEvent) => isHitKey(e) && release();
     const onDown = (e: PointerEvent) => {
       if (e.button === 0 || e.button === 2) press();
     };

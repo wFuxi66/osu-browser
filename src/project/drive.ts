@@ -39,6 +39,8 @@ async function driveError(r: Response): Promise<string> {
 class Drive {
   private token: { value: string; expires: number } | null = null;
   private folderId: string | null = null;
+  /** The settings file's id ('' when there is none yet), once looked up. */
+  private settingsId: string | null = null;
   /** Called when the server says Drive isn't connected (any more). */
   onDisconnected: (() => void) | null = null;
 
@@ -148,6 +150,41 @@ class Drive {
     if (!put.ok) throw new Error(await driveError(put));
   }
 
+  /** The synced settings file: when it was saved and its contents, or null if there isn't one yet. */
+  async getSettings(): Promise<{ updatedAt: number; data: unknown } | null> {
+    const [f] = await this.search<{ id: string; appProperties?: Record<string, string> }>(
+      `trashed=false and appProperties has { key='${APP_KEY}' and value='settings' }`,
+      'id,appProperties',
+    );
+    if (!f) return null;
+    this.settingsId = f.id;
+    const data = await (await this.call(`${API}/files/${encodeURIComponent(f.id)}?alt=media`)).json();
+    return { updatedAt: Number(f.appProperties?.updatedAt) || 0, data };
+  }
+
+  /** Creates or replaces the settings file (a small JSON, so a single multipart upload). */
+  async putSettings(data: unknown, updatedAt: number): Promise<void> {
+    if (this.settingsId === null) {
+      const [f] = await this.search<{ id: string }>(`trashed=false and appProperties has { key='${APP_KEY}' and value='settings' }`, 'id');
+      this.settingsId = f?.id ?? '';
+    }
+    const meta: Record<string, unknown> = {
+      name: 'settings.json',
+      description: 'Beatmap Web Editor settings (key bindings, volumes, display options), synced between your computers.',
+      mimeType: 'application/json',
+      appProperties: { [APP_KEY]: 'settings', updatedAt: String(updatedAt) },
+    };
+    if (!this.settingsId) meta.parents = [await this.folder()];
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+    form.append('file', new Blob([JSON.stringify(data)], { type: 'application/json' }));
+    const r = await this.call(
+      this.settingsId ? `${UPLOAD}/files/${encodeURIComponent(this.settingsId)}?uploadType=multipart&fields=id` : `${UPLOAD}/files?uploadType=multipart&fields=id`,
+      { method: this.settingsId ? 'PATCH' : 'POST', body: form },
+    );
+    this.settingsId = ((await r.json()) as { id: string }).id;
+  }
+
   async download(fileId: string): Promise<ArrayBuffer> {
     return (await this.call(`${API}/files/${encodeURIComponent(fileId)}?alt=media`)).arrayBuffer();
   }
@@ -166,6 +203,7 @@ class Drive {
   async disconnect(): Promise<void> {
     this.token = null;
     this.folderId = null;
+    this.settingsId = null;
     await fetch('/api/drive/logout', { method: 'POST', credentials: 'include' });
   }
 }

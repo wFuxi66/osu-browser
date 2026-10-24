@@ -4,6 +4,7 @@ import { parseOsu } from '../osu/parser';
 import { STAR_RATING_VERSION, starRating } from '../osu/stars';
 import { serializeBeatmap } from '../osu/serializer';
 import { checksumOf, projectTitle, type DifficultySource, type Project, type ProjectOrigin } from './project';
+import type { Keybinds } from '../editor/keybinds';
 
 const DB_NAME = 'osu-web-editor';
 const STORE = 'projects';
@@ -242,6 +243,20 @@ export interface Prefs {
   invertScroll: boolean;
   /** Skin id: 'default' (osu!default), 'drawn', or an imported skin's id. */
   skin: string;
+  /** Draw hit circles with the beatmap's own skin files (hitcircle.png etc. in the set) over the chosen skin. */
+  beatmapSkins: boolean;
+  /** Show the playfield grid (whether or not grid snap is on). */
+  showGrid: boolean;
+  /** Draw the timeline's circles with the skin, like stable (otherwise flat discs). */
+  skinnedTimeline: boolean;
+  /** osu!direct and My beatmaps download sets with their video. */
+  downloadVideo: boolean;
+  /** Key binding changes from the defaults (see editor/keybinds.ts). */
+  keybinds: Keybinds;
+  /** Sync these settings through Google Drive when it's connected. */
+  syncSettings: boolean;
+  /** When the settings last changed (ms), for newest-wins sync. */
+  updatedAt: number;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -259,6 +274,13 @@ export const DEFAULT_PREFS: Prefs = {
   creatorName: '',
   invertScroll: false,
   skin: 'default',
+  showGrid: true,
+  beatmapSkins: false,
+  skinnedTimeline: true,
+  downloadVideo: true,
+  keybinds: {},
+  syncSettings: true,
+  updatedAt: 0,
 };
 
 export function loadPrefs(): Prefs {

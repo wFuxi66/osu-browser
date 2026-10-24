@@ -45,7 +45,8 @@ export interface DifficultySettings {
 
 export interface ControlPoints {
   timing: { time: number; beatLength: number }[];
-  difficulty: { time: number; sliderVelocity: number; generateTicks: boolean }[];
+  /** `speed` is the raw multiplier (taiko and mania clamp it differently). */
+  difficulty: { time: number; speed: number; sliderVelocity: number; generateTicks: boolean }[];
 }
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
@@ -82,7 +83,7 @@ export function controlPoints(bm: Beatmap): ControlPoints {
   for (const tp of bm.timingPoints) {
     const time = tp.time + offset;
     const speed = tp.beatLength < 0 ? 100 / -tp.beatLength : 1;
-    const dp = { time, sliderVelocity: clamp(speed, 0.1, 10), generateTicks: !Number.isNaN(tp.beatLength) };
+    const dp = { time, speed, sliderVelocity: clamp(speed, 0.1, 10), generateTicks: !Number.isNaN(tp.beatLength) };
     if (tp.uninherited) {
       const last = timing[timing.length - 1];
       if (!last || last.time !== time) timing.push({ time, beatLength: clamp(tp.beatLength, 6, 60000) });
@@ -95,7 +96,7 @@ export function controlPoints(bm: Beatmap): ControlPoints {
   return { timing, difficulty };
 }
 
-function lastAtOrBefore<T extends { time: number }>(list: T[], time: number): T | null {
+export function lastAtOrBefore<T extends { time: number }>(list: T[], time: number): T | null {
   let lo = 0;
   let hi = list.length - 1;
   let found = -1;
@@ -114,7 +115,7 @@ export function timingPointAt(cp: ControlPoints, time: number) {
 }
 
 export function difficultyPointAt(cp: ControlPoints, time: number) {
-  return lastAtOrBefore(cp.difficulty, time) ?? { time: 0, sliderVelocity: 1, generateTicks: true };
+  return lastAtOrBefore(cp.difficulty, time) ?? { time: 0, speed: 1, sliderVelocity: 1, generateTicks: true };
 }
 
 /** LegacyRulesetExtensions.GetPrecisionAdjustedBeatLength. */
@@ -192,7 +193,12 @@ export interface OsuBeatmap {
 
 /** CalculateScaleFromCircleSize(cs, applyFudge: true). */
 export function circleScale(cs: number): number {
-  return f32(f32(f32(1 - f32(0.7) * ((cs - 5) / 5)) / 2) * f32(1.00041));
+  return f32(circleScaleNoFudge(cs) * f32(1.00041));
+}
+
+/** CalculateScaleFromCircleSize(cs) without osu!'s gamefield rounding allowance (used by catch). */
+export function circleScaleNoFudge(cs: number): number {
+  return f32(f32(1 - f32(0.7) * ((cs - 5) / 5)) / 2);
 }
 
 export function convertOsu(bm: Beatmap): OsuBeatmap {

@@ -56,6 +56,14 @@ describe('starRating', () => {
     expect(rating(0, osuObjects(), { CircleSize: 6 })!).toBeGreaterThan(rating(0, osuObjects())!);
   });
 
+  it('rates generated taiko, catch and mania maps', () => {
+    const taiko = Array.from({ length: 96 }, (_, i) => `256,192,${1000 + i * 83},1,${i % 3 === 0 ? 2 : 0},0:0:0:0:`);
+    const fruits = Array.from({ length: 64 }, (_, i) => `${i % 2 ? 64 : 448},192,${1000 + i * 166},1,0,0:0:0:0:`);
+    const mania = Array.from({ length: 128 }, (_, i) => `${64 + (i % 4) * 128},192,${1000 + i * 83},${i % 8 === 0 ? 128 : 1},0,${i % 8 === 0 ? `${1300 + i * 83}:` : ''}0:0:0:0:`);
+    const values = [rating(1, taiko), rating(2, fruits), rating(3, mania, { CircleSize: 4 })];
+    expect(values.map((v) => Number(v!.toFixed(4)))).toEqual([4.3966, 4.9538, 2.7319]);
+  });
+
   it('uses OD as AR in files without an ApproachRate line', () => {
     const withAr = parseOsu(osuFile(0, osuObjects(), { OverallDifficulty: 7, ApproachRate: 7 }, 6));
     const text = osuFile(0, osuObjects(), { OverallDifficulty: 7 }, 6).replace(/^ApproachRate:.*\n/m, '');

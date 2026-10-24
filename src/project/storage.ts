@@ -1,7 +1,7 @@
 // Local persistence of projects in IndexedDB, so WIP maps survive reloads without an account.
 import { beatmapInfo, type BeatmapInfo } from '../osu/info';
 import { parseOsu } from '../osu/parser';
-import { starRating } from '../osu/stars';
+import { STAR_RATING_VERSION, starRating } from '../osu/stars';
 import { serializeBeatmap } from '../osu/serializer';
 import { projectTitle, type Project } from './project';
 
@@ -14,9 +14,22 @@ interface StoredProject {
   createdAt: number;
   updatedAt: number;
   files: { name: string; blob: Blob }[];
-  difficulties: { id: string; osu: string }[];
+  difficulties: StoredDifficulty[];
   /** Last time this project was successfully uploaded to the cloud (0 = never). */
   syncedAt: number;
+}
+
+interface StoredDifficulty {
+  id: string;
+  osu: string;
+  /** Star rating cached at save time, so song select doesn't recalculate every map on each visit. */
+  stars?: { version: string; value: number | null };
+}
+
+/** The cached star rating, or a fresh one (with whether it had to be calculated). */
+function storedStars(d: StoredDifficulty, bm: ReturnType<typeof parseOsu>): { value: number | null; fresh: boolean } {
+  if (d.stars?.version === STAR_RATING_VERSION) return { value: d.stars.value, fresh: false };
+  return { value: starRating(bm), fresh: true };
 }
 
 export interface DifficultySummary extends BeatmapInfo {
@@ -79,7 +92,11 @@ export async function saveProjectLocal(p: Project, syncedAt?: number): Promise<v
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     files: [...p.files].map(([name, blob]) => ({ name, blob })),
-    difficulties: p.difficulties.map((d) => ({ id: d.id, osu: serializeBeatmap(d.beatmap) })),
+    difficulties: p.difficulties.map((d) => {
+      const osu = serializeBeatmap(d.beatmap);
+      const prev = existing?.difficulties.find((e) => e.id === d.id && e.osu === osu);
+      return { id: d.id, osu, stars: { version: STAR_RATING_VERSION, value: storedStars(prev ?? { id: d.id, osu }, parseOsu(osu)).value } };
+    }),
     syncedAt: syncedAt ?? existing?.syncedAt ?? 0,
   };
   await tx('readwrite', (s) => s.put(record));
@@ -106,11 +123,22 @@ export async function loadProjectLocal(id: string): Promise<Project | null> {
 
 const summaryCache = new Map<string, { updatedAt: number; summary: ProjectSummary }>();
 
-function summarize(r: StoredProject): ProjectSummary {
+function summarize(r: StoredProject, backfill: StoredProject[]): ProjectSummary {
   const cached = summaryCache.get(r.id);
   if (cached && cached.updatedAt === r.updatedAt) return { ...cached.summary, syncedAt: r.syncedAt };
-  const maps = r.difficulties.map((d) => ({ id: d.id, bm: parseOsu(d.osu) }));
-  maps.sort((a, b) => a.bm.general.mode - b.bm.general.mode || starsOrOd(a.bm) - starsOrOd(b.bm));
+  let fresh = false;
+  const maps = r.difficulties.map((d) => {
+    const bm = parseOsu(d.osu);
+    const stars = storedStars(d, bm);
+    if (stars.fresh) {
+      fresh = true;
+      d.stars = { version: STAR_RATING_VERSION, value: stars.value };
+    }
+    return { id: d.id, bm, stars: stars.value };
+  });
+  if (fresh) backfill.push(r);
+  const order = (m: (typeof maps)[number]) => m.stars ?? m.bm.difficulty.overallDifficulty;
+  maps.sort((a, b) => a.bm.general.mode - b.bm.general.mode || order(a) - order(b));
   const m = maps[0]?.bm.metadata;
   const findBlob = (name: string | undefined) => {
     if (!name) return null;
@@ -132,7 +160,7 @@ function summarize(r: StoredProject): ProjectSummary {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     syncedAt: r.syncedAt,
-    difficulties: maps.map(({ id, bm }) => ({ id, ...beatmapInfo(bm, starRating(bm)) })),
+    difficulties: maps.map(({ id, bm, stars }) => ({ id, ...beatmapInfo(bm, stars) })),
     background: findBlob(maps.find((x) => x.bm.events.background)?.bm.events.background?.filename),
     audio: findBlob(first?.general.audioFilename),
   };
@@ -140,13 +168,31 @@ function summarize(r: StoredProject): ProjectSummary {
   return summary;
 }
 
-function starsOrOd(bm: ReturnType<typeof parseOsu>): number {
-  return starRating(bm) ?? bm.difficulty.overallDifficulty;
-}
-
 export async function listProjectsLocal(): Promise<ProjectSummary[]> {
   const all = await tx<StoredProject[]>('readonly', (s) => s.getAll());
-  return all.map(summarize).sort((a, b) => b.updatedAt - a.updatedAt);
+  const backfill: StoredProject[] = [];
+  const list = all.map((r) => summarize(r, backfill)).sort((a, b) => b.updatedAt - a.updatedAt);
+  if (backfill.length) void backfillStars(backfill).catch(() => {});
+  return list;
+}
+
+/** Stores star ratings calculated for projects saved before they were cached (or by an older calculator). */
+async function backfillStars(records: StoredProject[]): Promise<void> {
+  const d = await db();
+  await new Promise<void>((resolve, reject) => {
+    const t = d.transaction(STORE, 'readwrite');
+    const store = t.objectStore(STORE);
+    for (const r of records) {
+      const req = store.get(r.id);
+      req.onsuccess = () => {
+        const current = req.result as StoredProject | undefined;
+        // Skip projects saved again in the meantime.
+        if (current && current.updatedAt === r.updatedAt) store.put({ ...current, difficulties: r.difficulties });
+      };
+    }
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+  });
 }
 
 /** Remove one difficulty from a stored set. Returns the updated project, or null if it was the last one. */

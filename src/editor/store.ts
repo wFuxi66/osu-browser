@@ -46,6 +46,8 @@ export interface Toast {
 }
 
 const MAX_UNDO = 200;
+/** Set once the first-save Drive prompt has been shown in this browser. */
+const NUDGED_KEY = 'osu-web-editor:drive-nudged';
 export const PLAYFIELD_W = 512;
 export const PLAYFIELD_H = 384;
 export const GRID_SIZES = [4, 8, 16, 32];
@@ -410,7 +412,35 @@ class Editor {
       }
     } else {
       this.toast('Saved.');
+      void this.firstSaveNudge();
     }
+  }
+
+  /**
+   * After the first save in a browser that doesn't sync: ask the browser not to evict our storage, and offer Google
+   * Drive sync once, since maps saved only here are lost if the site's data is cleared. Never asked again.
+   */
+  private async firstSaveNudge() {
+    try {
+      if (localStorage.getItem(NUDGED_KEY)) return;
+      localStorage.setItem(NUDGED_KEY, '1');
+    } catch {
+      return;
+    }
+    void navigator.storage?.persist?.().catch(() => false);
+    if (!cloud.available || !cloud.driveConfigured) return;
+    const r = await ask({
+      look: 'game',
+      title: 'Saved in this browser only',
+      message:
+        'Your maps are kept in this browser, so clearing its site data deletes them. Sync them with your Google Drive to keep them safe and open them on any computer (the editor can only see the files it creates there). You can also turn this on later in Options.',
+      buttons: [
+        { label: 'Sync with Google Drive', value: 'drive', tone: 'blue' },
+        { label: 'Not now', value: 'no', tone: 'grey' },
+      ],
+      cancelValue: 'no',
+    });
+    if (r === 'drive') cloud.connectDrive();
   }
 
   /** Ctrl+Shift+L: reload the whole set (all difficulties, storyboard and files) from the last save. */

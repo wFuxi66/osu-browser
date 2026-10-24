@@ -1,7 +1,7 @@
-// Client for the optional backend: osu! OAuth login and per-account project sync. Packages go straight
-// between the browser and Supabase Storage via signed URLs from the API; only small JSON passes through it.
-// Published sets are synced as lite packages (see syncpack.ts) and rebuilt from the mirrors on download.
-import { importOsz, projectTitle, type Project } from './project';
+// Client for the optional backend: osu! OAuth login, and cloud sync of beatmaps to the user's own Google Drive
+// (drive.ts). Published sets are synced as lite packages (see syncpack.ts) and rebuilt from the mirrors.
+import { drive, type DriveProject } from './drive';
+import { importOsz, oszFilename, type Project } from './project';
 import { listProjectsLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal } from './storage';
 import { buildSyncPackage, originOf, restoreSyncPackage, setIdOf } from './syncpack';
 
@@ -15,22 +15,25 @@ export interface OsuUser {
   countryCode: string;
 }
 
-export interface CloudProject {
-  id: string;
-  title: string;
-  updatedAt: number;
-  createdAt: number;
-  size: number;
-}
+export type CloudProject = DriveProject;
 
 class Cloud {
   user: OsuUser | null = null;
-  /** False when no backend is reachable (e.g. static hosting); login UI is hidden then. */
+  /** False when no backend is reachable (e.g. static hosting); login and sync UI is hidden then. */
   available = false;
   oauthConfigured = false;
-  /** Largest .osz the server accepts (the Supabase Free plan caps files at 50 MB). */
-  maxProjectBytes = 50 * 1024 * 1024;
+  driveConfigured = false;
+  driveConnected = false;
+  /** How the last Google Drive sign-in went (from the redirect back), for song select to report once. */
+  driveResult: string | null = null;
   private listeners = new Set<() => void>();
+
+  constructor() {
+    drive.onDisconnected = () => {
+      this.driveConnected = false;
+      this.emit();
+    };
+  }
 
   onChange(l: () => void) {
     this.listeners.add(l);
@@ -41,24 +44,41 @@ class Cloud {
     for (const l of this.listeners) l();
   }
 
+  /** Whether saves sync to the cloud. */
+  get syncing(): boolean {
+    return this.driveConnected;
+  }
+
   async init() {
+    const params = new URLSearchParams(location.search);
+    if (params.has('drive')) {
+      this.driveResult = params.get('drive');
+      params.delete('drive');
+      history.replaceState(history.state, '', location.pathname + (params.toString() ? `?${params}` : '') + location.hash);
+    }
     try {
       const r = await fetch('/api/auth/me', { credentials: 'include' });
       if (!r.headers.get('content-type')?.includes('json')) throw new Error('no backend');
       const data = await r.json();
       this.available = true;
       this.oauthConfigured = !!data.oauthConfigured;
-      if (typeof data.maxProjectBytes === 'number') this.maxProjectBytes = data.maxProjectBytes;
+      this.driveConfigured = !!data.driveConfigured;
+      this.driveConnected = !!data.driveConnected;
       this.user = data.user ?? null;
     } catch {
       this.available = false;
       this.user = null;
+      this.driveConnected = false;
     }
     this.emit();
   }
 
+  private returnPath() {
+    return encodeURIComponent(location.pathname + location.search);
+  }
+
   login() {
-    location.href = `/api/auth/login?return=${encodeURIComponent(location.pathname + location.search)}`;
+    location.href = `/api/auth/login?return=${this.returnPath()}`;
   }
 
   async logout() {
@@ -67,10 +87,20 @@ class Cloud {
     this.emit();
   }
 
-  async list(): Promise<CloudProject[]> {
-    const r = await fetch('/api/projects', { credentials: 'include' });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
+  /** Sends the user to Google to allow access to the app's own files in their Drive. */
+  connectDrive() {
+    location.href = `/api/drive/login?return=${this.returnPath()}`;
+  }
+
+  /** Stops syncing in this browser. Maps already in Drive stay there. */
+  async disconnectDrive() {
+    await drive.disconnect();
+    this.driveConnected = false;
+    this.emit();
+  }
+
+  list(): Promise<CloudProject[]> {
+    return drive.list();
   }
 
   /**
@@ -94,46 +124,44 @@ class Cloud {
 
   async upload(p: Project): Promise<void> {
     await this.ensureOrigin(p);
-    const blob = await buildSyncPackage(p);
-    if (blob.size > this.maxProjectBytes) throw new Error(tooLargeMessage(projectTitle(p), blob.size, this.maxProjectBytes));
-    const id = encodeURIComponent(p.id);
-    const { uploadId, uploadUrl } = await apiJson<{ uploadId: string; uploadUrl: string }>(`/api/projects/${id}/upload`, { size: blob.size });
-    const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
-    if (!put.ok) {
-      // Supabase Storage answers 400 with code EntityTooLarge when the bucket's file size limit is hit.
-      const text = await put.text().catch(() => '');
-      if (put.status === 413 || text.includes('EntityTooLarge')) throw new Error(tooLargeMessage(projectTitle(p), blob.size, this.maxProjectBytes));
-      throw new Error(`Upload to storage failed (HTTP ${put.status})`);
-    }
-    await apiJson(`/api/projects/${id}/commit`, { uploadId, title: projectTitle(p), createdAt: p.createdAt, updatedAt: p.updatedAt });
+    const { blob, lite } = await buildSyncPackage(p);
+    const osz = oszFilename(p);
+    await drive.upload(
+      {
+        id: p.id,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        fileName: lite ? osz.replace(/.osz$/i, ' (edited files only).zip') : osz,
+        description: lite
+          ? 'Only the edited files of this published beatmap set. Beatmap Web Editor downloads the rest from osu! mirrors when it opens it.'
+          : 'Beatmap package, synced by Beatmap Web Editor. Opens in osu!.',
+      },
+      blob,
+    );
     await markSynced(p.id, p.updatedAt);
   }
 
   async download(meta: CloudProject): Promise<{ project: Project; warnings: string[] }> {
-    const r = await fetch(`/api/projects/${encodeURIComponent(meta.id)}`, { credentials: 'include' });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const { url } = (await r.json()) as { url: string };
-    const data = await fetch(url);
-    if (!data.ok) throw new Error(`Download from storage failed (HTTP ${data.status})`);
-    const { project: p, warnings } = await restoreSyncPackage(await data.arrayBuffer(), (setId) => this.fetchBeatmapset(setId));
+    const data = await drive.download(meta.fileId);
+    const { project: p, warnings } = await restoreSyncPackage(data, (setId) => this.fetchBeatmapset(setId));
     p.id = meta.id;
     p.updatedAt = meta.updatedAt;
     p.createdAt = meta.createdAt;
     return { project: p, warnings };
   }
 
-  async remove(id: string): Promise<void> {
-    await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+  remove(id: string): Promise<void> {
+    return drive.remove(id);
   }
 
   /** Two-way sync, newest wins. Returns the number of projects transferred. */
   async syncAll(): Promise<number> {
-    if (!this.user) return 0;
+    if (!this.syncing) return 0;
     const [remote, local] = await Promise.all([this.list(), listProjectsLocal()]);
     const localById = new Map(local.map((l) => [l.id, l]));
     const remoteById = new Map(remote.map((r) => [r.id, r]));
     let n = 0;
-    // One map failing (e.g. over the size limit) shouldn't stop the others from syncing.
+    // One map failing (e.g. its set left the mirrors) shouldn't stop the others from syncing.
     const failures: string[] = [];
     for (const r of remote) {
       const l = localById.get(r.id);
@@ -201,17 +229,6 @@ async function readWithProgress(r: Response, onProgress?: (fraction: number) => 
     onProgress(Math.min(1, got / total));
   }
   return new Blob(chunks as BlobPart[]).arrayBuffer();
-}
-
-function tooLargeMessage(title: string, size: number, max: number) {
-  const mb = (n: number) => (n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0);
-  return `"${title}" is ${mb(size)} MB as an .osz, over the ${mb(max)} MB cloud sync limit (the Supabase Free plan's maximum file size). It's still saved in this browser; use File → Export package (.osz) to keep a copy.`;
-}
-
-async function apiJson<T = unknown>(url: string, body: unknown): Promise<T> {
-  const r = await fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error((await r.text().catch(() => '')) || `HTTP ${r.status}`);
-  return r.json() as Promise<T>;
 }
 
 export const cloud = new Cloud();

@@ -4,10 +4,11 @@ import { music } from '../audio/music';
 import { editor, useEditor } from '../editor/store';
 import { fmt, formatBpm, formatLength } from '../osu/info';
 import { cloud } from '../project/cloud';
+import { DRIVE_FOLDER } from '../project/drive';
 import { filesFromDrop, openNewBeatmap, pickFiles, projectFromFiles, projectFromLink } from '../project/open';
 import { downloadBlob, exportOsz, oszFilename } from '../project/project';
 import { deleteDifficultyLocal, deleteProjectLocal, listProjectsLocal, loadProjectLocal, type DifficultySummary, type ProjectSummary } from '../project/storage';
-import { ask, promptOpen } from '../ui/prompt';
+import { ask, promptOpen, type PromptButton } from '../ui/prompt';
 import { DirectPanel } from './DirectPanel';
 import { difficultyColour, GROUP_LABELS, groupOf, matches, parseSearch, SORT_LABELS, sortSets, type GroupMode, type SortMode } from './filter';
 
@@ -79,13 +80,18 @@ export function SongSelect() {
     }
   }, [group, sort]);
 
-  // Two-way sync with the account whenever we arrive here logged in.
+  // Two-way sync with Google Drive whenever we arrive here with it connected.
   useEffect(() => {
-    if (!cloud.user) return;
-    setBusy('Syncing with your account…');
+    const result = cloud.driveResult;
+    cloud.driveResult = null;
+    if (result === 'connected') editor.toast(`Google Drive connected. Your maps sync to the "${DRIVE_FOLDER}" folder in your Drive.`);
+    else if (result === 'noscope') editor.toast('Google Drive wasn\x27t connected: allow access to the files this editor creates, then try again.', 'error');
+    else if (result === 'cancelled') editor.toast('Google Drive wasn\x27t connected.');
+    if (!cloud.syncing) return;
+    setBusy('Syncing with Google Drive…');
     cloud
       .syncAll()
-      .then((n) => n > 0 && editor.toast(`Synced ${n} beatmap${n > 1 ? 's' : ''} with your account.`))
+      .then((n) => n > 0 && editor.toast(`Synced ${n} beatmap${n > 1 ? 's' : ''} with Google Drive.`))
       .catch((e) => editor.toast(`Sync failed: ${e.message}`, 'error'))
       .finally(() => {
         setBusy(null);
@@ -248,10 +254,10 @@ export function SongSelect() {
     await run('Deleting…', async () => {
       if (r === 'diff') {
         const p = await deleteDifficultyLocal(selSet.id, selDiff.id);
-        if (p && cloud.user) await cloud.upload(p).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
+        if (p && cloud.syncing) await cloud.upload(p).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
       } else {
         await deleteProjectLocal(selSet.id);
-        if (cloud.user) await cloud.remove(selSet.id);
+        if (cloud.syncing) await cloud.remove(selSet.id);
       }
       await refresh();
     });
@@ -517,20 +523,50 @@ function LinkInput({ onOpen, onCancel }: { onOpen: (link: string) => void; onCan
   );
 }
 
+/** The account dialog: Google Drive sync and the (optional) osu! login. */
+async function accountDialog() {
+  const u = cloud.user;
+  const buttons: PromptButton[] = [];
+  if (cloud.driveConfigured) {
+    buttons.push(
+      cloud.syncing
+        ? { label: 'Stop syncing with Google Drive', value: 'drive-off', tone: 'pink' }
+        : { label: 'Sync my maps with Google Drive', value: 'drive-on', tone: 'blue' },
+    );
+  }
+  if (u) buttons.push({ label: 'Log out of osu!', value: 'logout', tone: 'pink' });
+  else if (cloud.oauthConfigured) buttons.push({ label: 'Log in with osu!', value: 'login', tone: 'pink' });
+  buttons.push({ label: 'Privacy policy', value: 'privacy', tone: 'grey' }, { label: 'Close', value: 'close', tone: 'grey' });
+  const drive = cloud.syncing
+    ? `Your maps are saved in this browser and synced to the "${DRIVE_FOLDER}" folder in your Google Drive, so they're there on any computer.`
+    : `Your maps are saved in this browser. Sync them with your Google Drive to open them on any computer: they go in a "${DRIVE_FOLDER}" folder, and the editor can only see the files it creates.`;
+  const osu = u ? `Logged in to osu! as ${u.username}.` : cloud.oauthConfigured ? 'Log in with osu! to sign new maps with your name.' : '';
+  const r = await ask({ look: 'game', title: u?.username ?? 'Your maps', message: [drive, osu].filter(Boolean).join(' '), buttons, cancelValue: 'close' });
+  if (r === 'drive-on') cloud.connectDrive();
+  else if (r === 'drive-off') {
+    await cloud.disconnectDrive();
+    editor.toast('Stopped syncing with Google Drive. The maps already there stay in your Drive.');
+  } else if (r === 'login') cloud.login();
+  else if (r === 'logout') await cloud.logout();
+  else if (r === 'privacy') window.open('/privacy.html', '_blank', 'noopener');
+}
+
 function UserPanel() {
   useCloud();
   const u = cloud.user;
   const label = !cloud.available ? 'Offline' : u ? u.username : 'Guest';
-  const sub = !cloud.available ? 'Maps are saved in this browser' : u ? 'Maps sync to your account' : cloud.oauthConfigured ? 'Click to sign in!' : 'osu! login not configured';
+  const canOpen = cloud.available && (cloud.driveConfigured || cloud.oauthConfigured || !!u);
+  const sub = !cloud.available
+    ? 'Maps are saved in this browser'
+    : cloud.syncing
+      ? 'Maps sync to Google Drive'
+      : cloud.driveConfigured
+        ? 'Click to sync your maps!'
+        : cloud.oauthConfigured && !u
+          ? 'Click to sign in!'
+          : 'Maps are saved in this browser';
   return (
-    <button
-      className="ss-user"
-      onClick={() => {
-        if (u) void ask({ look: 'game', title: u.username, message: 'Your maps sync to this account when you save.', buttons: [{ label: 'Log out', value: 'out', tone: 'pink' }, { label: 'Close', value: 'close', tone: 'grey' }], cancelValue: 'close' }).then((r) => { if (r === 'out') void cloud.logout(); });
-        else if (cloud.oauthConfigured) cloud.login();
-      }}
-      disabled={!u && !cloud.oauthConfigured}
-    >
+    <button className="ss-user" onClick={() => void accountDialog()} disabled={!canOpen}>
       <span className="ss-user-avatar">{u?.avatarUrl ? <img src={u.avatarUrl} alt="" /> : <span>?</span>}</span>
       <span className="ss-user-text">
         <span className="ss-user-name">{label}</span>

@@ -44,10 +44,10 @@ export async function originOf(setId: number, files: Map<string, Blob>): Promise
 }
 
 /** The package to upload: lite when the project knows what the mirrors serve for its set, otherwise the full .osz. */
-export async function buildSyncPackage(p: Project): Promise<Blob> {
+export async function buildSyncPackage(p: Project): Promise<{ blob: Blob; lite: boolean }> {
   const setId = setIdOf(p);
   const origin = p.origin?.setId === setId ? p.origin.files : null;
-  if (!(setId > 0) || !origin) return exportOsz(p);
+  if (!(setId > 0) || !origin) return { blob: await exportOsz(p), lite: false };
   const mirrorFiles: Record<string, FileRef> = {};
   const own = new Map<string, Blob>();
   for (const [name, blob] of p.files) {
@@ -55,10 +55,10 @@ export async function buildSyncPackage(p: Project): Promise<Blob> {
     if (ref && ref.size === blob.size && ref.sha256 === (await sha256(blob))) mirrorFiles[name] = ref;
     else own.set(name, blob);
   }
-  if (Object.keys(mirrorFiles).length === 0) return exportOsz(p);
+  if (Object.keys(mirrorFiles).length === 0) return { blob: await exportOsz(p), lite: false };
   const manifest: Manifest = { version: 1, beatmapSetId: setId, mirrorFiles };
   own.set(MANIFEST, new Blob([JSON.stringify(manifest)], { type: 'application/json' }));
-  return exportOsz({ ...p, files: own });
+  return { blob: await exportOsz({ ...p, files: own }), lite: true };
 }
 
 /**

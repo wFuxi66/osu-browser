@@ -2,14 +2,14 @@
 
 An osu! (stable) style beatmap editor that runs in any modern browser. Drop an mp3 to start a new map, or open an `.osz` / beatmap folder to keep editing. When you're done, export the `.osz` (or a single `.osu`) and open it in osu!. Uploading to the osu! website isn't supported; use the real client for that.
 
-It follows stable's flow: you start in an edit-mode song select with your maps, open one into the editor, and Esc takes you back. Like stable, nothing autosaves: Ctrl+S saves the set in the browser (IndexedDB), and leaving with unsaved changes asks first. If you log in with your osu! account (optional), saving also syncs your WIP maps to the cloud, so they're there when you open the editor on another computer.
+It follows stable's flow: you start in an edit-mode song select with your maps, open one into the editor, and Esc takes you back. Like stable, nothing autosaves: Ctrl+S saves the set in the browser (IndexedDB), and leaving with unsaved changes asks first. If you connect your Google Drive (optional), saving also syncs your maps to a "Beatmap Web Editor" folder in it, so they're there when you open the editor on another computer. Logging in with osu! (also optional) signs new maps with your name.
 
 ## Architecture
 
 - **Frontend** (`src/`): Vite + React + TypeScript, built to static files. Everything editor-related runs in the browser; projects are saved to IndexedDB with Ctrl+S. `src/songselect/` is the song select, `src/editor/` the editor, `src/ui/` the in-game and Windows-style dialogs.
 - **API** (`server/app.ts`): a small Hono app for osu! OAuth, sessions, and the cloud project list. It runs as a Vercel Function (`api/index.ts`) or as a plain Node server (`server/index.ts`, used by `npm run dev` and Docker).
-- **Database**: Supabase Postgres (`users`, `sessions`, `projects`, `pending_uploads`). The schema is in `supabase/migrations/`. Only the server touches it, with the service role key; RLS is on and the public roles have no grants.
-- **Storage**: `.osz` packages live in the private Supabase Storage bucket `projects`. The browser uploads and downloads them directly with short-lived signed URLs from the API, because Vercel Functions cap request bodies at about 4.5 MB. The API checks ownership, the per-map size limit (50 MB, the Supabase Free plan's maximum file size), and the per-account quota (150 MB by default, so a few accounts fit in the Free plan's 1 GB). It also verifies each upload (size, zip header) before pointing the project at it. Sets that are published on osu! (BeatmapSetID > 0) sync as a few KB: the package holds the `.osu` files, any file that differs from what the mirrors serve for the set (checked by SHA-256), and a manifest of the rest, which another device downloads again from the mirrors (`src/project/syncpack.ts`). It warns if the set changed on osu! since. Original maps, and sets the mirrors don't have, upload in full.
+- **Database**: Supabase Postgres (`users` and `sessions` for the osu! login; the `projects` and `pending_uploads` tables and the `projects` bucket are left over from the old account sync and are unused). The schema is in `supabase/migrations/`. Only the server touches it, with the service role key; RLS is on and the public roles have no grants.
+- **Storage**: beatmaps are never stored on the server. Ctrl+S keeps them in the browser (IndexedDB) and, with Google Drive connected, syncs them straight from the browser to the user's own Drive (`src/project/drive.ts`), one file per set in a "Beatmap Web Editor" folder. Only the `drive.file` scope is used, so the app sees nothing but its own files. The server (`server/drive.ts`) does the OAuth code exchange and hands out short-lived access tokens; the refresh token lives in an AES-GCM encrypted httpOnly cookie, so there's no token table. Sets that are published on osu! (BeatmapSetID > 0) sync as a few KB: the package holds the `.osu` files, any file that differs from what the mirrors serve for the set (checked by SHA-256), and a manifest of the rest, which another device downloads again from the mirrors (`src/project/syncpack.ts`). It warns if the set changed on osu! since. Original maps, and sets the mirrors don't have, sync as a full `.osz` that also opens in osu!.
 
 ## Running locally
 
@@ -28,7 +28,7 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` the
 1. Sign in on osu.ppy.sh and open <https://osu.ppy.sh/home/account/edit#oauth>, then click **New OAuth Application**.
 2. Name it (e.g. "osu! web editor"). For **Application Callback URL**, use `http://localhost:5173/api/auth/callback` for local development, or `https://your-domain/api/auth/callback` in production. It must match `OSU_REDIRECT_URI` exactly. You can register both: create a second application for production.
 3. Copy the **Client ID** and **Client Secret** into `.env` (`OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`). In production also set `PUBLIC_URL=https://your-domain` and `OSU_REDIRECT_URI=https://your-domain/api/auth/callback`.
-4. Login also needs a Supabase project for sessions and storage (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`; see below).
+4. Login also needs a Supabase project for sessions (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`; see below).
 
 osu!'s OAuth needs a client secret for the token exchange, which is why there's a small backend. Supabase Auth has no osu! provider, so the flow is our own and sessions are an httpOnly cookie backed by the `sessions` table. The editor only asks for the `identify public` scopes (username and avatar). Without OAuth configured, the editor still works fully offline/local.
 
@@ -56,7 +56,7 @@ npx vercel env add OSU_CLIENT_ID production          # repeat for each variable 
 npx vercel deploy --prod
 ```
 
-Environment variables: `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, `PUBLIC_URL` (e.g. `https://your-app.vercel.app`), `OSU_REDIRECT_URI` (`$PUBLIC_URL/api/auth/callback`), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. Check it with `curl https://your-app.vercel.app/api/health`. `.vercelignore` keeps your local `.env` out of CLI uploads.
+Environment variables: `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, `PUBLIC_URL` (e.g. `https://your-app.vercel.app`), `OSU_REDIRECT_URI` (`$PUBLIC_URL/api/auth/callback`), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and for Drive sync `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Check it with `curl https://your-app.vercel.app/api/health`. `.vercelignore` keeps your local `.env` out of CLI uploads.
 
 **Docker Compose with automatic HTTPS (any VPS):**
 
@@ -98,7 +98,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Multiple difficulties: Create a new Difficulty opens Song Setup to name it, then asks "Would you like to clear all objects and start fresh?" and saves it right away (the current one keeps its last save; flow and wording checked against stable); switch from File → Open Difficulty or Ctrl+O; delete from song select
 - [x] Add files to the beatmap folder (custom hitsounds, images, storyboard assets), replace audio
 - [x] Lossless round trip of `.osu` files (verified against ranked maps)
-- [x] osu! OAuth login + per-account cloud sync (published sets sync only their edited files and come back from the mirrors)
+- [x] Cloud sync to your own Google Drive (published sets sync only their edited files and come back from the mirrors), optional osu! login
 
 **Compose (F1)**
 - [x] Select / circle / slider / spinner tools (1–4), mania note/hold tools

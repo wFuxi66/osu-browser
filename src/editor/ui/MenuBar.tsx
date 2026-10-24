@@ -244,13 +244,24 @@ export function MenuBar() {
     { label: "This Beatmap's Thread", disabled: setId <= 0, action: () => open(`https://osu.ppy.sh/beatmapsets/${setId}/discussion`) },
     sep,
     ...(cloud.available
-      ? cloud.user
-        ? [
-            { label: `Logged in as ${cloud.user.username}`, disabled: true },
-            { label: 'Save and sync now', shortcut: 'Ctrl+S', action: () => void ed.save() },
-            { label: 'Log out', action: () => void cloud.logout() },
-          ]
-        : [{ label: cloud.oauthConfigured ? 'Log in with osu!...' : 'osu! login is not configured on this server', disabled: !cloud.oauthConfigured, action: async () => { if (await ed.resolveUnsaved()) cloud.login(); } }]
+      ? [
+          ...(cloud.driveConfigured
+            ? cloud.syncing
+              ? [
+                  { label: 'Save and sync to Google Drive', shortcut: 'Ctrl+S', action: () => void ed.save() },
+                  { label: 'Stop syncing with Google Drive', action: () => void cloud.disconnectDrive() },
+                ]
+              : [{ label: 'Sync my maps with Google Drive...', action: async () => { if (await ed.resolveUnsaved()) cloud.connectDrive(); } }]
+            : []),
+          ...(cloud.user
+            ? [
+                { label: `Logged in to osu! as ${cloud.user.username}`, disabled: true },
+                { label: 'Log out of osu!', action: () => void cloud.logout() },
+              ]
+            : cloud.oauthConfigured
+              ? [{ label: 'Log in with osu!...', action: async () => { if (await ed.resolveUnsaved()) cloud.login(); } }]
+              : []),
+        ]
       : [{ label: 'Offline: maps are saved in this browser', disabled: true }]),
   ];
 

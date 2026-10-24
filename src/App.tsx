@@ -12,7 +12,7 @@ import { VolumeControl } from './ui/VolumeControl';
 export function useCloud() {
   return useSyncExternalStore(
     (l) => cloud.onChange(l),
-    () => cloud.user?.id ?? (cloud.available ? 0 : -1),
+    () => (cloud.available ? `${cloud.user?.id ?? 0}:${cloud.driveConnected}` : 'offline'),
   );
 }
 

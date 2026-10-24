@@ -20,7 +20,7 @@
 <body>
 <main>
 <h1>Privacy Policy</h1>
-<p class="muted">Beatmap Web Editor · last updated 24 October 2026</p>
+<p class="muted">Beatmap Web Editor · last updated 24 October 2026 (Drive sync)</p>
 
 <p>Beatmap Web Editor (<a href="/">osumappingweb.vercel.app</a>) is a free, hobby osu! beatmap editor that runs in your browser. It isn't affiliated with ppy Pty Ltd (osu!) or with Google. This page explains what data it handles and why.</p>
 
@@ -28,13 +28,14 @@
 <p>The beatmaps you open or create, your editor settings and any skins you import are stored in your browser (IndexedDB and local storage). They don't leave your device unless you turn on one of the sync options below.</p>
 
 <h2>osu! account (optional)</h2>
-<p>If you log in with osu!, the app asks osu! for the <code>identify</code> and <code>public</code> permissions and stores your osu! user id, username, avatar URL and country code, plus a login session (an httpOnly cookie whose hash is kept on the server). Maps you sync to your account are stored as zip packages in our storage (Supabase, in the EU) until you delete them. For sets that are published on osu!, only your edited files are stored, and the rest is downloaded again from public mirrors.</p>
+<p>If you log in with osu!, the app asks osu! for the <code>identify</code> and <code>public</code> permissions and stores your osu! user id, username, avatar URL and country code, plus a login session (an httpOnly cookie whose hash is kept on the server). This is stored in our database (Supabase, in the EU). Logging in with osu! is only used to show your name and sign new maps with it.</p>
 
 <h2>Google Drive (optional)</h2>
 <p>If you connect Google Drive, the app asks only for the <code>drive.file</code> permission. That lets it create files and see only the files it created (or that you open with it). It can't see the rest of your Drive. It uses this permission solely to save your beatmaps in a folder named "Beatmap Web Editor" in your Drive and to read them back on your other devices.</p>
 <ul>
   <li>Your map files go directly between your browser and Google Drive. They aren't stored on our servers.</li>
-  <li>To keep you connected, the server stores an encrypted Google refresh token, linked to your browser's session. It's deleted when you disconnect.</li>
+  <li>To keep you connected, the Google refresh token is kept in an encrypted, httpOnly cookie in your browser. Our servers use it only to get short-lived access tokens and don't store it. Disconnecting revokes it and deletes the cookie.</li>
+  <li>For sets that are published on osu!, only your edited files are saved to Drive; the rest is downloaded again from public mirrors.</li>
   <li>The app doesn't ask for your name, email address or any other Google data.</li>
   <li>Google user data is never sold, shared with anyone else, used for advertising, or used to train AI models.</li>
 </ul>
@@ -49,8 +50,8 @@
 <h2>Deleting your data</h2>
 <ul>
   <li>Browser data: delete maps in song select, or clear this site's data in your browser.</li>
-  <li>osu! account sync: deleting a map in song select also deletes its synced copy. Logging out ends the session.</li>
-  <li>Google Drive: disconnect in the app, or remove access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. The files in your Drive are yours; delete the folder to remove them.</li>
+  <li>osu! login: logging out ends the session.</li>
+  <li>Google Drive: deleting a map in song select moves its file to your Drive's trash. Disconnect in the app, or remove access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. The files in your Drive are yours; delete the folder to remove them.</li>
   <li>To have everything about your account deleted from our servers, email us.</li>
 </ul>
 

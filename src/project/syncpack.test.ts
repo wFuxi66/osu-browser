@@ -29,7 +29,8 @@ describe('cloud sync packages', () => {
       'video.mp4': bytes('re-encoded video'), // replaced by the mapper
     });
     p.origin = await originOf(123, new Map(Object.entries(mirrorFiles)));
-    const pkg = await buildSyncPackage(p);
+    const { blob: pkg, lite } = await buildSyncPackage(p);
+    expect(lite).toBe(true);
     expect(await names(pkg)).toEqual([MANIFEST, 'Artist - Song () [Insane].osu', 'soft-hitclap.wav', 'video.mp4']);
 
     const { project: back, warnings } = await restoreSyncPackage(await pkg.arrayBuffer(), async (id) => {
@@ -48,7 +49,7 @@ describe('cloud sync packages', () => {
   it('warns when the set changed on the mirrors since it was synced', async () => {
     const p = project(123, { 'audio.mp3': mirrorFiles['audio.mp3'], 'bg.jpg': mirrorFiles['BG.jpg'] });
     p.origin = await originOf(123, new Map(Object.entries(mirrorFiles)));
-    const pkg = await buildSyncPackage(p);
+    const { blob: pkg } = await buildSyncPackage(p);
     const { project: back, warnings } = await restoreSyncPackage(await pkg.arrayBuffer(), () => mirrorOsz({ 'audio.mp3': bytes('remastered') }));
     expect(warnings).toHaveLength(2);
     expect(warnings[0]).toContain('bg.jpg');
@@ -63,7 +64,8 @@ describe('cloud sync packages', () => {
     const unknown = project(123, files);
     unknown.origin = { setId: 123, files: null, checkedAt: 0 };
     for (const p of [original, unknown]) {
-      const pkg = await buildSyncPackage(p);
+      const { blob: pkg, lite } = await buildSyncPackage(p);
+      expect(lite).toBe(false);
       expect(await names(pkg)).toEqual(['Artist - Song () [Insane].osu', 'audio.mp3']);
       const { project: back } = await restoreSyncPackage(await pkg.arrayBuffer(), () => Promise.reject(new Error('no mirror needed')));
       expect([...back.files.keys()]).toEqual(['audio.mp3']);

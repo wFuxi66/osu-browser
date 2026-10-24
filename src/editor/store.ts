@@ -401,10 +401,10 @@ class Editor {
     this.dirty = false;
     this.savedSnapshot = cloneBeatmap(this.bm);
     this.emit();
-    if (cloud.user) {
+    if (cloud.syncing) {
       try {
         await cloud.upload(this.project);
-        this.toast('Saved and synced to your account.');
+        this.toast('Saved and synced to Google Drive.');
       } catch (e) {
         this.toast(`Saved locally. Cloud sync failed: ${(e as Error).message}`, 'error');
       }

@@ -1,5 +1,6 @@
 // stable's volume overlay: Alt+wheel shows master/music/effect meters in the bottom right and changes the
 // one under the cursor (master otherwise). While it's showing, the wheel over a meter changes it without Alt.
+// In the editor, Alt+wheel only reaches it in the bottom-right corner; elsewhere it stays the editor's.
 import { useEffect, useRef, useState } from 'react';
 import { editor, useEditor } from '../editor/store';
 import type { Prefs } from '../project/storage';
@@ -11,6 +12,7 @@ const STEP = 0.05;
 const HIDE_AFTER = 1000;
 
 // Meter layout in an SVG anchored to the bottom-right corner (units: 1/1000 of the window height).
+const BACKDROP = { cx: -12, cy: 8, r: 205 };
 const METERS: Record<Meter, { cx: number; cy: number; r: number; label: { x: number; y: number; size: number }; text: number }> = {
   master: { cx: -118, cy: -118, r: 58, label: { x: -190, y: -78, size: 21 }, text: 27 },
   music: { cx: -182, cy: -230, r: 30, label: { x: -224, y: -229, size: 21 }, text: 11 },
@@ -27,6 +29,12 @@ function meterAt(x: number, y: number): Meter | null {
     if (Math.hypot(lx - cx, ly - cy) <= r + 8) return m;
   }
   return null;
+}
+
+/** Whether the pointer is over the overlay's backdrop in the bottom-right corner. */
+function inCorner(x: number, y: number): boolean {
+  const unit = window.innerHeight / 1000;
+  return Math.hypot((x - window.innerWidth) / unit - BACKDROP.cx, (y - window.innerHeight) / unit - BACKDROP.cy) <= BACKDROP.r;
 }
 
 export function VolumeControl() {
@@ -49,8 +57,9 @@ export function VolumeControl() {
       const over = state.current.visible ? meterAt(e.clientX, e.clientY) : null;
       if (!over) {
         if (!e.altKey || e.ctrlKey || e.metaKey) return;
-        // Alt+wheel over the playfield or timeline stays the editor's (distance spacing, zoom), as in stable.
-        if (editor.hasProject && (e.target as HTMLElement).closest?.('[data-wheel]')) return;
+        // Alt+wheel over the playfield or timeline stays the editor's (distance spacing, zoom) outside the
+        // bottom-right corner, as in stable.
+        if (editor.hasProject && (e.target as HTMLElement).closest?.('[data-wheel]') && !inCorner(e.clientX, e.clientY)) return;
       }
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -91,7 +100,7 @@ export function VolumeControl() {
             </feMerge>
           </filter>
         </defs>
-        <circle cx={-12} cy={8} r={205} className="vc-backdrop" />
+        <circle cx={BACKDROP.cx} cy={BACKDROP.cy} r={BACKDROP.r} className="vc-backdrop" />
         {(Object.keys(METERS) as Meter[]).map((m) => {
           const { cx, cy, r, label, text } = METERS[m];
           const ring = r * 0.84;

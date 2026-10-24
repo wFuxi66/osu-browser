@@ -359,7 +359,7 @@ export function MainMenu() {
 
       <footer className="mm-bottom">
         <div className="mm-brand">
-          <b>osu-browser</b>
+          <b>osu!browser</b>
           <span>osu! in a browser tab</span>
         </div>
         {p.menuTips && <div className="mm-tip">{tip}</div>}

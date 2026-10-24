@@ -1,5 +1,5 @@
-// The user's own Google Drive as cloud storage for their beatmaps. Each project is one file in a "Beatmap Web
-// Editor" folder, tagged with app properties (project id and timestamps) so sync can find it again. With the
+// The user's own Google Drive as cloud storage for their beatmaps. Each project is one file in an "osu-browser"
+// folder, tagged with app properties (project id and timestamps) so sync can find it again. With the
 // drive.file scope the app can only see files it created. Short-lived access tokens come from our API
 // (server/drive.ts), which keeps the refresh token in an encrypted cookie.
 
@@ -180,7 +180,7 @@ class Drive {
     }
     const meta: Record<string, unknown> = {
       name: 'settings.json',
-      description: 'osu-browser settings (key bindings, volumes, display options), synced between your computers.',
+      description: 'osu!browser settings (key bindings, volumes, display options), synced between your computers.',
       mimeType: 'application/json',
       appProperties: { [APP_KEY]: 'settings', updatedAt: String(updatedAt) },
     };

@@ -5,7 +5,7 @@ import { parseOsu } from './parser';
 import { starRating } from './stars';
 
 const sets = (process.env.STARS_SETS ?? '').split(/[\s,]+/).filter(Boolean);
-const headers = { 'User-Agent': 'osu-browser star rating check' };
+const headers = { 'User-Agent': 'osu!browser star rating check' };
 
 interface WebBeatmap {
   id: number;

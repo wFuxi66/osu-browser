@@ -1,8 +1,10 @@
-# osu-browser
+# osu!browser
 
 **Live at <https://osu-browser.vercel.app>**
 
-osu! (stable) in a browser tab: play your maps and map them, on any laptop. Drop an mp3 to start a new map, or open an `.osz` / beatmap folder to keep editing or to play it. When you're done, export the `.osz` (or a single `.osu`) and open it in osu!. Uploading to the osu! website isn't supported; use the real client for that.
+The app is called osu!browser. The repository, npm package, Docker image and URLs drop the `!` (`osu-browser`), because that's easier for folder names and links.
+
+osu!browser puts osu! (stable) in a browser tab: play your maps and map them, on any laptop. Drop an mp3 to start a new map, or open an `.osz` / beatmap folder to keep editing or to play it. When you're done, export the `.osz` (or a single `.osu`) and open it in osu!. Uploading to the osu! website isn't supported; use the real client for that.
 
 It follows stable's flow: the main menu (the cookie: Play, Edit, Options, Exit), then song select in play or edit mode, then the game or the editor; Esc or "back" takes you back each time. Playing is mostly there to test your maps: scores stay in the browser, in song select's local ranking. Like stable, nothing autosaves in the editor: Ctrl+S saves the set in the browser (IndexedDB), and leaving with unsaved changes asks first. If you connect your Google Drive (optional), saving also syncs your maps to an "osu-browser" folder in it, so they're there when you open the app on another computer. Logging in with osu! (also optional) signs new maps with your name.
 
@@ -28,7 +30,7 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` the
 ### Enabling "Log in with osu!"
 
 1. Sign in on osu.ppy.sh and open <https://osu.ppy.sh/home/account/edit#oauth>, then click **New OAuth Application**.
-2. Name it (e.g. "osu-browser"). For **Application Callback URL**, use `http://localhost:5173/api/auth/callback` for local development, or `https://your-domain/api/auth/callback` in production. It must match `OSU_REDIRECT_URI` exactly. You can register both: create a second application for production.
+2. Name it (e.g. "osu!browser"). For **Application Callback URL**, use `http://localhost:5173/api/auth/callback` for local development, or `https://your-domain/api/auth/callback` in production. It must match `OSU_REDIRECT_URI` exactly. You can register both: create a second application for production.
 3. Copy the **Client ID** and **Client Secret** into `.env` (`OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`). In production also set `PUBLIC_URL=https://your-domain` and `OSU_REDIRECT_URI=https://your-domain/api/auth/callback`.
 
 osu!'s OAuth needs a client secret for the token exchange, which is why there's a small backend. The session is an encrypted httpOnly cookie holding only who you are (id, name, avatar, country); the user's osu! token is dropped after sign-in, and the osu! API calls use the app's own client-credentials token. The editor only asks for the `identify public` scopes. Logging in signs new maps with your name and adds **My beatmaps** to the osu!direct panel: your pending/WIP, ranked, loved, graveyarded sets and guest difficulties, one click to open them. Without OAuth configured, the editor still works fully offline/local.

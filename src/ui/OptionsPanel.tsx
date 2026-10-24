@@ -1,5 +1,5 @@
 // The Options panel, like stable's: slides in from the left over song select or the editor, with a section column,
-// a search box and every setting of osu-browser (account and sync, audio, skin, editor display, downloads, keys).
+// a search box and every setting of osu!browser (account and sync, audio, skin, editor display, downloads, keys).
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useCloud } from '../App';
 import { ACTIONS, bind, comboOf, conflicts, keyLabel, keysFor, resetBinding, unbind } from '../editor/keybinds';
@@ -521,7 +521,7 @@ export function OptionsPanel() {
         <div className="op-body" ref={body} onScroll={onScroll}>
           <div className="op-head" ref={head}>
             <div className="op-title">Options</div>
-            <div className="op-sub">Change the way osu-browser behaves</div>
+            <div className="op-sub">Change the way osu!browser behaves</div>
             <input className="op-search" placeholder="Type to search!" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
           </div>
           {sections.map((s) => {

@@ -4,9 +4,9 @@ import { waveformFor, WAVEFORM_BUCKET_MS } from '../../audio/waveform';
 import { comboColourIndex } from '../../osu/processing';
 import { objectEndTime, sliderSpanDuration, snapTime, tickColour, tickDivisorOf } from '../../osu/timing';
 import type { HitObject, Rgb, TimingPoint } from '../../osu/types';
-import { comboColours } from '../../skin/skin';
+import { comboColours, skins } from '../../skin/skin';
 import { onFrame } from '../playback';
-import { rgba, shade } from '../render/draw';
+import { drawHitCircle, rgba, shade } from '../render/draw';
 import { editor, shiftObjectTime, snapSliderLength } from '../store';
 import { fmt } from '../../osu/info';
 
@@ -365,6 +365,18 @@ function drawObjects(ctx: CanvasRenderingContext2D, h: number, t: number, tStart
     ctx.arc(x, cy, rad, 0, Math.PI * 2);
     ctx.fill();
   };
+  // Like stable, osu!standard circles in the timeline use the skin (hitcircle + overlay + number) when one is chosen.
+  const skinned = bm.general.mode === 0 && editor.prefs.skinnedTimeline && !!skins.current?.get('hitcircle');
+  /** A circle on the timeline: skinned, or a shaded disc with a white ring; `highlight` rings it in that colour. */
+  const circle = (x: number, rad: number, c: Rgb, label: string | null, highlight: string | null) => {
+    if (skinned) {
+      drawHitCircle(ctx, x, cy, rad, c, 1, label, false);
+      if (highlight) ring(x, rad, highlight, 3);
+      return;
+    }
+    disc(x, rad, c);
+    ring(x, rad - 1.5, highlight ?? '#fff', highlight ? 4 : 2.5);
+  };
   for (let i = objs.length - 1; i >= 0; i--) {
     const o = objs[i];
     const end = proc.info.get(o.id)?.endTime ?? o.time;
@@ -400,19 +412,17 @@ function drawObjects(ctx: CanvasRenderingContext2D, h: number, t: number, tStart
           const xe = X(o.time + span * s);
           const edgeSel = editor.selectedEdge?.id === o.id && editor.selectedEdge.edge === s;
           const rad = s === o.slides ? r * 0.92 : r * 0.6;
-          disc(xe, rad, colour);
-          ring(xe, rad - 1.5, edgeSel ? '#ffa500' : '#fff', edgeSel ? 4 : 2.5);
+          circle(xe, rad, colour, null, edgeSel ? '#ffa500' : null);
         }
       } else {
-        disc(x1, r * 0.92, colour);
-        ring(x1, r * 0.92 - 1.5, sel ? '#ffa500' : '#fff', sel ? 4 : 2.5);
+        circle(x1, r * 0.92, colour, null, sel ? '#ffa500' : null);
       }
     }
     // Head
     const headSel = editor.selectedEdge?.id === o.id && editor.selectedEdge.edge === 0;
-    disc(x0, r * big * 0.92, colour);
-    ring(x0, r * big * 0.92 - 1.5, sel || headSel ? '#ffa500' : '#fff', sel || headSel ? 4 : 2.5);
-    if (bm.general.mode === 0 || bm.general.mode === 2) {
+    const number = o.kind !== 'spinner' ? proc.info.get(o.id)?.comboNumber : undefined;
+    circle(x0, r * big * 0.92, colour, skinned && number ? String(number) : null, sel || headSel ? '#ffa500' : null);
+    if (!skinned && (bm.general.mode === 0 || bm.general.mode === 2)) {
       const n = proc.info.get(o.id)?.comboNumber;
       if (n && o.kind !== 'spinner') {
         ctx.fillStyle = '#fff';

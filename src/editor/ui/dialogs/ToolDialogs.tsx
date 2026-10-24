@@ -7,7 +7,6 @@ import { serializeBeatmap } from '../../../osu/serializer';
 import { beatLengthAt, sliderSpanDuration } from '../../../osu/timing';
 import { defaultSample, newObjectId, type HitObject } from '../../../osu/types';
 import { pickFiles } from '../../../project/open';
-import { skins, type SkinEntry } from '../../../skin/skin';
 import { confirmBox } from '../../../ui/prompt';
 import { Check, GroupBox, NumberBox, OkCancel, Radio, Row, TrackRow, WinDialog } from '../../../ui/win';
 import { expectedDistance } from '../../playfield/snapping';
@@ -262,85 +261,6 @@ export function DifficultiesDialog() {
         </button>
       </div>
     </WinDialog>
-  );
-}
-
-/** View → Volume... / Options...: the web editor's own settings. */
-export function PreferencesDialog() {
-  const ed = useEditor();
-  const p = ed.prefs;
-  const close = () => ed.openDialog(null);
-  return (
-    <WinDialog title="Options" width={420} onClose={close} footer={<OkCancel onOk={close} onCancel={close} />}>
-      <GroupBox title="Volume">
-        <TrackRow label="Master" value={Math.round(p.masterVolume * 100)} min={0} max={100} step={1} onChange={(v) => ed.setPrefs({ masterVolume: v / 100 })} />
-        <TrackRow label="Music" value={Math.round(p.musicVolume * 100)} min={0} max={100} step={1} onChange={(v) => ed.setPrefs({ musicVolume: v / 100 })} />
-        <TrackRow label="Effects (hitsounds)" value={Math.round(p.hitsoundVolume * 100)} min={0} max={100} step={1} onChange={(v) => ed.setPrefs({ hitsoundVolume: v / 100 })} />
-        <TrackRow label="Audio offset (ms): positive if hitsounds play too early" value={p.audioOffset} min={-200} max={200} step={1} onChange={(v) => ed.setPrefs({ audioOffset: v })} />
-      </GroupBox>
-      <GroupBox title="Display">
-        <TrackRow label="Background dim (%)" value={Math.round(p.backgroundDim * 100)} min={0} max={100} step={5} onChange={(v) => ed.setPrefs({ backgroundDim: v / 100 })} />
-        <Check label="Hit animations" checked={p.showHitAnimations} onChange={(v) => ed.setPrefs({ showHitAnimations: v })} />
-        <Check label="Follow points" checked={p.showFollowPoints} onChange={(v) => ed.setPrefs({ showFollowPoints: v })} />
-        <Check label="Snaking sliders" checked={p.snakingSliders} onChange={(v) => ed.setPrefs({ snakingSliders: v })} /><br />
-        <Check label="Timeline waveform" checked={p.showWaveform} onChange={(v) => ed.setPrefs({ showWaveform: v })} />
-        <Check label="Storyboard" checked={p.showStoryboard} onChange={(v) => ed.setPrefs({ showStoryboard: v })} />
-        <Check label="Video" checked={p.showVideo} onChange={(v) => ed.setPrefs({ showVideo: v })} />
-      </GroupBox>
-      <SkinBox />
-      <GroupBox title="Input">
-        <Check label="Invert mouse wheel seeking" checked={p.invertScroll} onChange={(v) => ed.setPrefs({ invertScroll: v })} />
-        <Row label="Creator name"><input value={p.creatorName} placeholder="used when not logged in" onChange={(e) => ed.setPrefs({ creatorName: e.target.value })} /></Row>
-      </GroupBox>
-    </WinDialog>
-  );
-}
-
-/** Skin choice: osu!default, the drawn style, or skins imported from an .osk or a skin folder (kept in this browser). */
-function SkinBox() {
-  const ed = useEditor();
-  const [list, setList] = useState<SkinEntry[]>([]);
-  const refresh = () => void skins.list().then(setList);
-  useEffect(refresh, []);
-  const current = list.find((s) => s.id === ed.prefs.skin);
-  const importSkin = async (directory: boolean) => {
-    const files = await pickFiles(directory ? '' : '.osk,.zip', { directory, multiple: directory });
-    if (!files.length) return;
-    try {
-      const entry = await skins.import(files);
-      ed.setPrefs({ skin: entry.id });
-      refresh();
-      ed.toast(`Imported the skin "${entry.name}".`);
-    } catch (e) {
-      ed.toast(`Couldn't import the skin: ${e instanceof Error ? e.message : String(e)}`, 'error');
-    }
-  };
-  return (
-    <GroupBox title="Skin">
-      <Row label="Skin">
-        <select value={ed.prefs.skin} onChange={(e) => ed.setPrefs({ skin: e.target.value })}>
-          {list.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
-      </Row>
-      <div className="win-buttonrow">
-        <button onClick={() => void importSkin(false)}>Import .osk...</button>
-        <button onClick={() => void importSkin(true)}>Import skin folder...</button>
-        <button
-          disabled={!current || current.builtin}
-          onClick={async () => {
-            if (!current || !(await confirmBox('osu!', `Delete the skin "${current.name}" from this browser?`))) return;
-            await skins.remove(current.id);
-            ed.setPrefs({ skin: skins.currentId });
-            refresh();
-          }}
-        >
-          Delete
-        </button>
-      </div>
-      <div className="win-muted">Imported skins stay in this browser and are never uploaded.</div>
-    </GroupBox>
   );
 }
 

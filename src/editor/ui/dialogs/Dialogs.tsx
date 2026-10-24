@@ -13,7 +13,6 @@ import {
   NotepadDialog,
   ObjectSettingsDialog,
   PolygonDialog,
-  PreferencesDialog,
   RotateDialog,
   ScaleDialog,
   StreamDialog,
@@ -30,7 +29,6 @@ export function Dialogs() {
     case 'stream': return <StreamDialog />;
     case 'aimod': return <AiModDialog />;
     case 'difficulties': return <DifficultiesDialog />;
-    case 'preferences': return <PreferencesDialog />;
     case 'shortcuts': return <ShortcutsDialog />;
     case 'export': return <FilesDialog />;
     case 'osuText': return <NotepadDialog kind="osu" />;

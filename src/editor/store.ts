@@ -31,7 +31,6 @@ export type DialogName =
   | 'stream'
   | 'aimod'
   | 'difficulties'
-  | 'preferences'
   | 'shortcuts'
   | 'export'
   | 'test'
@@ -156,6 +155,7 @@ class Editor {
     savePrefs(this.prefs);
     this.applyAudioPrefs();
     void skins.use(this.prefs.skin);
+    void skins.setBeatmap(this.project && this.prefs.beatmapSkins ? this.project.files : null);
     this.emit();
     if (changed && cloud.syncing && this.prefs.syncSettings) {
       window.clearTimeout(this.settingsTimer);
@@ -198,6 +198,7 @@ class Editor {
     this.tool = 'select';
     this.contentRev++;
     this.setPrefs({});
+    void skins.setBeatmap(this.prefs.beatmapSkins ? p.files : null);
     const audio = findFile(p, this.bm.general.audioFilename);
     await music.load(audio ?? null, true);
     const left = editorTimes()[p.difficulties[this.diffIndex].id];
@@ -221,6 +222,7 @@ class Editor {
     this.dialog = null;
     this.placing = null;
     this.dirty = false;
+    void skins.setBeatmap(null);
     this.emit();
   }
 
@@ -418,6 +420,8 @@ class Editor {
     if (!this.project) return;
     if (blob) this.project.files.set(name, blob);
     else this.project.files.delete(name);
+    // Skin images added to the folder show up right away; the files map is the same object, so rebuild by hand.
+    if (this.prefs.beatmapSkins) void skins.setBeatmap(null).then(() => this.project && skins.setBeatmap(this.project.files));
     this.markDirty();
   }
 

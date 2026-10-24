@@ -3,6 +3,7 @@ import { music } from '../audio/music';
 import { activePlayfield } from './ui/Playfield';
 import { editor, maniaColumn, maniaX, type Tool } from './store';
 import { design } from './storyboard/design';
+import { optionsOpen } from '../ui/options';
 import { promptOpen } from '../ui/prompt';
 import { closeMenus } from './ui/menuState';
 import { actionFor, comboOf } from './keybinds';
@@ -164,7 +165,7 @@ const hasSel = () => editor.selection.size > 0;
 const isMania = () => editor.bm.general.mode === 3;
 
 export function handleKeyDown(e: KeyboardEvent) {
-  if (!editor.hasProject || isTyping(e) || promptOpen()) return;
+  if (!editor.hasProject || isTyping(e) || promptOpen() || optionsOpen()) return;
   if (editor.dialog && e.key !== 'Escape') return;
   const code = layoutCode(e);
   const combo = comboOf(e, code);

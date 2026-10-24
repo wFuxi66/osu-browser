@@ -148,6 +148,11 @@ export class Skin {
     return this.textures.get(name) ?? this.fallback?.get(name);
   }
 
+  /** Whether this skin has any element of its own (rather than only falling back). */
+  get hasOwnElements(): boolean {
+    return this.textures.size > 0;
+  }
+
   /** The hit circle number glyph for a digit. */
   digit(d: string): Texture | undefined {
     return this.get(`digit-${d}`);
@@ -262,7 +267,14 @@ function normalise(entries: [string, Blob][]): Map<string, Blob> {
 
 class SkinManager {
   /** The skin being drawn with, or null for the editor's drawn style (or while the first skin loads). */
-  current: Skin | null = null;
+  get current(): Skin | null {
+    return this.beatmapLayer ?? this.base;
+  }
+  /** The user's chosen skin. */
+  private base: Skin | null = null;
+  /** The open beatmap's own skin elements over the user's skin, when beatmap skins are on and it has any. */
+  private beatmapLayer: Skin | null = null;
+  private beatmapKey: { files: Map<string, Blob> | null; base: Skin | null } = { files: null, base: null };
   currentId = '';
   private listeners = new Set<() => void>();
   private request = 0;
@@ -312,8 +324,9 @@ class SkinManager {
       console.error('Loading the skin failed', e);
     }
     if (req !== this.request) return;
-    this.current = skin;
+    this.base = skin;
     void hitsounds.setSkinSamples(samples);
+    await this.setBeatmap(this.beatmapKey.files);
     this.emit();
   }
 
@@ -356,6 +369,28 @@ class SkinManager {
     };
     await store('readwrite', (s) => s.put(rec));
     return { id: rec.id, name: rec.name, builtin: false };
+  }
+
+  /**
+   * Uses a beatmap folder's own skin images (hitcircle.png, default-1.png, …, at the top of the folder) over the
+   * user's skin, as stable does unless "Ignore all beatmap skins" is on. Null turns it off.
+   */
+  async setBeatmap(files: Map<string, Blob> | null): Promise<void> {
+    if (files === this.beatmapKey.files && this.base === this.beatmapKey.base) return;
+    this.beatmapKey = { files, base: this.base };
+    let layer: Skin | null = null;
+    if (files) {
+      const own = new Map<string, Blob>();
+      for (const [name, blob] of files) if (!/[/\\]/.test(name) && /\.(png|jpe?g)$/i.test(name)) own.set(name.toLowerCase(), blob);
+      if (own.size) {
+        const ini = this.base?.ini ?? DEFAULT_INI;
+        const built = await buildSkin('beatmap', own, ini, this.base);
+        if (this.beatmapKey.files === files) layer = built.hasOwnElements ? built : null;
+        else return;
+      }
+    }
+    this.beatmapLayer = layer;
+    this.emit();
   }
 
   async remove(id: string): Promise<void> {

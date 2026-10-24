@@ -9,6 +9,8 @@ import { mapStatus, onlineSet, statusLabel, type MapStatus } from '../project/on
 import { filesFromDrop, openNewBeatmap, pickFiles, projectFromFiles, projectFromLink, updateToLatest } from '../project/open';
 import { downloadBlob, exportOsz, oszFilename } from '../project/project';
 import { deleteDifficultyLocal, deleteProjectLocal, listProjectsLocal, loadProjectLocal, type DifficultySummary, type ProjectSummary } from '../project/storage';
+import { layoutCode } from '../editor/shortcuts';
+import { options, optionsOpen } from '../ui/options';
 import { ask, promptOpen, type PromptButton } from '../ui/prompt';
 import { DirectPanel } from './DirectPanel';
 import { difficultyColour, GROUP_LABELS, groupOf, matches, parseSearch, SORT_LABELS, sortSets, type GroupMode, type SortMode } from './filter';
@@ -351,9 +353,14 @@ export function SongSelect() {
 
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keyHandler.current = (e: KeyboardEvent) => {
-    if (promptOpen() || busy || directOpen) return;
+    if (promptOpen() || optionsOpen() || busy || directOpen) return;
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
+    if ((e.ctrlKey || e.metaKey) && layoutCode(e) === 'KeyO') {
+      e.preventDefault();
+      options.show();
+      return;
+    }
     let handled = true;
     switch (e.key) {
       case 'ArrowDown': moveDiff(1); break;
@@ -458,6 +465,9 @@ export function SongSelect() {
       <footer className="ss-footer">
         <button className="ss-back" onClick={() => (linkOpen ? setLinkOpen(false) : setSearch(''))} title="Back (Esc)">
           <span className="ss-back-arrow">«</span> back
+        </button>
+        <button className="ss-footer-btn ss-settings" onClick={() => options.show()} title="Options (Ctrl+O)" aria-label="Options">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" /></svg>
         </button>
         <button className="ss-footer-btn" onClick={random} title="Random (F2)">Random</button>
         <button className="ss-footer-btn" onClick={() => void optionsDialog()} title="Beatmap options (F3)" disabled={!selDiff}>Options</button>

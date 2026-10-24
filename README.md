@@ -70,23 +70,25 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Edit-mode song select: carousel of sets that expand into difficulties, the selected map's background, info panel (length, BPM, object counts, CS/AR/OD/HP), preview point playing on a loop, type-to-search with filters (`ar>9`, `bpm>=180`, `length<90`, `mode=mania`, `creator=…`), Group/Sort dropdowns and tabs, arrow keys / Enter / F2 random / F3 options / Shift+Delete delete dialog, right-click absolute scrolling
 - [x] Stable's status box for the selected difficulty: "Latest ranked/qualified/loved/pending version" when it's the version on osu!, "Update to latest version" when it was edited or osu! has a newer one (click, confirm with stable's warning, and the set is replaced with the version on osu!), "Not submitted" otherwise. Difficulties remember the MD5 of the .osu they were imported from, which is osu!'s checksum, so this works even though the editor rewrites .osu files; set info comes from the osu! API through our server (`/api/beatmapsets/:id`), falling back to osu.direct
 - [x] "Drop an mp3 file here to start mapping", open .osz / beatmap folder / osu.ppy.sh link, account panel with cloud sync
-- [x] Esc leaves the editor (asks Yes/No/Cancel to save when there are unsaved changes); switching difficulty asks the same
+- [x] Esc leaves the editor (asks Yes/No/Cancel to save when there are unsaved changes); switching difficulty asks the same. Back in song select the song carries on from where you left it, and reopening a difficulty returns to the time you left it at (remembered per difficulty, also across reloads), like stable
 - [x] Stable editor layout: Windows-style menu strip, compose/design/timing/song setup tabs, timeline with zoom buttons, Beat Snap Divisor slider, Insert Break Time, position / Prev / Next distance readout, tips line, Sampleset/Additions + tool column, New Combo / Whistle / Finish / Clap / Grid Snap / Distance Snap / Lock Notes toggles, bottom bar with time and %, song overview, play/pause/stop, Test and Playback Rate
 - [x] Stable menus: File (Clear All Notes, Open Difficulty → For Editing, Save, Create a new Difficulty, Revert to Saved (Full), Test, AiMod, Export Package, Open Song Folder, Open .osu/.osb in Notepad, Exit), Edit (incl. reset samples / combo colours / breaks), View, Compose, Design, Timing (Time Signature, Resnap Current Section, Move all notes in time, Recalculate Slider Lengths, …), Web, Help
 - [x] Windows-style tool windows like stable: Song Setup and Timing and Control Points with OK/Cancel, Rotate by / Scale by with live preview, polygon circles, slider to stream, AiMod
 - [x] Letter shortcuts follow the keyboard layout (on AZERTY, W is the key labelled W)
+- [x] Options panel like stable's (gear in song select, Ctrl+O, or View → Options in the editor), with search: osu! account and Google Drive, creator name, volumes and offset, skin, editor display, downloads, and every editor shortcut rebindable (click a key, press the new one; right-click removes it), test mode's hit keys included. Menus, tooltips and the help screen show your keys
+- [x] Settings sync between computers through Google Drive (newest wins; the audio offset and imported skins stay per computer)
 
 **Files & projects**
 - [x] New beatmap from mp3/ogg (reads ID3 artist/title/cover art)
 - [x] Open `.osz`, a dropped beatmap folder, or loose `.osu` + assets
 - [x] Open published maps by link (direct from CORS-enabled mirrors)
-- [x] osu!direct in song select ("Search & download beatmaps"): search by text with status / mode / sort filters (osu.direct search API), audio previews, one-click download with progress straight into song select, "Open" for sets you already have
+- [x] osu!direct in song select ("Search & download beatmaps"): search by text with status / mode / sort filters (osu.direct search API), audio previews, one-click download with progress straight into song select, "Open" for sets you already have, with or without video (Options → Downloads). Logged in with osu!, "My beatmaps" lists your pending/WIP, ranked, loved, graveyarded sets and guest difficulties from the osu! API
 - [x] Save (Ctrl+S), revert to saved (Ctrl+L), full revert (Ctrl+Shift+L); no autosave, like stable
 - [x] Export `.osz` package and single `.osu`
 - [x] Multiple difficulties: Create a new Difficulty opens Song Setup to name it, then asks "Would you like to clear all objects and start fresh?" and saves it right away (the current one keeps its last save; flow and wording checked against stable); switch from File → Open Difficulty or Ctrl+O; delete from song select
 - [x] Add files to the beatmap folder (custom hitsounds, images, storyboard assets), replace audio
 - [x] Lossless round trip of `.osu` files (verified against ranked maps)
-- [x] Cloud sync to your own Google Drive (published sets sync only their edited files and come back from the mirrors), optional osu! login
+- [x] Cloud sync to your own Google Drive (published sets sync only their edited files and come back from the mirrors), offered once after the first save; optional osu! login
 
 **Compose (F1)**
 - [x] Select / circle / slider / spinner tools (1–4), mania note/hold tools
@@ -95,8 +97,8 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Slider control point editing: drag, Ctrl+click to toggle red anchor / insert point, right-click to delete
 - [x] Slider repeats by dragging the tail in the timeline
 - [x] Hovering a slider with the select tool shows its control points (draggable right away)
-- [x] Grid snap (T, Shift to toggle temporarily), grid sizes (G, Ctrl+1–4), distance snap (Y, Alt temporarily) with distance spacing (Alt+wheel)
-- [x] Skins (View → Options): osu!default (stable's default skin from osu-resources), a drawn style, or your own skin imported from an .osk or skin folder (kept in this browser, never uploaded); missing elements fall back to osu!default, skin.ini combo/slider colours and HitCircleOverlap/prefix are read, skin hitsounds replace the defaults. osu!standard compose and test mode use it (taiko/mania/catch and the timeline are still drawn)
+- [x] Playfield grid always shown, like stable (G / Ctrl+1–4 change its size; View → Show Grid hides it), grid snap (T, Shift to toggle temporarily), distance snap (Y, Alt temporarily) with distance spacing (Alt+wheel)
+- [x] Skins (View → Options): osu!default (stable's default skin from osu-resources), a drawn style, or your own skin imported from an .osk or skin folder (kept in this browser, never uploaded); missing elements fall back to osu!default, skin.ini combo/slider colours and HitCircleOverlap/prefix are read, skin hitsounds replace the defaults. osu!standard compose, the timeline and test mode use it (taiko/mania/catch are still drawn). Optionally, a beatmap's own skin images (hitcircle.png etc. in its folder) are used over yours
 - [x] Approach circles, follow points, combo numbers & colours (stable colour indexing), stacking (stable algorithm), slider ticks/reverse arrows/ball, hit animations, snaking sliders
 - [x] Selection: click, Ctrl/Shift+click, box select on playfield and timeline, Ctrl+A
 - [x] Move (drag, Ctrl+arrows), time-move in timeline (drag, J/K), lock notes (L)

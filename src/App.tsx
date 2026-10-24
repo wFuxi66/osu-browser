@@ -6,6 +6,7 @@ import { editor, useEditor } from './editor/store';
 import { cloud } from './project/cloud';
 import { skins } from './skin/skin';
 import { SongSelect } from './songselect/SongSelect';
+import { OptionsPanel } from './ui/OptionsPanel';
 import { PromptHost } from './ui/PromptHost';
 import { VolumeControl } from './ui/VolumeControl';
 
@@ -31,6 +32,7 @@ export function App() {
   return (
     <>
       {ed.hasProject ? <EditorShell /> : <SongSelect />}
+      <OptionsPanel />
       <Toasts />
       <PromptHost />
       <VolumeControl />

@@ -4,6 +4,7 @@ import { music } from '../../audio/music';
 import { serializeBeatmap } from '../../osu/serializer';
 import { cloud } from '../../project/cloud';
 import { downloadBlob, downloadText, exportOsz, osuFilename, oszFilename } from '../../project/project';
+import { options } from '../../ui/options';
 import { confirmBox, inputBox } from '../../ui/prompt';
 import { autoBreaks } from '../breaks';
 import { DIVISORS } from '../shortcuts';
@@ -172,7 +173,7 @@ export function MenuBar() {
     { label: 'Song Setup...', shortcut: key('setup'), action: () => ed.openDialog('setup') },
     { label: 'Timing Setup...', shortcut: key('timingSetup'), action: () => ed.openDialog('timingPoints') },
     sep,
-    { label: 'Volume...', action: () => ed.openDialog('preferences') },
+    { label: 'Volume...', action: () => options.show('audio') },
     {
       label: 'Grid Level',
       shortcut: key('gridCycle'),
@@ -188,7 +189,7 @@ export function MenuBar() {
     { label: 'Follow points', checked: p.showFollowPoints, action: () => ed.setPrefs({ showFollowPoints: !p.showFollowPoints }) },
     { label: 'Timeline waveform', checked: p.showWaveform, action: () => ed.setPrefs({ showWaveform: !p.showWaveform }) },
     sep,
-    { label: 'Options...', action: () => ed.openDialog('preferences') },
+    { label: 'Options...', action: () => options.show('editor') },
   ];
 
   const compose: Item[] = [

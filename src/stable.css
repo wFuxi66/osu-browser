@@ -122,6 +122,7 @@
 .win-titlebar { height: 30px; flex: none; display: flex; align-items: center; justify-content: space-between; background: #fff; padding-left: 8px; font-size: 12px; }
 .win-x { width: 46px; height: 30px; background: none; border: none; border-radius: 0; color: #000; font-size: 13px; padding: 0; }
 .win-x:hover:not(:disabled) { background: #e81123; color: #fff; border: none; }
+.win-x:disabled { background: none; color: #c4c4c4; }
 .win-window button:not(.win-x):not(.win-tab):not(.win-arrow):not(.tsd-icon), .win-btn { font: 12px var(--win-font); color: #000; background: #e1e1e1; border: 1px solid #adadad; border-radius: 0; padding: 2px 10px; min-width: 75px; min-height: 23px; }
 .win-window button:not(.win-x):not(.win-tab):not(.win-arrow):not(.tsd-icon):hover:not(:disabled), .win-btn:hover:not(:disabled) { background: #e5f1fb; border-color: #0078d7; }
 .win-window button:not(.win-x):not(.win-tab):not(.win-arrow):not(.tsd-icon):focus-visible, .win-btn:focus-visible { outline: 1px dotted #000; outline-offset: -4px; border-color: #0078d7; }
@@ -134,6 +135,7 @@
 .win-msgbox { width: 380px; }
 .win-msgbody { background: #fff; padding: 24px 20px 26px; display: flex; gap: 14px; align-items: center; font-size: 12px; }
 .win-msgicon { width: 32px; height: 32px; border-radius: 50%; background: #1e69c8; color: #fff; display: grid; place-items: center; font: 700 20px var(--win-font); flex: none; }
+.win-msgicon-warning { width: 32px; height: 32px; flex: none; }
 .win-msgtext { white-space: pre-line; }
 .win-msgbuttons { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; }
 .win-msgtext { display: flex; flex-direction: column; gap: 8px; flex: 1; }

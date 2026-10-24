@@ -16,6 +16,10 @@ export interface PromptRequest {
   buttons: PromptButton[];
   /** Value returned for Esc / closing the dialog. */
   cancelValue: string;
+  /** Message box icon: the question mark (default) or the warning triangle. */
+  icon?: 'question' | 'warning';
+  /** False for message boxes without a Cancel: the close button is greyed out and Esc does nothing, like Windows. */
+  closable?: boolean;
   /** Optional text field (message boxes only); its value is passed to onInput as it changes. */
   input?: { value: string; onInput: (v: string) => void };
 }

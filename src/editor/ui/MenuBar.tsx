@@ -122,7 +122,7 @@ export function MenuBar() {
     { label: 'Test Beatmap', shortcut: 'F5', action: () => { music.pause(); ed.openDialog('test'); } },
     { label: 'Open AiMod', shortcut: 'Ctrl+Shift+A', action: () => ed.openDialog('aimod') },
     sep,
-    { label: 'Export Package...', action: () => void exportPackage() },
+    { label: 'Export Package', action: () => void exportPackage() },
     { label: 'Export Difficulty (.osu)...', action: () => downloadText(serializeBeatmap(bm), osuFilename(bm)) },
     sep,
     { label: 'Open Song Folder', action: () => ed.openDialog('export') },
@@ -250,7 +250,7 @@ export function MenuBar() {
             { label: 'Save and sync now', shortcut: 'Ctrl+S', action: () => void ed.save() },
             { label: 'Log out', action: () => void cloud.logout() },
           ]
-        : [{ label: cloud.oauthConfigured ? 'Log in with osu!...' : 'osu! login is not configured on this server', disabled: !cloud.oauthConfigured, action: async () => { if (await ed.resolveUnsaved('logging in')) cloud.login(); } }]
+        : [{ label: cloud.oauthConfigured ? 'Log in with osu!...' : 'osu! login is not configured on this server', disabled: !cloud.oauthConfigured, action: async () => { if (await ed.resolveUnsaved()) cloud.login(); } }]
       : [{ label: 'Offline: maps are saved in this browser', disabled: true }]),
   ];
 

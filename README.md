@@ -95,7 +95,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] osu!direct in song select ("Search & download beatmaps"): search by text with status / mode / sort filters (osu.direct search API), audio previews, one-click download with progress straight into song select, "Open" for sets you already have
 - [x] Save (Ctrl+S), revert to saved (Ctrl+L), full revert (Ctrl+Shift+L); no autosave, like stable
 - [x] Export `.osz` package and single `.osu`
-- [x] Multiple difficulties: Create a new Difficulty asks whether to copy the objects, then Song Setup names it (the current one keeps its last save, as in stable); switch from File → Open Difficulty or Ctrl+O; delete from song select
+- [x] Multiple difficulties: Create a new Difficulty opens Song Setup to name it, then asks "Would you like to clear all objects and start fresh?" and saves it right away (the current one keeps its last save; flow and wording checked against stable); switch from File → Open Difficulty or Ctrl+O; delete from song select
 - [x] Add files to the beatmap folder (custom hitsounds, images, storyboard assets), replace audio
 - [x] Lossless round trip of `.osu` files (verified against ranked maps)
 - [x] osu! OAuth login + per-account cloud sync

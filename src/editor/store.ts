@@ -170,20 +170,21 @@ class Editor {
   }
 
   /**
-   * If there are unsaved changes, ask whether to save them first. Resolves false when the user cancels.
-   * "No" reloads the last saved version, so the changes are really discarded.
+   * If there are unsaved changes, ask whether to save them first (stable's message box). Resolves false when the
+   * user cancels. "No" reloads the last saved version, so the changes are really discarded.
    */
-  async resolveUnsaved(action: string): Promise<boolean> {
+  async resolveUnsaved(): Promise<boolean> {
     if (!this.project || !this.dirty) return true;
     music.pause();
     const r = await ask({
-      look: 'game',
-      title: 'Save changes?',
-      message: `You have unsaved changes. Would you like to save them before ${action}?`,
+      look: 'win',
+      title: 'osu!',
+      icon: 'warning',
+      message: 'Do you really wish to save changes to this beatmap?',
       buttons: [
-        { label: 'Yes', value: 'yes', tone: 'pink' },
-        { label: 'No', value: 'no', tone: 'blue' },
-        { label: 'Cancel', value: 'cancel', tone: 'grey' },
+        { label: 'Yes', value: 'yes' },
+        { label: 'No', value: 'no' },
+        { label: 'Cancel', value: 'cancel' },
       ],
       cancelValue: 'cancel',
     });
@@ -195,7 +196,7 @@ class Editor {
 
   /** Esc / File → Exit: back to song select, asking to save first if there are unsaved changes. */
   async exitEditor() {
-    if (await this.resolveUnsaved('exiting')) this.closeProject();
+    if (await this.resolveUnsaved()) this.closeProject();
   }
 
   /** Throw away unsaved edits by reloading the project as it was last saved. */
@@ -221,7 +222,7 @@ class Editor {
   /** Open another difficulty of this set, asking to save the current one first, like stable. */
   async requestSwitchDifficulty(id: string) {
     if (!this.project || this.project.difficulties[this.diffIndex].id === id) return;
-    if (!(await this.resolveUnsaved('switching difficulty'))) return;
+    if (!(await this.resolveUnsaved())) return;
     const i = this.project.difficulties.findIndex((d) => d.id === id);
     if (i >= 0) await this.switchDifficulty(i);
   }
@@ -246,35 +247,40 @@ class Editor {
   /** Draft for File → Create a new Difficulty, edited by Song Setup until OK. */
   pendingNewDifficulty: Beatmap | null = null;
 
-  /** Stable's flow: ask whether to keep the objects, then fill in Song Setup for the new difficulty. */
-  async beginNewDifficulty() {
+  /** Stable's flow: Song Setup for the new difficulty first; after OK, commitNewDifficulty asks about the objects. */
+  beginNewDifficulty() {
     if (!this.project) return;
-    const r = await ask({
-      look: 'win',
-      title: 'osu!',
-      message: 'Would you like to copy the hit objects from the current difficulty to the new one?\nTiming and song setup are always copied.',
-      buttons: [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }, { label: 'Cancel', value: 'cancel' }],
-      cancelValue: 'cancel',
-    });
-    if (r === 'cancel') return;
     const bm = cloneBeatmap(this.bm);
     bm.metadata.version = '';
     bm.metadata.beatmapId = 0;
-    if (r === 'no') {
-      bm.hitObjects = [];
-      bm.events.breaks = [];
-      bm.editor.bookmarks = [];
-      bm.timingPoints = bm.timingPoints.filter((t) => t.uninherited);
-    } else bm.hitObjects.forEach((o) => (o.id = newObjectId()));
+    bm.hitObjects.forEach((o) => (o.id = newObjectId()));
     this.pendingNewDifficulty = bm;
     this.openDialog('setup');
   }
 
-  /** Song Setup OK for a new difficulty: the current one keeps its last saved state, the new one is saved. */
+  /**
+   * Song Setup OK for a new difficulty: stable then asks whether to start without the objects. The current
+   * difficulty keeps its last saved state, and the new one is saved straight away (stable writes it on OK too).
+   */
   async commitNewDifficulty() {
     const bm = this.pendingNewDifficulty;
     if (!this.project || !bm) return;
     this.pendingNewDifficulty = null;
+    const fresh = await ask({
+      look: 'win',
+      title: 'osu!',
+      icon: 'warning',
+      message: 'Would you like to clear all objects and start fresh?',
+      buttons: [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }],
+      cancelValue: 'no',
+      closable: false,
+    });
+    if (fresh === 'yes') {
+      bm.hitObjects = [];
+      bm.events.breaks = [];
+      bm.editor.bookmarks = [];
+      bm.timingPoints = bm.timingPoints.filter((t) => t.uninherited);
+    }
     bm.metadata.version = uniqueVersionName(this.project, bm.metadata.version.trim() || 'New Difficulty');
     if (this.savedSnapshot) this.project.difficulties[this.diffIndex].beatmap = cloneBeatmap(this.savedSnapshot);
     this.project.difficulties.push({ id: uid(), beatmap: bm });

@@ -267,7 +267,9 @@ function ComposeRight() {
 const TIPS = [
   'Esc goes back to song select. If you have unsaved changes, you are asked whether to save them first.',
   'Nothing saves automatically: press Ctrl+S to save. If you are logged in, saving also syncs the map to your account.',
-  'Copying objects (Ctrl+C) also puts the time and combo numbers on the clipboard, which is handy for modding.',
+  'When copying objects (Ctrl+C), the clipboard will contain the current time location and combo numbers of selected objects. This is especially useful for writing map feedback!',
+  'Distance snap is a handy tool for precise spacing calculations. Hold the “Alt” key to fine-tune it.',
+  'Try synchronizing the most important sounds in a song to clicks in gameplay. This is especially important when deciding slider rhythms!',
   'Hold Shift to toggle grid snap and Alt to toggle distance snap while you place or drag objects.',
   'Alt + mouse wheel changes the distance spacing over the playfield, and zooms when the cursor is over the timeline.',
   'Ctrl + mouse wheel changes the beat snap divisor. Shift + 1 to 9 sets it directly.',

@@ -82,8 +82,9 @@ The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API d
 
 **Design (F2)**
 - [x] Storyboard script editing (.osb and difficulty events), preserved on export
-- [ ] Visual storyboard editor and storyboard playback preview
-- [ ] Video playback in the editor background
+- [x] Storyboard playback in the compose background and Design preview: sprites, animations, F/M/MX/MY/S/V/R/C/P, loops, HitSound triggers, all 35 easings, [Variables], widescreen, storyboard samples
+- [x] Visual sprite editor: add from the library (drag onto the preview), select/drag to move (keyframes at the current time), Shift+drag scale, Ctrl+drag rotate, per-time property keyframes, command list with easing, layers/origin/draw order, .osb vs difficulty, undo
+- [x] Video playback in the editor background, synced to the music (formats the browser can decode: mp4/H.264, webm)
 
 ## Credits
 

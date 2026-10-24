@@ -3,6 +3,7 @@ import { hitsounds, objectSoundEvents, type SoundEvent } from '../audio/hitsound
 import { music } from '../audio/music';
 import { redLineAt } from '../osu/timing';
 import { editor } from './store';
+import { storyboard } from './storyboard/runtime';
 
 type FrameCallback = (time: number) => void;
 const callbacks = new Set<FrameCallback>();
@@ -15,17 +16,23 @@ export function onFrame(cb: FrameCallback): () => void {
 let events: SoundEvent[] = [];
 let eventsRev = -1;
 let eventsDiff = -1;
+let eventsSbRev = -1;
 let scheduledUpTo = -Infinity;
 let wasPlaying = false;
 let lastTime = 0;
 const LOOKAHEAD = 60;
 
 function rebuildEvents() {
-  if (eventsRev === editor.contentRev && eventsDiff === editor.diffIndex) return;
+  const samples = editor.prefs.showStoryboard ? storyboard.samples() : [];
+  const sbRev = editor.prefs.showStoryboard ? storyboard.rev : -2;
+  if (eventsRev === editor.contentRev && eventsDiff === editor.diffIndex && eventsSbRev === sbRev) return;
   eventsRev = editor.contentRev;
   eventsDiff = editor.diffIndex;
+  eventsSbRev = sbRev;
   const bm = editor.bm;
-  events = bm.hitObjects.flatMap((o) => objectSoundEvents(bm, o)).sort((a, b) => a.time - b.time);
+  events = bm.hitObjects.flatMap((o) => objectSoundEvents(bm, o));
+  for (const s of samples) events.push({ time: s.time, play: (d) => hitsounds.playFile(s.file, s.volume / 100, d) });
+  events.sort((a, b) => a.time - b.time);
 }
 
 function firstIndexAfter(t: number): number {

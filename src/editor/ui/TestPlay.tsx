@@ -284,7 +284,7 @@ export function TestPlay() {
     };
 
     const off = onFrame((t) => {
-      drawBackground(ctx, w, h, Math.max(0.6, editor.prefs.backgroundDim));
+      drawBackground(ctx, w, h, Math.max(0.6, editor.prefs.backgroundDim), t);
       if (altSurface) {
         altSurface.draw(ctx, t);
         return;

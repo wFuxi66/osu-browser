@@ -223,3 +223,48 @@ kbd { background: #2a2a38; border: 1px solid var(--border); border-radius: 3px; 
 .toasts { position: fixed; right: 16px; bottom: 72px; display: flex; flex-direction: column; gap: 8px; z-index: 70; pointer-events: none; }
 .toast { background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--ok); padding: 8px 12px; border-radius: 6px; max-width: 420px; box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
 .toast.error { border-left-color: var(--danger); }
+
+/* ------------------------------------------------------------------ design (storyboard) */
+.design-screen { grid-template-columns: 1fr 380px; }
+.design-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.sb-preview { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.sb-preview canvas { flex: 1; width: 100%; min-height: 0; display: block; cursor: default; background: #000; }
+.sb-preview-bar { display: flex; gap: 14px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--border); font-size: 12px; flex-wrap: wrap; }
+.sb-preview-bar .mono { min-width: 110px; }
+.check { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; }
+.sb-timeline { background: var(--panel); border-top: 1px solid var(--border); padding: 2px 0; }
+.sb-timeline canvas { width: 100%; display: block; cursor: pointer; }
+.sb-timeline.empty { padding: 6px 10px; font-size: 12px; }
+.design-side { background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; padding: 6px 10px 0; }
+.design-side .tabs { margin-bottom: 6px; }
+.design-panel { overflow: auto; flex: 1; padding-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
+.design-panel h3 { margin: 8px 0 4px; font-size: 13px; }
+.design-panel h4 { margin: 8px 0 4px; font-size: 12px; color: var(--accent-2); }
+.design-panel .row { display: flex; gap: 6px; align-items: center; margin: 2px 0; }
+.design-panel .row.wrap { flex-wrap: wrap; }
+.design-panel .field { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.design-panel .field > span { color: var(--muted); font-size: 12px; min-width: 64px; }
+.design-panel .field select, .design-panel .field input:not([type="checkbox"]):not([type="color"]) { flex: 1; min-width: 0; }
+.design-panel .field2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.design-panel .field2 .field > span { min-width: 52px; }
+.design-panel.script textarea { min-height: 160px; font-family: Consolas, ui-monospace, monospace; font-size: 12px; resize: vertical; white-space: pre; }
+.collapsible { cursor: pointer; }
+.small { font-size: 11px; }
+.warn { color: #ffcc55; font-size: 12px; margin: 4px 0; }
+.sb-library li { display: flex; gap: 4px; align-items: center; padding: 1px 0; cursor: grab; }
+.sb-library li span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-elements { list-style: none; margin: 4px 0; padding: 0; max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: #121218; }
+.sb-elements li { display: flex; gap: 6px; padding: 2px 6px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.sb-elements li:hover { background: #1c1c26; }
+.sb-elements li.active { background: #3a1f30; }
+.sb-elements .sb-name { overflow: hidden; text-overflow: ellipsis; }
+.sb-src { font-size: 10px; padding: 0 4px; border-radius: 3px; background: #2a2a38; color: var(--muted); }
+.sb-src.diff { background: #1f2f3a; color: var(--accent-2); }
+.sb-layer { color: var(--muted); width: 16px; }
+.sb-cmd-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.sb-cmd-table td { padding: 1px 2px; border-bottom: 1px solid #1e1e28; white-space: nowrap; }
+.sb-cmd-table tr.group td { background: #1f1f2a; }
+.sb-cmd-table tr.nested td:first-child { padding-left: 8px; color: var(--muted); }
+.sb-cmd-table select { max-width: 92px; font-size: 11px; padding: 0; }
+.sb-cmd-table input.cell { width: 64px; font-size: 11px; padding: 1px 3px; }
+.sb-cmd-table input.cell.num { width: 52px; }

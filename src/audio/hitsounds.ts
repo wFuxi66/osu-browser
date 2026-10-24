@@ -72,7 +72,7 @@ class HitsoundEngine {
           .arrayBuffer()
           .then((b) => ctx.decodeAudioData(b))
           .then((buf) => {
-            const lower = name.toLowerCase();
+            const lower = name.toLowerCase().replace(/\\/g, '/');
             this.custom.set(lower, buf);
             this.custom.set(lower.replace(/\.(wav|ogg|mp3)$/, ''), buf);
           })
@@ -140,6 +140,12 @@ class HitsoundEngine {
     const ns = normalSet || tp.sampleSet || defaultSet;
     const idx = index || tp.sampleIndex;
     this.playBuffer(this.lookup(SET_NAMES[ns], 'slidertick', idx), (volume || tp.volume) / 100, delay);
+  }
+
+  /** Play a beatmap file by name (storyboard samples). */
+  playFile(name: string, volume: number, delay = 0) {
+    const key = name.toLowerCase().replace(/\\/g, '/');
+    this.playBuffer(this.custom.get(key) ?? this.custom.get(key.replace(/\.(wav|ogg|mp3)$/, '')), volume, delay);
   }
 
   playMetronome(accent: boolean) {

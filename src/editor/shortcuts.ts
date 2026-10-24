@@ -2,6 +2,7 @@
 import { music } from '../audio/music';
 import { activePlayfield } from './ui/Playfield';
 import { editor, maniaColumn, maniaX, type Tool } from './store';
+import { design } from './storyboard/design';
 
 const DIVISORS = [1, 2, 3, 4, 6, 8, 12, 16];
 
@@ -59,9 +60,12 @@ export function handleKeyDown(e: KeyboardEvent) {
 
   if (key === 'Escape') {
     if (editor.dialog) editor.openDialog(null);
+    else if (editor.screen === 'design') design.dragging ? design.cancelDrag() : design.select(null);
     else if (!activePlayfield.current?.cancel()) editor.clearSelection();
     return e.preventDefault();
   }
+
+  if (editor.screen === 'design' && handleDesignKey(code, ctrl, shift)) return e.preventDefault();
 
   const hasSel = editor.selection.size > 0;
   const isMania = editor.bm.general.mode === 3;
@@ -201,6 +205,23 @@ export function handleKeyDown(e: KeyboardEvent) {
     default: handled = false;
   }
   if (handled) e.preventDefault();
+}
+
+/** Design mode edits storyboard elements instead of hit objects. */
+function handleDesignKey(code: string, ctrl: boolean, shift: boolean): boolean {
+  if (ctrl) {
+    if (code === 'KeyZ' && !shift) design.undo();
+    else if (code === 'KeyY' || (code === 'KeyZ' && shift)) design.redo();
+    else if (code === 'KeyD') design.duplicateSelected();
+    else if (code === 'KeyA' || code === 'KeyC' || code === 'KeyX' || code === 'KeyV') return true;
+    else return false;
+    return true;
+  }
+  if (code === 'Delete' || code === 'Backspace') {
+    design.deleteSelected();
+    return true;
+  }
+  return /^(Digit[1-4]|Key[QWERTYGLJK])$/.test(code);
 }
 
 export function handleWheel(e: WheelEvent) {

@@ -114,6 +114,8 @@ export interface Prefs {
   snakingSliders: boolean;
   backgroundDim: number;
   showWaveform: boolean;
+  showStoryboard: boolean;
+  showVideo: boolean;
   creatorName: string;
   invertScroll: boolean;
 }
@@ -127,6 +129,8 @@ export const DEFAULT_PREFS: Prefs = {
   snakingSliders: true,
   backgroundDim: 0.7,
   showWaveform: false,
+  showStoryboard: true,
+  showVideo: true,
   creatorName: '',
   invertScroll: false,
 };

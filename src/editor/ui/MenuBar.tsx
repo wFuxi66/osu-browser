@@ -157,6 +157,8 @@ export function MenuBar() {
     { label: 'Hit animations', checked: p.showHitAnimations, action: () => ed.setPrefs({ showHitAnimations: !p.showHitAnimations }) },
     { label: 'Follow points', checked: p.showFollowPoints, action: () => ed.setPrefs({ showFollowPoints: !p.showFollowPoints }) },
     { label: 'Snaking sliders', checked: p.snakingSliders, action: () => ed.setPrefs({ snakingSliders: !p.snakingSliders }) },
+    { label: 'Storyboard', checked: p.showStoryboard, action: () => ed.setPrefs({ showStoryboard: !p.showStoryboard }) },
+    { label: 'Video', checked: p.showVideo, action: () => ed.setPrefs({ showVideo: !p.showVideo }) },
     { label: 'Background dim: 0%', checked: p.backgroundDim === 0, action: () => ed.setPrefs({ backgroundDim: 0 }) },
     { label: 'Background dim: 30%', checked: p.backgroundDim === 0.3, action: () => ed.setPrefs({ backgroundDim: 0.3 }) },
     { label: 'Background dim: 50%', checked: p.backgroundDim === 0.5, action: () => ed.setPrefs({ backgroundDim: 0.5 }) },

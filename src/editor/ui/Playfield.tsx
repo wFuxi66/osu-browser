@@ -6,6 +6,8 @@ import { StdMode } from '../playfield/stdMode';
 import { TaikoMode } from '../playfield/taikoMode';
 import type { PlayfieldMode } from '../playfield/types';
 import { editor } from '../store';
+import { fitFrame, storyboard, type SbFrame } from '../storyboard/runtime';
+import { video } from '../video';
 
 /** The active compose surface, exposed so keyboard shortcuts can reach it (Escape/Enter). */
 export const activePlayfield: { current: PlayfieldMode | null } = { current: null };
@@ -26,15 +28,40 @@ function backgroundImage(): HTMLImageElement | null {
   return img.complete && img.naturalWidth ? img : null;
 }
 
-export function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: number, dim: number) {
+function drawCover(ctx: CanvasRenderingContext2D, src: CanvasImageSource, sw: number, sh: number, w: number, h: number) {
+  const s = Math.max(w / sw, h / sh);
+  ctx.drawImage(src, (w - sw * s) / 2, (h - sh * s) / 2, sw * s, sh * s);
+}
+
+/** Background image, video and storyboard at song time t, dimmed like stable's editor. */
+export function drawBackground(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  dim: number,
+  t: number,
+  opts: { frame?: SbFrame; storyboard?: boolean } = {},
+) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
-  const img = backgroundImage();
+  const prefs = editor.prefs;
+  const showSb = (opts.storyboard ?? prefs.showStoryboard) && editor.hasProject;
+  if (showSb) storyboard.sync();
+  const bg = editor.hasProject ? editor.bm.events.background : null;
+  // Like the game, a storyboard that draws the background file itself replaces the static background.
+  const img = bg && !(showSb && storyboard.usesFile(bg.filename)) ? backgroundImage() : null;
+  let drew = false;
   if (img) {
-    const s = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-    const iw = img.naturalWidth * s;
-    const ih = img.naturalHeight * s;
-    ctx.drawImage(img, (w - iw) / 2, (h - ih) / 2, iw, ih);
+    drawCover(ctx, img, img.naturalWidth, img.naturalHeight, w, h);
+    drew = true;
+  }
+  const vid = editor.hasProject ? video.frameAt(t, prefs.showVideo) : null;
+  if (vid) {
+    drawCover(ctx, vid, vid.videoWidth, vid.videoHeight, w, h);
+    drew = true;
+  }
+  if (showSb) drew = storyboard.draw(ctx, opts.frame ?? fitFrame(w, h, false), t, { widescreen: editor.bm.general.widescreenStoryboard }) || drew;
+  if (drew) {
     ctx.fillStyle = `rgba(0,0,0,${dim})`;
     ctx.fillRect(0, 0, w, h);
   }
@@ -77,7 +104,7 @@ export function Playfield() {
       if (!editor.hasProject || !w) return;
       const m = ensureMode();
       m.layout(w, h);
-      drawBackground(ctx, w, h, editor.prefs.backgroundDim);
+      drawBackground(ctx, w, h, editor.prefs.backgroundDim, t);
       m.draw(ctx, t);
     });
 

@@ -8,6 +8,7 @@ import { filesFromDrop, openNewBeatmap, pickFiles, projectFromFiles, projectFrom
 import { downloadBlob, exportOsz, oszFilename } from '../project/project';
 import { deleteDifficultyLocal, deleteProjectLocal, listProjectsLocal, loadProjectLocal, type DifficultySummary, type ProjectSummary } from '../project/storage';
 import { ask, promptOpen } from '../ui/prompt';
+import { DirectPanel } from './DirectPanel';
 import { difficultyColour, GROUP_LABELS, groupOf, matches, parseSearch, SORT_LABELS, sortSets, type GroupMode, type SortMode } from './filter';
 
 type Row =
@@ -55,6 +56,9 @@ export function SongSelect() {
   const [busy, setBusy] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [directOpen, setDirectOpen] = useState(false);
+  const closeDirect = useCallback(() => setDirectOpen(false), []);
+  const haveSets = useMemo(() => new Map((sets ?? []).filter((s) => s.beatmapSetId > 0).map((s) => [s.beatmapSetId, s.id])), [sets]);
   const randomHistory = useRef<Selection[]>([]);
 
   const refresh = useCallback(async () => {
@@ -153,7 +157,7 @@ export function SongSelect() {
 
   // ------------------------------------------------------------------ preview music
   useEffect(() => {
-    if (!selSet?.audio) {
+    if (!selSet?.audio || directOpen) {
       music.pause();
       return;
     }
@@ -186,7 +190,7 @@ export function SongSelect() {
       window.removeEventListener('pointerdown', kick);
       window.removeEventListener('keydown', kick);
     };
-  }, [selSet?.id, selSet?.audio]);
+  }, [selSet?.id, selSet?.audio, directOpen]);
 
   useEffect(() => () => music.pause(), []);
 
@@ -310,7 +314,7 @@ export function SongSelect() {
 
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keyHandler.current = (e: KeyboardEvent) => {
-    if (promptOpen() || busy) return;
+    if (promptOpen() || busy || directOpen) return;
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
     let handled = true;
@@ -404,6 +408,9 @@ export function SongSelect() {
         <button className="ss-wide" onClick={async () => { const f = await pickFiles('', { directory: true }); if (f.length) handleFiles(f); }}>
           Open a <b>beatmap folder</b>
         </button>
+        <button className="ss-wide" onClick={() => setDirectOpen(true)}>
+          <b>Search &amp; download</b> beatmaps
+        </button>
         {linkOpen ? (
           <LinkInput onOpen={openLink} onCancel={() => setLinkOpen(false)} />
         ) : (
@@ -423,10 +430,26 @@ export function SongSelect() {
         </button>
       </footer>
 
+      {directOpen && (
+        <DirectPanel
+          have={haveSets}
+          onImported={async (id) => {
+            const list = await refresh();
+            const s = list.find((x) => x.id === id);
+            if (s) setSel({ setId: s.id, diffId: s.difficulties[0].id });
+          }}
+          onOpen={(id) => {
+            setDirectOpen(false);
+            void selectImported(id);
+          }}
+          onClose={closeDirect}
+        />
+      )}
+
       {sets && sets.length === 0 && (
         <div className="ss-empty">
           <div className="ss-empty-title">No beatmaps yet!</div>
-          <div>Drop an mp3 to start mapping, or open an .osz.</div>
+          <div>Drop an mp3 to start mapping, open an .osz, or search &amp; download beatmaps.</div>
         </div>
       )}
       {sets && sets.length > 0 && visible.length === 0 && <div className="ss-empty"><div className="ss-empty-title">No matches for “{search}”</div><div>Press Esc to clear the search.</div></div>}

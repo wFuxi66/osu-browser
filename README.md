@@ -74,7 +74,7 @@ The container is stateless (all data is in Supabase), listens on `PORT` (8787), 
 
 ### Opening published maps
 
-Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapsets/…` link. The official API doesn't let third-party apps download beatmapsets, so the browser downloads them directly from public mirrors that allow CORS: osu.direct first, then nerinyan. When the app runs on the Node server, it also falls back to a server-side proxy that adds catboy.best. That proxy isn't deployed on Vercel.
+Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapsets/…` link. The official API doesn't let third-party apps download beatmapsets, so the browser downloads them directly from public mirrors that allow CORS: osu.direct first, then nerinyan. When the app runs on the Node server, it also falls back to a server-side proxy that adds catboy.best. That proxy isn't deployed on Vercel. The "Search & download beatmaps" panel uses osu.direct's search API (also CORS-enabled) and the same downloads.
 
 ## Feature checklist (vs. the stable editor)
 
@@ -92,6 +92,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] New beatmap from mp3/ogg (reads ID3 artist/title/cover art)
 - [x] Open `.osz`, a dropped beatmap folder, or loose `.osu` + assets
 - [x] Open published maps by link (direct from CORS-enabled mirrors)
+- [x] osu!direct in song select ("Search & download beatmaps"): search by text with status / mode / sort filters (osu.direct search API), audio previews, one-click download with progress straight into song select, "Open" for sets you already have
 - [x] Save (Ctrl+S), revert to saved (Ctrl+L), full revert (Ctrl+Shift+L); no autosave, like stable
 - [x] Export `.osz` package and single `.osu`
 - [x] Multiple difficulties: Create a new Difficulty asks whether to copy the objects, then Song Setup names it (the current one keeps its last save, as in stable); switch from File → Open Difficulty or Ctrl+O; delete from song select

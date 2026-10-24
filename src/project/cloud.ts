@@ -144,12 +144,12 @@ class Cloud {
    * Fetch a published beatmapset (.osz) by id. Downloads straight from public mirrors that allow CORS,
    * then falls back to the standalone server's mirror proxy (not available on the Vercel deployment).
    */
-  async fetchBeatmapset(setId: number): Promise<ArrayBuffer> {
+  async fetchBeatmapset(setId: number, onProgress?: (fraction: number) => void): Promise<ArrayBuffer> {
     for (const url of [...BROWSER_MIRRORS.map((m) => m(setId)), `/api/mirror/${setId}`]) {
       try {
         const r = await fetch(url, { signal: AbortSignal.timeout(120_000) });
         if (!r.ok) continue;
-        const data = await r.arrayBuffer();
+        const data = await readWithProgress(r, onProgress);
         if (data.byteLength >= 4 && new DataView(data).getUint32(0, true) === 0x04034b50) return data;
       } catch {
         // try the next mirror
@@ -161,6 +161,21 @@ class Cloud {
 
 // Mirrors that send Access-Control-Allow-Origin (checked 2026-10-24; catboy.best doesn't, so it's proxy-only).
 const BROWSER_MIRRORS = [(id: number) => `https://osu.direct/api/d/${id}`, (id: number) => `https://api.nerinyan.moe/d/${id}`];
+
+/** Reads a response body, reporting progress when the size is known. */
+async function readWithProgress(r: Response, onProgress?: (fraction: number) => void): Promise<ArrayBuffer> {
+  const total = Number(r.headers.get('content-length')) || 0;
+  if (!onProgress || !total || !r.body) return r.arrayBuffer();
+  const reader = r.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let got = 0;
+  for (let c = await reader.read(); !c.done; c = await reader.read()) {
+    chunks.push(c.value);
+    got += c.value.length;
+    onProgress(Math.min(1, got / total));
+  }
+  return new Blob(chunks as BlobPart[]).arrayBuffer();
+}
 
 function tooLargeMessage(title: string, size: number, max: number) {
   const mb = (n: number) => (n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0);

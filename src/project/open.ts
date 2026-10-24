@@ -37,11 +37,14 @@ export async function openNewBeatmap(project: Project) {
 }
 
 /** Download a published set by link or id and store it. */
-export async function projectFromLink(link: string): Promise<Project> {
+export async function projectFromLink(link: string, onProgress?: (fraction: number) => void): Promise<Project> {
   const m = /(?:beatmapsets\/|^)(\d+)/.exec(link.trim());
   if (!m) throw new Error('Paste a beatmapset link like https://osu.ppy.sh/beatmapsets/123456 or just the set id.');
-  const data = await cloud.fetchBeatmapset(Number(m[1]));
+  const setId = Number(m[1]);
+  const data = await cloud.fetchBeatmapset(setId, onProgress);
   const p = await importOsz(data);
+  // Old .osu files have no BeatmapSetID line; we know it from the download.
+  for (const d of p.difficulties) if (!(d.beatmap.metadata.beatmapSetId > 0)) d.beatmap.metadata.beatmapSetId = setId;
   await saveProjectLocal(p);
   return p;
 }

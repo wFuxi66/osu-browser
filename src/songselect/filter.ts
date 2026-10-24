@@ -153,7 +153,11 @@ export function groupOf(s: ProjectSummary, mode: GroupMode): { key: string; orde
 
 /** Difficulty colour by star rating (stable's bands), falling back to OD when stars are unknown. */
 export function difficultyColour(d: DifficultySummary): string {
-  const s = d.stars ?? d.od * 0.6;
+  return starColour(d.stars ?? d.od * 0.6);
+}
+
+/** Stable's difficulty colour bands by star rating. */
+export function starColour(s: number): string {
   if (s < 2) return '#88b300';
   if (s < 2.7) return '#66ccff';
   if (s < 4) return '#ffcc22';

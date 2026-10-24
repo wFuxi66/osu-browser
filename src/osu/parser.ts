@@ -142,6 +142,8 @@ export function parseBeatmap(text: string): Beatmap {
   const bm = createEmptyBeatmap();
   bm.colours.combo = [];
   bm.general.previewTime = -1;
+  // Files from before v8 have no ApproachRate line; osu! uses OD for it (see normalizeBeatmap).
+  bm.difficulty.approachRate = NaN;
   const lines = text.replace(/^﻿/, '').split(/\r?\n/);
   let section = '';
   const pendingObjects: string[] = [];

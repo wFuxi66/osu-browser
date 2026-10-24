@@ -12,7 +12,7 @@ export interface BeatmapInfo {
   circles: number;
   sliders: number;
   spinners: number;
-  /** Time from the first object to the end of the last one, in ms. */
+  /** Song time at the end of the last object, in ms (what stable shows as Length). */
   length: number;
   bpmMin: number;
   bpmMax: number;
@@ -58,7 +58,7 @@ export function beatmapInfo(bm: Beatmap, stars: number | null = null): BeatmapIn
     circles,
     sliders,
     spinners,
-    length: objs.length ? last - first : 0,
+    length: objs.length ? last : 0,
     bpmMin: bpms.length ? Math.min(...bpms) : 0,
     bpmMax: bpms.length ? Math.max(...bpms) : 0,
     bpmMain,
@@ -69,7 +69,7 @@ export function beatmapInfo(bm: Beatmap, stars: number | null = null): BeatmapIn
 
 /** "02:15" style length. */
 export function formatLength(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
+  const s = Math.max(0, Math.floor(ms / 1000));
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 

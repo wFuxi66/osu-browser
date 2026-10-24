@@ -72,7 +72,7 @@
 .ss-status-icon { color: #fff; font-weight: 700; font-size: calc(var(--u) * 26); width: calc(var(--u) * 30); text-align: center; }
 .ss-status > span:last-child { flex: 1; text-align: center; }
 .ss-drop { height: calc(var(--u) * 128); background: rgba(0,0,0,0.78); border: none; border-radius: calc(var(--u) * 8); padding: calc(var(--u) * 8); color: #fff; font-family: var(--osu-font); font-size: calc(var(--u) * 17); font-weight: 300; line-height: 1.3; cursor: pointer; }
-.ss-drop span { display: grid; place-items: center; height: 100%; border: calc(var(--u) * 2) dashed #d4e157; border-radius: calc(var(--u) * 3); }
+.ss-drop > span { display: grid; place-items: center; height: 100%; border: calc(var(--u) * 2) dashed #d4e157; border-radius: calc(var(--u) * 3); }
 .ss-drop b { color: #d4e157; font-weight: 400; }
 .ss-drop:hover:not(:disabled) { background: rgba(20,20,20,0.85); border: none; }
 .ss-wide { height: calc(var(--u) * 42); background: #0f6077; border: none; border-radius: calc(var(--u) * 6); color: #fff; font-family: var(--osu-font); font-size: calc(var(--u) * 16); font-weight: 400; box-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 6) rgba(0,0,0,0.4); }

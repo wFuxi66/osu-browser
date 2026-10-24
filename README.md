@@ -2,11 +2,11 @@
 
 An osu! (stable) style beatmap editor that runs in any modern browser. Drop an mp3 to start a new map, or open an `.osz` / beatmap folder to keep editing. When you're done, export the `.osz` (or a single `.osu`) and open it in osu!. Uploading to the osu! website isn't supported; use the real client for that.
 
-Your work autosaves in the browser (IndexedDB). If you log in with your osu! account (optional), your WIP maps also sync to the cloud, so they're there when you open the editor on another computer.
+It follows stable's flow: you start in an edit-mode song select with your maps, open one into the editor, and Esc takes you back. Like stable, nothing autosaves: Ctrl+S saves the set in the browser (IndexedDB), and leaving with unsaved changes asks first. If you log in with your osu! account (optional), saving also syncs your WIP maps to the cloud, so they're there when you open the editor on another computer.
 
 ## Architecture
 
-- **Frontend** (`src/`): Vite + React + TypeScript, built to static files. Everything editor-related runs in the browser; projects autosave to IndexedDB.
+- **Frontend** (`src/`): Vite + React + TypeScript, built to static files. Everything editor-related runs in the browser; projects are saved to IndexedDB with Ctrl+S. `src/songselect/` is the song select, `src/editor/` the editor, `src/ui/` the in-game and Windows-style dialogs.
 - **API** (`server/app.ts`): a small Hono app for osu! OAuth, sessions, and the cloud project list. It runs as a Vercel Function (`api/index.ts`) or as a plain Node server (`server/index.ts`, used by `npm run dev` and Docker).
 - **Database**: Supabase Postgres (`users`, `sessions`, `projects`, `pending_uploads`). The schema is in `supabase/migrations/`. Only the server touches it, with the service role key; RLS is on and the public roles have no grants.
 - **Storage**: `.osz` packages live in the private Supabase Storage bucket `projects`. The browser uploads and downloads them directly with short-lived signed URLs from the API, because Vercel Functions cap request bodies at about 4.5 MB. The API checks ownership, the per-map size limit (50 MB, the Supabase Free plan's maximum file size), and the per-account quota (500 MB by default). It also verifies each upload (size, zip header) before pointing the project at it.
@@ -74,17 +74,26 @@ The container is stateless (all data is in Supabase), listens on `PORT` (8787), 
 
 ### Opening published maps
 
-The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API doesn't let third-party apps download beatmapsets, so the browser downloads them directly from public mirrors that allow CORS: osu.direct first, then nerinyan. When the app runs on the Node server, it also falls back to a server-side proxy that adds catboy.best. That proxy isn't deployed on Vercel.
+Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapsets/…` link. The official API doesn't let third-party apps download beatmapsets, so the browser downloads them directly from public mirrors that allow CORS: osu.direct first, then nerinyan. When the app runs on the Node server, it also falls back to a server-side proxy that adds catboy.best. That proxy isn't deployed on Vercel.
 
 ## Feature checklist (vs. the stable editor)
+
+**Screens & flow**
+- [x] Edit-mode song select: carousel of sets that expand into difficulties, the selected map's background, info panel (length, BPM, object counts, CS/AR/OD/HP), preview point playing on a loop, type-to-search with filters (`ar>9`, `bpm>=180`, `length<90`, `mode=mania`, `creator=…`), Group/Sort dropdowns and tabs, arrow keys / Enter / F2 random / F3 options / Shift+Delete delete dialog, right-click absolute scrolling
+- [x] "Drop an mp3 file here to start mapping", open .osz / beatmap folder / osu.ppy.sh link, account panel with cloud sync
+- [x] Esc leaves the editor (asks Yes/No/Cancel to save when there are unsaved changes); switching difficulty asks the same
+- [x] Stable editor layout: Windows-style menu strip, compose/design/timing/song setup tabs, timeline with zoom buttons, Beat Snap Divisor slider, Insert Break Time, position / Prev / Next distance readout, tips line, Sampleset/Additions + tool column, New Combo / Whistle / Finish / Clap / Grid Snap / Distance Snap / Lock Notes toggles, bottom bar with time and %, song overview, play/pause/stop, Test and Playback Rate
+- [x] Stable menus: File (Clear All Notes, Open Difficulty → For Editing, Save, Create a new Difficulty, Revert to Saved (Full), Test, AiMod, Export Package, Open Song Folder, Open .osu/.osb in Notepad, Exit), Edit (incl. reset samples / combo colours / breaks), View, Compose, Design, Timing (Time Signature, Resnap Current Section, Move all notes in time, Recalculate Slider Lengths, …), Web, Help
+- [x] Windows-style tool windows like stable: Song Setup and Timing and Control Points with OK/Cancel, Rotate by / Scale by with live preview, polygon circles, slider to stream, AiMod
+- [x] Letter shortcuts follow the keyboard layout (on AZERTY, W is the key labelled W)
 
 **Files & projects**
 - [x] New beatmap from mp3/ogg (reads ID3 artist/title/cover art)
 - [x] Open `.osz`, a dropped beatmap folder, or loose `.osu` + assets
 - [x] Open published maps by link (direct from CORS-enabled mirrors)
-- [x] Save (Ctrl+S), autosave, revert to saved (Ctrl+L)
+- [x] Save (Ctrl+S), revert to saved (Ctrl+L), full revert (Ctrl+Shift+L); no autosave, like stable
 - [x] Export `.osz` package and single `.osu`
-- [x] Multiple difficulties: create (copy timing / copy objects / any mode), switch (Ctrl+O), delete
+- [x] Multiple difficulties: Create a new Difficulty asks whether to copy the objects, then Song Setup names it (the current one keeps its last save, as in stable); switch from File → Open Difficulty or Ctrl+O; delete from song select
 - [x] Add files to the beatmap folder (custom hitsounds, images, storyboard assets), replace audio
 - [x] Lossless round trip of `.osu` files (verified against ranked maps)
 - [x] osu! OAuth login + per-account cloud sync
@@ -112,11 +121,12 @@ The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API d
 **Timing (F3 / F6)**
 - [x] Red and green lines (Ctrl+P / Ctrl+Shift+P), delete (Ctrl+I)
 - [x] BPM, offset, meter, sample set, custom index, volume, kiai, omit first bar line
-- [x] Tap tempo, offset/BPM nudging, metronome
+- [x] Timing tab like stable: BPM / Offset / Slider Velocity / Slider Tick Rate spinners (Shift ×5, Ctrl fine), "Move already placed notes when changing the offset/BPM", slider velocity preview, metronome with Reset / Tap Here! (T) and bar:beat readout, timing point flags in the timeline
+- [x] Timing and Control Points (F6): Timing/Audio/Style tabs, All/Timing Points/Inherited Points list with Ctrl/Shift multi-select, inherit previous settings, scale/snap objects, resnap sliders and adjust bookmarks when applying
 - [x] Bookmarks, preview point, break periods (auto-generate)
 
 **Song setup (F4)**
-- [x] Metadata (unicode + romanised), difficulty sliders (HP/CS/AR/OD/key count, slider velocity, tick rate), audio settings, background & video, combo colours, slider border/track, countdown, letterbox, widescreen, epilepsy warning, stack leniency, mode
+- [x] Stable's tabs and wording: metadata (unicode + romanised, greyed when not needed), difficulty (HP/CS/AR/OD/key count), audio (default sampleset, custom overrides, sample volume, hitsound previews), colours (Enable Custom Colours, New/Remove Combo Colour), design (countdown + speed + offset, widescreen, epilepsy warning, letterbox), advanced (stack leniency, Allowed Modes, N+1 style); background & video, slider border/track
 
 **Playback / navigation**
 - [x] Play/pause/stop, 25/50/75/100% playback (pitch preserved), Ctrl+↑/↓ speed
@@ -125,11 +135,17 @@ The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API d
 - [x] Test mode (F5): playable osu!standard with judgements and autoplay; preview for other modes
 
 **Design (F2)**
+- [x] Stable layout: Layer Toggles (incl. HitObjects), Transformation (move/scale/fade/rotate/colour), Tweening, Easing In/Out, Origin, Diff. Specific; Movement/Scale/Fade/Rotation keyframe timeline; Keyframe Control (+ / − / previous / next); Background Image/Video toggle; SB load readout; Sprite Library (I); W/A/S/D nudge; Ctrl+X/C/V sprites
 - [x] Storyboard script editing (.osb and difficulty events), preserved on export
 - [x] Storyboard playback in the compose background and Design preview: sprites, animations, F/M/MX/MY/S/V/R/C/P, loops, HitSound triggers, all 35 easings, [Variables], widescreen, storyboard samples
 - [x] Visual sprite editor: add from the library (drag onto the preview), select/drag to move (keyframes at the current time), Shift+drag scale, Ctrl+drag rotate, per-time property keyframes, command list with easing, layers/origin/draw order, .osb vs difficulty, undo
 - [x] Video playback in the editor background, synced to the music (formats the browser can decode: mp4/H.264, webm)
 
+**Not yet**
+- [ ] Star ratings in song select (the star dots, difficulty colours by stars and "Star Rating" in the info panel)
+- [ ] Live mapping mode (Ctrl+Tab, which browsers keep for switching tabs), osu!mania sample import and "Open Difficulty → For Reference"
+- [ ] Upload Beatmap (use the real client)
+
 ## Credits
 
-Default hitsound samples (including `spinnerspin.wav`) are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0). Slider maths follows osu-framework's `PathApproximator`. This project isn't affiliated with ppy.
+Default hitsound samples (including `spinnerspin.wav`) are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0). Slider maths follows osu-framework's `PathApproximator`. The UI font is [Ubuntu](https://design.ubuntu.com/font) (Ubuntu Font Licence), standing in for stable's Aller; icons are drawn in SVG, no skin files are copied. This project isn't affiliated with ppy.

@@ -304,6 +304,15 @@ function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: nu
     ctx.stroke();
   }
 
+  // A spinner waiting for its end click spans from its start to now.
+  if (editor.placing?.kind === 'spinner') {
+    const a = X(editor.placing.time);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillRect(a, h * 0.25, X(t) - a, h * 0.5);
+    ctx.strokeRect(a, h * 0.25, X(t) - a, h * 0.5);
+  }
+
   // Objects
   const proc = editor.processed;
   const cols = bm.colours.combo.length ? bm.colours.combo : DEFAULT_COMBO_COLOURS;

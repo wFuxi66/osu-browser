@@ -62,8 +62,8 @@ class Editor {
   dirty = false;
   prefs: Prefs = loadPrefs();
   toasts: Toast[] = [];
-  /** Object currently being placed (slider in progress) – drawn by the playfield. */
-  placing: { kind: 'slider'; vertices: Vec2[]; time: number } | null = null;
+  /** Object currently being placed (slider in progress, or a spinner waiting for its end) – drawn by the playfield. */
+  placing: { kind: 'slider'; vertices: Vec2[]; time: number } | { kind: 'spinner'; time: number } | null = null;
   metronome = false;
 
   rev = 0;
@@ -502,6 +502,36 @@ class Editor {
       this.placement.newCombo = false;
       this.emit();
     }
+  }
+
+  /** Hitsound bits and sample for a new object, from the placement panel. */
+  placementSound(): { hitSound: number; sample: HitObject['sample'] } {
+    const pl = this.placement;
+    return {
+      hitSound: (pl.whistle ? 2 : 0) | (pl.finish ? 4 : 0) | (pl.clap ? 8 : 0),
+      sample: { normalSet: pl.normalSet, additionSet: pl.additionSet, index: 0, volume: 0, filename: '' },
+    };
+  }
+
+  /**
+   * Stable-style spinner placement: the first click starts a spinner at the current time, a second click
+   * after seeking forward ends it there.
+   */
+  spinnerClick(x = 256, y = 192) {
+    const time = Math.round(this.snap(music.time));
+    const p = this.placing;
+    if (p?.kind !== 'spinner') {
+      this.placing = { kind: 'spinner', time };
+      this.emit();
+      return;
+    }
+    if (time <= p.time) {
+      this.toast('Seek forward to where the spinner should end, then click again.');
+      return;
+    }
+    this.placing = null;
+    // stable always flags spinners as new combo
+    this.addObject({ id: newObjectId(), kind: 'spinner', x, y, time: p.time, endTime: time, newCombo: true, comboSkip: 0, ...this.placementSound() });
   }
 
   deleteSelection() {

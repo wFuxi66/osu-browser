@@ -308,7 +308,7 @@ export class StdPlayfield {
     const tool = editor.tool;
     if (tool === 'select' || !this.hover) return;
     const time = editor.snap(t);
-    const placing = editor.placing;
+    const placing = editor.placing?.kind === 'slider' ? editor.placing : null;
     const firstPoint = !placing;
     const pos = firstPoint ? snapPosition(this.hover, this.mods, time) : this.snapNonHead(this.hover);
 
@@ -332,9 +332,17 @@ export class StdPlayfield {
       drawHitCircle(ctx, s.x, s.y, r, { r: 200, g: 200, b: 200 }, 0.5, null, false);
     } else if (tool === 'slider') {
       if (placing) {
+        // Preview the body clipped to the beat-snapped length it will get, like stable.
         const verts = [...placing.vertices, pos];
-        const raw = computeRawPath(autoCurveType(verts), verts);
-        drawSliderBody(ctx, raw.map((q) => toScreen(v, q)), r, { r: 180, g: 180, b: 180 }, { r: 255, g: 255, b: 255 }, 0.6, false);
+        const preview = { x: verts[0].x, y: verts[0].y, curveType: autoCurveType(verts), points: verts.slice(1), length: 0, time: placing.time } as Slider;
+        preview.length = getSliderPath(preview).rawLength;
+        snapSliderLength(editor.bm, preview, editor.beatDivisor);
+        const body = preview.length >= 1 ? getSliderPath(preview).points : computeRawPath(preview.curveType, verts);
+        drawSliderBody(ctx, body.map((q) => toScreen(v, q)), r, { r: 180, g: 180, b: 180 }, { r: 255, g: 255, b: 255 }, 0.6, false);
+        if (preview.length >= 1) {
+          const end = toScreen(v, getSliderPath(preview).positionAt(1));
+          drawHitCircle(ctx, end.x, end.y, r, { r: 200, g: 200, b: 200 }, 0.45, null, false);
+        }
         ctx.save();
         ctx.strokeStyle = 'rgba(255,255,255,0.6)';
         strokePolyline(ctx, verts.map((q) => toScreen(v, q)));
@@ -347,8 +355,16 @@ export class StdPlayfield {
       }
     } else if (tool === 'spinner') {
       const c = toScreen(v, { x: 256, y: 192 });
+      const pending = editor.placing?.kind === 'spinner' ? editor.placing : null;
       ctx.save();
-      ctx.globalAlpha = 0.35;
+      ctx.globalAlpha = pending ? 0.7 : 0.35;
+      if (pending) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '13px Segoe UI, sans-serif';
+        ctx.textAlign = 'center';
+        const len = Math.round(time - pending.time);
+        ctx.fillText(len > 0 ? `Spinner: ${len} ms. Click to end it here.` : 'Seek forward and click to end the spinner.', c.x, c.y + 4);
+      }
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -421,7 +437,7 @@ export class StdPlayfield {
         this.placeCircle(p);
         return;
       case 'spinner':
-        this.placeSpinner();
+        editor.spinnerClick();
         return;
       case 'slider':
         this.sliderClick(p);
@@ -528,13 +544,27 @@ export class StdPlayfield {
 
   doubleClick(p: Vec2) {
     if (editor.tool !== 'select') return;
-    const hit = this.hitTest(p, music.time);
+    const t = music.time;
+    const hit = this.hitTest(p, t);
+    // Like stable, double-clicking a slider end jumps to the end of the slider.
+    for (const o of this.visibleObjects(t)) {
+      if (o.kind !== 'slider' || this.objectAlpha(o, t) <= 0.05) continue;
+      const info = editor.processed.info.get(o.id);
+      if (info && dist(p, info.endPos) <= editor.processed.radius && (!hit || hit === o)) {
+        music.seek(info.endTime);
+        return;
+      }
+    }
     if (hit) music.seek(hit.time);
   }
 
   private rightClick(p: Vec2, v: View, t: number) {
-    if (editor.tool === 'slider' && editor.placing) {
+    if (editor.placing?.kind === 'slider') {
       this.finishSlider();
+      return;
+    }
+    if (editor.placing?.kind === 'spinner') {
+      editor.spinnerClick();
       return;
     }
     if (editor.tool !== 'select') {
@@ -596,28 +626,9 @@ export class StdPlayfield {
     });
   }
 
-  private placeSpinner() {
-    const time = this.placementTime();
-    const red = editor.bm.timingPoints.find((t) => t.uninherited);
-    const beat = red ? red.beatLength : 500;
-    editor.addObject({
-      id: newObjectId(),
-      kind: 'spinner',
-      x: 256,
-      y: 192,
-      time,
-      endTime: Math.round(time + beat * 4),
-      // stable always flags spinners as new combo
-      newCombo: true,
-      comboSkip: 0,
-      hitSound: this.placementSound(),
-      sample: this.placementSample(),
-    });
-  }
-
   private sliderClick(p: Vec2) {
     const time = this.placementTime();
-    const placing = editor.placing;
+    const placing = editor.placing?.kind === 'slider' ? editor.placing : null;
     if (!placing) {
       const pos = clampToPlayfield(snapPosition(p, this.mods, time));
       editor.placing = { kind: 'slider', vertices: [pos], time };
@@ -642,9 +653,15 @@ export class StdPlayfield {
   }
 
   finishSlider() {
-    const placing = editor.placing;
+    const placing = editor.placing?.kind === 'slider' ? editor.placing : null;
+    if (!placing) return;
     editor.placing = null;
-    if (!placing || placing.vertices.length < 2) {
+    // The preview runs to the cursor, so finishing keeps that point (what you see is what you get).
+    if (this.hover) {
+      const pos = clampToPlayfield(this.snapNonHead(this.hover));
+      if (dist(placing.vertices[placing.vertices.length - 1], pos) >= 4) placing.vertices.push(pos);
+    }
+    if (placing.vertices.length < 2) {
       editor.emit();
       return;
     }

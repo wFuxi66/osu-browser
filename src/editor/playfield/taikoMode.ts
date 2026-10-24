@@ -141,7 +141,8 @@ export class TaikoMode implements PlayfieldMode {
     const t = music.time;
     const hit = this.hitTest(x, y, t);
     if (button === 2) {
-      if (hit) editor.deleteObject(hit.id);
+      if (editor.placing?.kind === 'spinner') editor.spinnerClick();
+      else if (hit) editor.deleteObject(hit.id);
       else editor.toggleNewCombo();
       return;
     }
@@ -168,9 +169,8 @@ export class TaikoMode implements PlayfieldMode {
     const hitSound = (pl.whistle ? 2 : 0) | (pl.finish ? 4 : 0) | (pl.clap ? 8 : 0);
     const base = { id: newObjectId(), x: 256, y: 192, time, newCombo: pl.newCombo, comboSkip: 0, hitSound, sample };
     const bm = editor.bm;
-    const beat = redLineAt(bm, time).beatLength;
     if (editor.tool === 'circle') editor.addObject({ ...base, kind: 'circle' });
-    else if (editor.tool === 'spinner') editor.addObject({ ...base, kind: 'spinner', endTime: Math.round(time + beat * 2) });
+    else if (editor.tool === 'spinner') editor.spinnerClick();
     else if (editor.tool === 'slider') {
       const len = bm.difficulty.sliderMultiplier * 100 * svAt(bm, time);
       const s = {
@@ -216,6 +216,9 @@ export class TaikoMode implements PlayfieldMode {
   }
 
   cancel() {
-    return false;
+    if (!editor.placing) return false;
+    editor.placing = null;
+    editor.emit();
+    return true;
   }
 }

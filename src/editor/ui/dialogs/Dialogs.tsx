@@ -89,9 +89,9 @@ const SHORTCUTS: [string, [string, string][]][] = [
     ['Ctrl + P / Ctrl + Shift + P', 'Add red / green line'], ['Ctrl + I', 'Delete current timing point'],
   ]],
   ['Mouse', [
-    ['Wheel', 'Seek'], ['Shift + Wheel', 'Seek 4x'], ['Ctrl + Wheel', 'Beat snap divisor'],
+    ['Wheel up / down', 'Seek forward / backward'], ['Shift + Wheel', 'Seek 4x'], ['Ctrl + Wheel', 'Beat snap divisor'],
     ['Alt + Wheel', 'Distance spacing (playfield) / zoom (timeline)'], ['Ctrl + Alt + Wheel', 'Switch tool'],
-    ['Double click', 'Jump to object'], ['Right click', 'Delete object (select) / toggle new combo (placing) / finish slider'],
+    ['Double click', 'Jump to object (or to a slider end)'], ['Right click', 'Delete object (select) / toggle new combo (placing) / finish slider or spinner'],
   ]],
   ['Compose', [
     ['1 2 3 4', 'Select / circle / slider / spinner'], ['Ctrl + Z / Y', 'Undo / redo'], ['Ctrl + A X C V D', 'Select all / cut / copy / paste / clone'],
@@ -106,6 +106,9 @@ const SHORTCUTS: [string, [string, string][]][] = [
     ['Click', 'Add point while placing'], ['Click the last point again', 'Make it a red anchor'], ['Right click / Enter', 'Finish slider'],
     ['Drag a control point', 'Move it (selected slider)'], ['Ctrl + click on a point', 'Toggle red anchor'], ['Ctrl + click on the body', 'Insert a point'],
     ['Right click a point', 'Delete it'], ['Drag the tail in the timeline', 'Add / remove repeats'],
+  ]],
+  ['Spinners', [
+    ['Click', 'Start a spinner at the current time'], ['Seek forward, click again', 'End it there'], ['Esc', 'Cancel'],
   ]],
   ['Hitsounding', [
     ['W / E / R', 'Whistle / finish / clap'], ['Shift + Q W E R', 'Sampleset auto / normal / soft / drum'],

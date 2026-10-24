@@ -49,7 +49,8 @@ The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API d
 
 **Compose (F1)**
 - [x] Select / circle / slider / spinner tools (1–4), mania note/hold tools
-- [x] Slider placement with auto curve type (linear → perfect circle → bézier), red anchors, length snapped to beat divisor
+- [x] Slider placement with auto curve type (linear → perfect circle → bézier), red anchors, preview and length snapped to beat divisor, right-click/Enter to finish (controls checked against the osu! wiki)
+- [x] Spinners placed like stable: click to start at the current time, seek forward, click again to end
 - [x] Slider control point editing: drag, Ctrl+click to toggle red anchor / insert point, right-click to delete
 - [x] Slider repeats by dragging the tail in the timeline
 - [x] Grid snap (T, Shift to toggle temporarily), grid sizes (G, Ctrl+1–4), distance snap (Y, Alt temporarily) with distance spacing (Alt+wheel)
@@ -77,7 +78,7 @@ The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API d
 
 **Playback / navigation**
 - [x] Play/pause/stop, 25/50/75/100% playback (pitch preserved), Ctrl+↑/↓ speed
-- [x] Wheel seeking by beat snap, Shift 4x, Ctrl+wheel divisor, timing point / bookmark jumps, Z/X/C/V
+- [x] Wheel seeking by beat snap (wheel up = forward, as in stable), Shift 4x, Ctrl+wheel divisor, timing point / bookmark jumps, Z/X/C/V
 - [x] Coloured beat snap ticks (1/1 … 1/16), timeline zoom, song overview with kiai/breaks/bookmarks
 - [x] Test mode (F5): playable osu!standard with judgements and autoplay; preview for other modes
 

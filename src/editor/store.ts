@@ -110,8 +110,8 @@ class Editor {
   private dirtyBeforeChange = false;
   /** The map last open in the editor, so song select can return to it. */
   lastOpened: { projectId: string; diffId: string } | null = null;
-  /** Set when leaving the editor, so song select carries on playing the song from there instead of the preview point. */
-  returnTo: { projectId: string; time: number } | null = null;
+  /** Set when leaving the editor, so song select restarts that song from the beginning instead of the preview point. */
+  returnedFrom: string | null = null;
 
   get bm(): Beatmap {
     return this.project!.difficulties[this.diffIndex].beatmap;
@@ -177,7 +177,7 @@ class Editor {
 
   /** Volumes (master × music/effect) and offset; song select's preview uses them too. */
   applyAudioPrefs() {
-    music.el.volume = this.prefs.masterVolume * this.prefs.musicVolume;
+    music.volume = this.prefs.masterVolume * this.prefs.musicVolume;
     music.offset = this.prefs.audioOffset;
     hitsounds.setVolume(this.prefs.masterVolume * this.prefs.hitsoundVolume);
   }
@@ -215,7 +215,7 @@ class Editor {
     if (this.project) {
       const diffId = this.project.difficulties[this.diffIndex].id;
       this.lastOpened = { projectId: this.project.id, diffId };
-      this.returnTo = { projectId: this.project.id, time };
+      this.returnedFrom = this.project.id;
       rememberEditorTime(diffId, time);
     }
     this.project = null;

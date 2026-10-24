@@ -1,7 +1,9 @@
 /* Stable editor layout. --u is one osu!pixel of the stage (the window below the menu strip, 768 tall). */
 
 /* ------------------------------------------------------------------ menu strip (WinForms look) */
-.ed { position: fixed; inset: 0; display: flex; flex-direction: column; background: #000; font-family: var(--osu-font); color: #fff; }
+.ed { position: fixed; inset: 0; display: flex; flex-direction: column; background: #000; font-family: var(--osu-font); color: #fff; animation: ed-enter 0.45s ease-out; }
+/* Coming in from song select: up from black. */
+@keyframes ed-enter { from { opacity: 0; } }
 .wm-bar { height: 22px; flex: none; display: flex; align-items: stretch; background: #fff; color: #000; font: 12px var(--win-font); border-bottom: 1px solid #f0f0f0; position: relative; z-index: 50; }
 .wm-menu { position: relative; }
 .wm-title { height: 100%; font: 12px var(--win-font); color: #000; background: none; border: 1px solid transparent; border-radius: 0; padding: 0 7px; }

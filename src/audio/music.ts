@@ -63,6 +63,9 @@ class MusicClock {
   blob: Blob | null = null;
   /** User-configurable latency compensation in ms (positive = hitsounds/visuals later). */
   offset = 0;
+  private baseVolume = 1;
+  private fadeLevel = 1;
+  private fadeFrame = 0;
 
   constructor() {
     this.el = new Audio();
@@ -93,6 +96,9 @@ class MusicClock {
   async load(blob: Blob | null, exact = false): Promise<void> {
     this.blob = blob;
     this.pause();
+    cancelAnimationFrame(this.fadeFrame);
+    this.fadeLevel = 1;
+    this.el.volume = this.baseVolume;
     if (this.url) URL.revokeObjectURL(this.url);
     this.url = null;
     this.duration = 0;
@@ -137,6 +143,40 @@ class MusicClock {
     if (this.blob !== blob) return;
     this.el.currentTime = Math.max(0, this.pausedTime + this.offset) / 1000;
     if (wasPlaying) await this.play();
+  }
+
+  /** The volume from the settings (0–1); a fade scales it. */
+  get volume(): number {
+    return this.baseVolume;
+  }
+
+  set volume(v: number) {
+    this.baseVolume = v;
+    this.el.volume = v * this.fadeLevel;
+  }
+
+  /** Brings the volume up from silence over `ms`, so a song starting part-way through doesn't cut in. */
+  fadeIn(ms: number) {
+    this.fade(0, 1, ms);
+  }
+
+  /** Takes the volume down to silence over `ms`; loading another song restores it. */
+  fadeOut(ms: number) {
+    this.fade(Math.sqrt(this.fadeLevel), 0, ms);
+  }
+
+  private fade(from: number, to: number, ms: number) {
+    cancelAnimationFrame(this.fadeFrame);
+    const start = performance.now();
+    const step = () => {
+      const t = Math.min(1, (performance.now() - start) / ms);
+      const k = from + (to - from) * t;
+      // Squared, as loudness follows amplitude roughly logarithmically: a linear ramp sounds like it jumps.
+      this.fadeLevel = k * k;
+      this.el.volume = this.baseVolume * this.fadeLevel;
+      if (t < 1) this.fadeFrame = requestAnimationFrame(step);
+    };
+    step();
   }
 
   get playing(): boolean {

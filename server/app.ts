@@ -202,7 +202,7 @@ export function createApp() {
 
 /** The fields of an osu! API beatmapset that the browser shows (it parses them like osu.direct's search results). */
 function pickSet(s: Record<string, unknown>) {
-  const keep = ['id', 'artist', 'title', 'creator', 'status', 'bpm', 'play_count', 'favourite_count', 'video', 'storyboard', 'covers', 'preview_url', 'last_updated'];
+  const keep = ['id', 'artist', 'title', 'creator', 'status', 'bpm', 'play_count', 'favourite_count', 'video', 'storyboard', 'covers', 'preview_url', 'last_updated', 'ranked_date', 'legacy_thread_url'];
   const out: Record<string, unknown> = Object.fromEntries(keep.map((k) => [k, s[k]]));
   out.beatmaps = ((s.beatmaps as Record<string, unknown>[] | undefined) ?? []).map((b) => ({
     id: b.id,

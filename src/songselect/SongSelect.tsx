@@ -37,6 +37,9 @@ function loadUiPrefs(): { group: GroupMode; sort: SortMode } {
   }
 }
 
+/** How long song select takes to fade out into the editor (ms). */
+const LEAVE_MS = 260;
+
 const urlCache = new WeakMap<Blob, string>();
 function blobUrl(b: Blob | null): string | null {
   if (!b) return null;
@@ -58,6 +61,7 @@ export function SongSelect() {
   const [sel, setSel] = useState<Selection | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [direct, setDirect] = useState<null | 'search' | 'mine'>(null);
@@ -202,13 +206,16 @@ export function SongSelect() {
       const p = selSet.difficulties[0]?.previewTime ?? -1;
       return p >= 0 ? p : (music.duration || 0) * 0.4;
     };
-    // Back from the editor, the song carries on from where it was left, like stable; otherwise from the preview point.
-    const back = editor.returnTo?.projectId === selSet.id ? editor.returnTo.time : null;
-    editor.returnTo = null;
+    // Back from the editor, the song starts over from the beginning; otherwise from the preview point. Either way it
+    // fades in, at full speed whatever the editor's playback rate was.
+    const back = editor.returnedFrom === selSet.id;
+    editor.returnedFrom = null;
     const start = async () => {
       if (music.blob !== selSet.audio) await music.load(selSet.audio);
       if (cancelled) return;
-      music.seek(back !== null && back < (music.duration || Infinity) - 1000 ? back : preview());
+      music.rate = 1;
+      music.seek(back ? 0 : preview());
+      music.fadeIn(back ? 1200 : 600);
       await music.play();
     };
     void start();
@@ -234,15 +241,23 @@ export function SongSelect() {
   useEffect(() => () => music.pause(), []);
 
   // ------------------------------------------------------------------ actions
+  // Into the editor: song select and its music fade out while the map loads, then the editor fades in.
   const openEditor = useCallback(
-    (s: Selection | null = sel) =>
-      s &&
-      run('Loading…', async () => {
-        const p = await loadProjectLocal(s.setId);
+    async (s: Selection | null = sel) => {
+      if (!s || leaving) return;
+      setLeaving(true);
+      music.fadeOut(LEAVE_MS);
+      try {
+        const [p] = await Promise.all([loadProjectLocal(s.setId), new Promise((r) => setTimeout(r, LEAVE_MS))]);
         if (!p) throw new Error('That beatmap is no longer stored in this browser.');
         await editor.openProject(p, Math.max(0, p.difficulties.findIndex((d) => d.id === s.diffId)));
-      }),
-    [sel],
+      } catch (e) {
+        editor.toast((e as Error).message, 'error');
+        setLeaving(false);
+        music.fadeIn(300);
+      }
+    },
+    [sel, leaving],
   );
 
   const selectImported = async (projectId: string) => {
@@ -353,7 +368,7 @@ export function SongSelect() {
 
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keyHandler.current = (e: KeyboardEvent) => {
-    if (promptOpen() || optionsOpen() || busy || directOpen) return;
+    if (promptOpen() || optionsOpen() || busy || leaving || directOpen) return;
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
     if ((e.ctrlKey || e.metaKey) && layoutCode(e) === 'KeyO') {
@@ -467,10 +482,9 @@ export function SongSelect() {
           <span className="ss-back-arrow">«</span> back
         </button>
         <button className="ss-footer-btn ss-settings" onClick={() => options.show()} title="Options (Ctrl+O)" aria-label="Options">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" /></svg>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
         </button>
         <button className="ss-footer-btn" onClick={random} title="Random (F2)">Random</button>
-        <button className="ss-footer-btn" onClick={() => void optionsDialog()} title="Beatmap options (F3)" disabled={!selDiff}>Options</button>
         <UserPanel onMyBeatmaps={() => setDirect('mine')} />
         <button className="ss-cookie" onClick={() => void openEditor()} disabled={!selDiff} title="Edit (Enter)">
           <span>edit</span>
@@ -480,6 +494,7 @@ export function SongSelect() {
       {directOpen && (
         <DirectPanel
           mine={direct === 'mine'}
+          background={bg}
           have={haveSets}
           onImported={async (id) => {
             const list = await refresh();
@@ -502,6 +517,7 @@ export function SongSelect() {
       )}
       {sets && sets.length > 0 && visible.length === 0 && <div className="ss-empty"><div className="ss-empty-title">No matches for “{search}”</div><div>Press Esc to clear the search.</div></div>}
       {busy && <div className="busy">{busy}</div>}
+      {leaving && <div className="ss-leave" />}
     </div>
   );
 }

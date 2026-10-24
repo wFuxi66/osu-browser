@@ -38,9 +38,13 @@ export interface DirectSet {
   thumb: string;
   preview: string;
   difficulties: DirectDifficulty[];
-  /** For My beatmaps: which of the user's lists the set is in, and when it was last updated (ms). */
-  kind?: MyKind;
+  /** When the set was ranked (or loved / qualified) and last updated (ms). */
+  ranked?: number;
   updated?: number;
+  /** The set's forum thread. */
+  thread?: string;
+  /** For My beatmaps: which of the user's lists the set is in. */
+  kind?: MyKind;
 }
 
 /** The osu! API's lists of a user's sets (pending includes WIP; guest is sets they made a guest difficulty for). */
@@ -88,6 +92,8 @@ interface ApiSet {
   beatmaps?: ApiBeatmap[];
   kind?: MyKind;
   last_updated?: string;
+  ranked_date?: string | null;
+  legacy_thread_url?: string | null;
 }
 
 export async function searchBeatmapsets(q: DirectQuery, signal?: AbortSignal): Promise<DirectSet[]> {
@@ -127,7 +133,9 @@ function toDirectSet(s: ApiSet): DirectSet {
     difficulties: (s.beatmaps ?? [])
       .map((b) => ({ id: b.id, version: b.version, mode: b.mode_int, stars: b.difficulty_rating, length: b.total_length }))
       .sort((a, b) => a.mode - b.mode || a.stars - b.stars),
-    kind: s.kind,
+    ranked: s.ranked_date ? Date.parse(s.ranked_date) : undefined,
     updated: s.last_updated ? Date.parse(s.last_updated) : undefined,
+    thread: s.legacy_thread_url ?? undefined,
+    kind: s.kind,
   };
 }

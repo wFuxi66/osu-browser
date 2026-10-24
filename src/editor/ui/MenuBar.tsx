@@ -7,6 +7,7 @@ import { downloadBlob, downloadText, exportOsz, osuFilename, oszFilename } from 
 import { confirmBox, inputBox } from '../../ui/prompt';
 import { autoBreaks } from '../breaks';
 import { DIVISORS } from '../shortcuts';
+import { design } from '../storyboard/design';
 import { editor, GRID_SIZES, useEditor } from '../store';
 import { onMenuChange, openMenu, setOpenMenu } from './menuState';
 
@@ -196,16 +197,13 @@ export function MenuBar() {
     { label: 'Convert slider to stream...', shortcut: 'Ctrl+Shift+F', action: () => ed.openDialog('stream'), disabled: !ed.selectedObjects.some((o) => o.kind === 'slider') },
   ];
 
-  const design: Item[] = [
+  const designMenu: Item[] = [
     {
       label: 'Move all elements in time...',
       action: async () => {
         const v = await inputBox('Move all elements in time', 'Move every storyboard command by this many milliseconds:', '0');
         const ms = Math.round(Number(v?.replace(',', '.')));
-        if (v !== null && Number.isFinite(ms) && ms) {
-          const { design: d } = await import('../storyboard/design');
-          d.shiftAllInTime(ms);
-        }
+        if (v !== null && Number.isFinite(ms) && ms) design.shiftAllInTime(ms);
       },
     },
   ];
@@ -267,7 +265,7 @@ export function MenuBar() {
       <Menu title="Edit" items={edit} />
       <Menu title="View" items={view} />
       <Menu title="Compose" items={compose} />
-      <Menu title="Design" items={design} />
+      <Menu title="Design" items={designMenu} />
       <Menu title="Timing" items={timing} />
       <Menu title="Web" items={web} />
       <Menu title="Help" items={help} />

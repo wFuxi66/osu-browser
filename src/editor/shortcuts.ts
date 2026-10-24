@@ -3,8 +3,10 @@ import { music } from '../audio/music';
 import { activePlayfield } from './ui/Playfield';
 import { editor, maniaColumn, maniaX, type Tool } from './store';
 import { design } from './storyboard/design';
+import { promptOpen } from '../ui/prompt';
+import { closeMenus } from './ui/menuState';
 
-const DIVISORS = [1, 2, 3, 4, 6, 8, 12, 16];
+export const DIVISORS = [1, 2, 3, 4, 6, 8, 12, 16];
 
 function isTyping(e: Event): boolean {
   const el = e.target as HTMLElement | null;
@@ -35,14 +37,30 @@ function maniaShiftColumns(dir: number) {
   editor.commit(() => sel.forEach((o, i) => (o.x = maniaX(cols[i], keys))));
 }
 
+/**
+ * Layout-aware key name in KeyboardEvent.code style. Letters follow the character the layout produces, like
+ * stable (Windows virtual keys): on AZERTY the key labelled W gives "KeyW", not "KeyZ". Digits and other keys
+ * keep their physical position, so the number row works without Shift on AZERTY.
+ */
+export function layoutCode(e: KeyboardEvent): string {
+  if (e.key.length === 1) {
+    const k = e.key.toLowerCase();
+    if (k >= 'a' && k <= 'z') return `Key${k.toUpperCase()}`;
+    if (k === ',' || k === '<') return 'Comma';
+    if (k === '.' || k === '>') return 'Period';
+  }
+  if (/^Digit\d$|^Numpad\d$/.test(e.code)) return e.code.replace('Numpad', 'Digit');
+  return e.code;
+}
+
 export function handleKeyDown(e: KeyboardEvent) {
-  if (!editor.hasProject || isTyping(e)) return;
+  if (!editor.hasProject || isTyping(e) || promptOpen()) return;
   if (editor.dialog && e.key !== 'Escape') return;
   const ctrl = e.ctrlKey || e.metaKey;
   const shift = e.shiftKey;
   const alt = e.altKey;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  const code = e.code;
+  const code = layoutCode(e);
   let handled = true;
 
   // Function keys
@@ -58,11 +76,15 @@ export function handleKeyDown(e: KeyboardEvent) {
   if (handled) return e.preventDefault();
   handled = true;
 
+  // Esc cancels whatever is in progress first; otherwise it leaves the editor, like stable.
   if (key === 'Escape') {
+    e.preventDefault();
     if (editor.dialog) editor.openDialog(null);
-    else if (editor.screen === 'design') design.dragging ? design.cancelDrag() : design.select(null);
-    else if (!activePlayfield.current?.cancel()) editor.clearSelection();
-    return e.preventDefault();
+    else if (closeMenus()) return;
+    else if (editor.screen === 'design' && design.dragging) design.cancelDrag();
+    else if (editor.screen === 'compose' && activePlayfield.current?.cancel()) return;
+    else void editor.exitEditor();
+    return;
   }
 
   if (editor.screen === 'design' && handleDesignKey(code, ctrl, shift)) return e.preventDefault();
@@ -74,8 +96,10 @@ export function handleKeyDown(e: KeyboardEvent) {
     if (shift) {
       switch (code) {
         case 'KeyB': editor.removeBookmark(); break;
-        case 'KeyL': editor.revertToSaved(); break;
-        case 'KeyP': editor.addTimingPoint(false); break;
+        case 'KeyL': void editor.revertToSavedFull(); break;
+        case 'KeyP': editor.addTimingSection(false); break;
+        case 'Comma': editor.rotate(-90, 'playfield'); break;
+        case 'Period': editor.rotate(90, 'playfield'); break;
         case 'KeyR': if (hasSel) editor.openDialog('rotate'); break;
         case 'KeyS': if (hasSel) editor.openDialog('scale'); break;
         case 'KeyD': editor.openDialog('polygon'); break;
@@ -99,9 +123,9 @@ export function handleKeyDown(e: KeyboardEvent) {
         case 'KeyB': editor.addBookmark(); break;
         case 'KeyL': editor.revertToSaved(); break;
         case 'KeyO': editor.openDialog('difficulties'); break;
-        case 'KeyN': if (confirm('Remove all hit objects from this difficulty?')) editor.removeAllObjects(); break;
-        case 'KeyP': editor.addTimingPoint(true); break;
-        case 'KeyI': editor.removeTimingPointAt(music.time); break;
+        case 'KeyN': void editor.clearAllNotes(); break;
+        case 'KeyP': editor.addTimingSection(true); break;
+        case 'KeyI': editor.deleteTimingSection(); break;
         case 'KeyH': editor.flip(true); break;
         case 'KeyJ': editor.flip(false); break;
         case 'KeyG': editor.reverseSelection(); break;
@@ -260,10 +284,8 @@ export function handleWheel(e: WheelEvent) {
 export function installShortcuts() {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('wheel', handleWheel, { passive: false });
+  // Nothing autosaves, so closing the tab with unsaved changes asks first.
   window.addEventListener('beforeunload', (e) => {
-    if (editor.hasProject && editor.dirty) {
-      void editor.flushAutosave();
-      e.preventDefault();
-    }
+    if (editor.hasProject && editor.dirty) e.preventDefault();
   });
 }

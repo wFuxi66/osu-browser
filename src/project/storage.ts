@@ -1,5 +1,7 @@
 // Local persistence of projects in IndexedDB, so WIP maps survive reloads without an account.
+import { beatmapInfo, type BeatmapInfo } from '../osu/info';
 import { parseOsu } from '../osu/parser';
+import { starRating } from '../osu/stars';
 import { serializeBeatmap } from '../osu/serializer';
 import { projectTitle, type Project } from './project';
 
@@ -17,12 +19,28 @@ interface StoredProject {
   syncedAt: number;
 }
 
+export interface DifficultySummary extends BeatmapInfo {
+  id: string;
+}
+
 export interface ProjectSummary {
   id: string;
+  /** "Artist - Title" */
   title: string;
+  artist: string;
+  songTitle: string;
+  artistUnicode: string;
+  titleUnicode: string;
+  creator: string;
+  source: string;
+  tags: string;
+  beatmapSetId: number;
+  createdAt: number;
   updatedAt: number;
-  difficulties: string[];
   syncedAt: number;
+  difficulties: DifficultySummary[];
+  background: Blob | null;
+  audio: Blob | null;
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -86,17 +104,59 @@ export async function loadProjectLocal(id: string): Promise<Project | null> {
   };
 }
 
+const summaryCache = new Map<string, { updatedAt: number; summary: ProjectSummary }>();
+
+function summarize(r: StoredProject): ProjectSummary {
+  const cached = summaryCache.get(r.id);
+  if (cached && cached.updatedAt === r.updatedAt) return { ...cached.summary, syncedAt: r.syncedAt };
+  const maps = r.difficulties.map((d) => ({ id: d.id, bm: parseOsu(d.osu) }));
+  maps.sort((a, b) => a.bm.general.mode - b.bm.general.mode || starsOrOd(a.bm) - starsOrOd(b.bm));
+  const m = maps[0]?.bm.metadata;
+  const findBlob = (name: string | undefined) => {
+    if (!name) return null;
+    const lower = name.toLowerCase().replace(/\\/g, '/');
+    return r.files.find((f) => f.name.toLowerCase().replace(/\\/g, '/') === lower)?.blob ?? null;
+  };
+  const first = maps[0]?.bm;
+  const summary: ProjectSummary = {
+    id: r.id,
+    title: r.title,
+    artist: m?.artist || m?.artistUnicode || '',
+    songTitle: m?.title || m?.titleUnicode || '',
+    artistUnicode: m?.artistUnicode || m?.artist || '',
+    titleUnicode: m?.titleUnicode || m?.title || '',
+    creator: m?.creator ?? '',
+    source: m?.source ?? '',
+    tags: m?.tags ?? '',
+    beatmapSetId: m?.beatmapSetId ?? 0,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    syncedAt: r.syncedAt,
+    difficulties: maps.map(({ id, bm }) => ({ id, ...beatmapInfo(bm, starRating(bm)) })),
+    background: findBlob(maps.find((x) => x.bm.events.background)?.bm.events.background?.filename),
+    audio: findBlob(first?.general.audioFilename),
+  };
+  summaryCache.set(r.id, { updatedAt: r.updatedAt, summary });
+  return summary;
+}
+
+function starsOrOd(bm: ReturnType<typeof parseOsu>): number {
+  return starRating(bm) ?? bm.difficulty.overallDifficulty;
+}
+
 export async function listProjectsLocal(): Promise<ProjectSummary[]> {
   const all = await tx<StoredProject[]>('readonly', (s) => s.getAll());
-  return all
-    .map((r) => ({
-      id: r.id,
-      title: r.title,
-      updatedAt: r.updatedAt,
-      syncedAt: r.syncedAt,
-      difficulties: r.difficulties.map((d) => /^Version:(.*)$/m.exec(d.osu)?.[1]?.trim() ?? '?'),
-    }))
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return all.map(summarize).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** Remove one difficulty from a stored set. Returns the updated project, or null if it was the last one. */
+export async function deleteDifficultyLocal(projectId: string, diffId: string): Promise<Project | null> {
+  const p = await loadProjectLocal(projectId);
+  if (!p || p.difficulties.length <= 1) return null;
+  p.difficulties = p.difficulties.filter((d) => d.id !== diffId);
+  p.updatedAt = Date.now();
+  await saveProjectLocal(p);
+  return p;
 }
 
 export async function deleteProjectLocal(id: string): Promise<void> {
@@ -127,7 +187,7 @@ export const DEFAULT_PREFS: Prefs = {
   showHitAnimations: true,
   showFollowPoints: true,
   snakingSliders: true,
-  backgroundDim: 0.7,
+  backgroundDim: 0.5,
   showWaveform: false,
   showStoryboard: true,
   showVideo: true,

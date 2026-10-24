@@ -1,10 +1,11 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { hitsounds } from './audio/hitsounds';
 import { EditorShell } from './editor/ui/EditorShell';
-import { Home } from './editor/ui/Home';
 import { Toasts } from './editor/ui/Toasts';
 import { useEditor } from './editor/store';
 import { cloud } from './project/cloud';
+import { SongSelect } from './songselect/SongSelect';
+import { PromptHost } from './ui/PromptHost';
 
 export function useCloud() {
   return useSyncExternalStore(
@@ -13,6 +14,7 @@ export function useCloud() {
   );
 }
 
+/** Two screens, like stable's edit flow: song select (edit mode) and the editor. */
 export function App() {
   const ed = useEditor();
   useEffect(() => {
@@ -25,8 +27,9 @@ export function App() {
 
   return (
     <>
-      {ed.hasProject ? <EditorShell /> : <Home />}
+      {ed.hasProject ? <EditorShell /> : <SongSelect />}
       <Toasts />
+      <PromptHost />
     </>
   );
 }

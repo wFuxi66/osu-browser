@@ -14,8 +14,9 @@ import {
   type Vec2,
 } from '../osu/types';
 import { cloneBeatmap, findFile, uid, uniqueVersionName, type Project } from '../project/project';
-import { loadPrefs, saveProjectLocal, savePrefs, type Prefs } from '../project/storage';
+import { loadPrefs, loadProjectLocal, saveProjectLocal, savePrefs, type Prefs } from '../project/storage';
 import { cloud } from '../project/cloud';
+import { ask } from '../ui/prompt';
 
 export type Screen = 'compose' | 'design' | 'timing';
 export type Tool = 'select' | 'circle' | 'slider' | 'spinner';
@@ -33,7 +34,10 @@ export type DialogName =
   | 'preferences'
   | 'shortcuts'
   | 'export'
-  | 'test';
+  | 'test'
+  | 'osuText'
+  | 'osbText'
+  | 'objectSettings';
 
 export interface Toast {
   id: number;
@@ -65,6 +69,8 @@ class Editor {
   /** Object currently being placed (slider in progress, or a spinner waiting for its end) – drawn by the playfield. */
   placing: { kind: 'slider'; vertices: Vec2[]; time: number } | { kind: 'spinner'; time: number } | null = null;
   metronome = false;
+  /** Timing tab: "Move already placed notes when changing the offset/BPM". */
+  moveNotesWithTiming = true;
 
   rev = 0;
   contentRev = 0;
@@ -74,8 +80,9 @@ class Editor {
   private savedSnapshot: Beatmap | null = null;
   private processedCache: { rev: number; value: ProcessedBeatmap } | null = null;
   private clipboard: HitObject[] = [];
-  private autosaveTimer: number | undefined;
   private changeOpen = false;
+  /** The map last open in the editor, so song select can return to it. */
+  lastOpened: { projectId: string; diffId: string } | null = null;
 
   get bm(): Beatmap {
     return this.project!.difficulties[this.diffIndex].beatmap;
@@ -144,12 +151,72 @@ class Editor {
     if (!audio) this.toast(`Audio file "${this.bm.general.audioFilename}" is missing from this beatmap.`, 'error');
   }
 
+  /** Leave the editor without saving (unsaved changes only live in memory, so they are dropped). */
   closeProject() {
     music.pause();
-    void this.flushAutosave();
+    if (this.project) this.lastOpened = { projectId: this.project.id, diffId: this.project.difficulties[this.diffIndex].id };
     this.project = null;
     this.dialog = null;
+    this.placing = null;
+    this.dirty = false;
     this.emit();
+  }
+
+  /**
+   * If there are unsaved changes, ask whether to save them first. Resolves false when the user cancels.
+   * "No" reloads the last saved version, so the changes are really discarded.
+   */
+  async resolveUnsaved(action: string): Promise<boolean> {
+    if (!this.project || !this.dirty) return true;
+    music.pause();
+    const r = await ask({
+      look: 'game',
+      title: 'Save changes?',
+      message: `You have unsaved changes. Would you like to save them before ${action}?`,
+      buttons: [
+        { label: 'Yes', value: 'yes', tone: 'pink' },
+        { label: 'No', value: 'no', tone: 'blue' },
+        { label: 'Cancel', value: 'cancel', tone: 'grey' },
+      ],
+      cancelValue: 'cancel',
+    });
+    if (r === 'cancel') return false;
+    if (r === 'yes') await this.save();
+    else await this.discardChanges();
+    return true;
+  }
+
+  /** Esc / File → Exit: back to song select, asking to save first if there are unsaved changes. */
+  async exitEditor() {
+    if (await this.resolveUnsaved('exiting')) this.closeProject();
+  }
+
+  /** Throw away unsaved edits by reloading the project as it was last saved. */
+  async discardChanges() {
+    if (!this.project) return;
+    const diffId = this.project.difficulties[this.diffIndex].id;
+    const fresh = await loadProjectLocal(this.project.id);
+    this.dirty = false;
+    if (!fresh) return;
+    this.project = fresh;
+    this.diffIndex = Math.max(0, fresh.difficulties.findIndex((d) => d.id === diffId));
+    this.selection.clear();
+    this.selectedEdge = null;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.placing = null;
+    this.savedSnapshot = cloneBeatmap(this.bm);
+    this.contentRev++;
+    void hitsounds.setCustomSamples(fresh.files, this.bm.general.audioFilename);
+    this.emit();
+  }
+
+  /** Open another difficulty of this set, asking to save the current one first, like stable. */
+  async requestSwitchDifficulty(id: string) {
+    if (!this.project || this.project.difficulties[this.diffIndex].id === id) return;
+    if (!(await this.resolveUnsaved('switching difficulty'))) return;
+    const i = this.project.difficulties.findIndex((d) => d.id === id);
+    if (i >= 0) await this.switchDifficulty(i);
   }
 
   async switchDifficulty(i: number) {
@@ -167,6 +234,103 @@ class Editor {
     if (this.bm.general.audioFilename !== prevAudio) await music.load(findFile(this.project, this.bm.general.audioFilename) ?? null);
     music.seek(t);
     this.emit();
+  }
+
+  /** Draft for File → Create a new Difficulty, edited by Song Setup until OK. */
+  pendingNewDifficulty: Beatmap | null = null;
+
+  /** Stable's flow: ask whether to keep the objects, then fill in Song Setup for the new difficulty. */
+  async beginNewDifficulty() {
+    if (!this.project) return;
+    const r = await ask({
+      look: 'win',
+      title: 'osu!',
+      message: 'Would you like to copy the hit objects from the current difficulty to the new one?\nTiming and song setup are always copied.',
+      buttons: [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }, { label: 'Cancel', value: 'cancel' }],
+      cancelValue: 'cancel',
+    });
+    if (r === 'cancel') return;
+    const bm = cloneBeatmap(this.bm);
+    bm.metadata.version = '';
+    bm.metadata.beatmapId = 0;
+    if (r === 'no') {
+      bm.hitObjects = [];
+      bm.events.breaks = [];
+      bm.editor.bookmarks = [];
+      bm.timingPoints = bm.timingPoints.filter((t) => t.uninherited);
+    } else bm.hitObjects.forEach((o) => (o.id = newObjectId()));
+    this.pendingNewDifficulty = bm;
+    this.openDialog('setup');
+  }
+
+  /** Song Setup OK for a new difficulty: the current one keeps its last saved state, the new one is saved. */
+  async commitNewDifficulty() {
+    const bm = this.pendingNewDifficulty;
+    if (!this.project || !bm) return;
+    this.pendingNewDifficulty = null;
+    bm.metadata.version = uniqueVersionName(this.project, bm.metadata.version.trim() || 'New Difficulty');
+    if (this.savedSnapshot) this.project.difficulties[this.diffIndex].beatmap = cloneBeatmap(this.savedSnapshot);
+    this.project.difficulties.push({ id: uid(), beatmap: bm });
+    await this.switchDifficulty(this.project.difficulties.length - 1);
+    await this.save();
+  }
+
+  // ---------------------------------------------------------------- stable menu actions
+
+  /** Edit → Reset selected objects' samples / Reset all samples: back to no additions and auto sample sets. */
+  resetSamples(all: boolean) {
+    const objs = all ? this.bm.hitObjects : this.selectedObjects;
+    if (!objs.length) return;
+    this.commit(() =>
+      objs.forEach((o) => {
+        o.hitSound = 0;
+        o.sample = { normalSet: 0, additionSet: 0, index: 0, volume: 0, filename: '' };
+        if (o.kind === 'slider') {
+          o.edgeSounds = o.edgeSounds.map(() => 0);
+          o.edgeSets = o.edgeSets.map(() => ({ normal: 0, addition: 0 }));
+        }
+      }),
+    );
+  }
+
+  /** Edit → Reset combo colours: drop every colour skip. */
+  resetComboColours() {
+    this.commit((b) => b.hitObjects.forEach((o) => (o.comboSkip = 0)));
+  }
+
+  /** Edit → Reset breaks: recalculate break periods to sit next to the surrounding objects. */
+  resetBreaks(breaks: Beatmap['events']['breaks']) {
+    this.commit((b) => (b.events.breaks = breaks));
+  }
+
+  /** Timing → Resnap Current Section: resnap the objects under the red line in effect now. */
+  resnapCurrentSection() {
+    const bm = this.bm;
+    const red = redLineAt(bm, music.time);
+    const reds = bm.timingPoints.filter((t) => t.uninherited);
+    const next = reds.find((t) => t.time > red.time);
+    const first = red === reds[0];
+    const objs = bm.hitObjects.filter((o) => (first || o.time >= red.time - 0.5) && (!next || o.time < next.time - 0.5));
+    this.resnapList(objs);
+  }
+
+  /** Timing → Move all notes in time. */
+  moveAllNotes(ms: number) {
+    if (!ms) return;
+    this.commit((b) => b.hitObjects.forEach((o) => shiftObjectTime(o, Math.round(ms))));
+  }
+
+  /** Timing → Recalculate Slider Lengths: snap every slider end to the nearest tick it can reach. */
+  recalculateSliderLengths() {
+    const bm = this.bm;
+    this.commit(() => bm.hitObjects.forEach((o) => o.kind === 'slider' && snapSliderLength(bm, o, this.beatDivisor)));
+  }
+
+  /** Timing → Time Signature: meter of the current red line. */
+  setTimeSignature(meter: number) {
+    const red = redLineAt(this.bm, music.time);
+    const i = this.bm.timingPoints.indexOf(red);
+    if (i >= 0) this.updateTimingPoint(i, { meter });
   }
 
   /** Create a new difficulty, optionally copying timing (and objects). */
@@ -228,30 +392,20 @@ class Editor {
     this.dirty = true;
     this.project.updatedAt = Date.now();
     this.contentRev++;
-    this.scheduleAutosave();
     this.emit();
   }
 
-  private scheduleAutosave() {
-    clearTimeout(this.autosaveTimer);
-    this.autosaveTimer = window.setTimeout(() => void this.flushAutosave(), 1500);
-  }
-
-  async flushAutosave() {
-    clearTimeout(this.autosaveTimer);
+  /** Ctrl+S: write the whole set to browser storage, then sync it to the account if logged in. */
+  async save() {
     if (!this.project) return;
+    this.project.updatedAt = Date.now();
     try {
       await saveProjectLocal(this.project);
     } catch (e) {
       console.error(e);
-      this.toast('Autosave failed: browser storage is unavailable or full.', 'error');
+      this.toast('Saving failed: browser storage is unavailable or full.', 'error');
+      return;
     }
-  }
-
-  async save() {
-    if (!this.project) return;
-    this.project.updatedAt = Date.now();
-    await this.flushAutosave();
     this.dirty = false;
     this.savedSnapshot = cloneBeatmap(this.bm);
     this.emit();
@@ -265,6 +419,47 @@ class Editor {
     } else {
       this.toast('Saved.');
     }
+  }
+
+  /** Ctrl+Shift+L: reload the whole set (all difficulties, storyboard and files) from the last save. */
+  async revertToSavedFull() {
+    if (!this.project) return;
+    const t = music.time;
+    await this.discardChanges();
+    if (this.project) await music.load(findFile(this.project, this.bm.general.audioFilename) ?? null);
+    music.seek(t);
+    this.toast('Reverted to the last save.');
+  }
+
+  /** Ctrl+N: remove every hit object, after asking. */
+  async clearAllNotes() {
+    if (!this.project) return;
+    const ok = await ask({
+      look: 'win',
+      title: 'osu!',
+      message: 'Are you sure you want to clear all notes?',
+      buttons: [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }],
+      cancelValue: 'no',
+    });
+    if (ok === 'yes') this.removeAllObjects();
+  }
+
+  /** Ctrl+P / Ctrl+Shift+P: add a timing section; outside the Timing tab this also opens Timing Setup, like stable. */
+  addTimingSection(uninherited: boolean) {
+    this.addTimingPoint(uninherited);
+    if (this.screen !== 'timing') this.openDialog('timingPoints');
+  }
+
+  /** Ctrl+I: delete the current timing section, except the first red line. */
+  deleteTimingSection() {
+    const bm = this.bm;
+    const cur = controlPointAt(bm, music.time);
+    const firstRed = bm.timingPoints.find((t) => t.uninherited);
+    if (cur === firstRed) {
+      this.toast("The first timing point can't be deleted.", 'error');
+      return;
+    }
+    this.removeTimingPointAt(music.time);
   }
 
   revertToSaved() {
@@ -784,7 +979,10 @@ class Editor {
   }
 
   resnapObjects(all: boolean) {
-    const objs = all || this.selection.size === 0 ? this.bm.hitObjects : this.selectedObjects;
+    this.resnapList(all || this.selection.size === 0 ? this.bm.hitObjects : this.selectedObjects);
+  }
+
+  private resnapList(objs: HitObject[]) {
     const bm = this.bm;
     this.commit(() => {
       for (const o of objs) {
@@ -819,6 +1017,40 @@ class Editor {
       b.timingPoints.push(tp);
     });
     return tp;
+  }
+
+  /**
+   * Timing tab BPM/offset changes to the red line in effect now. With "Move already placed notes" on, the
+   * objects and green lines of that section follow, so they stay on the same ticks.
+   */
+  adjustCurrentRedLine(patch: { time?: number; beatLength?: number }) {
+    const bm = this.bm;
+    const reds = bm.timingPoints.filter((t) => t.uninherited);
+    if (!reds.length) return;
+    const red = redLineAt(bm, music.time);
+    const i = bm.timingPoints.indexOf(red);
+    const next = reds.find((t) => t.time > red.time);
+    const isFirst = red === reds[0];
+    const end = next ? next.time : Infinity;
+    const newTime = Math.round(patch.time ?? red.time);
+    const newBL = patch.beatLength ?? red.beatLength;
+    if (!(newBL > 0)) return;
+    const map = (t: number) => Math.round(newTime + (t - red.time) * (newBL / red.beatLength));
+    const inSection = (t: number) => t < end - 0.5 && (isFirst || t >= red.time - 0.5);
+    this.commit((b) => {
+      if (this.moveNotesWithTiming) {
+        for (const o of b.hitObjects) {
+          if (!inSection(o.time)) continue;
+          if (o.kind === 'spinner' || o.kind === 'hold') o.endTime = map(o.endTime);
+          o.time = map(o.time);
+        }
+        b.timingPoints.forEach((tp, k) => {
+          if (k !== i && !tp.uninherited && inSection(tp.time)) tp.time = map(tp.time);
+        });
+      }
+      b.timingPoints[i].time = newTime;
+      b.timingPoints[i].beatLength = newBL;
+    });
   }
 
   removeTimingPointAt(time: number) {

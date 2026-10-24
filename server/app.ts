@@ -59,6 +59,16 @@ export function createApp() {
     await next();
   });
 
+  // OAuth callbacks are registered for PUBLIC_URL only, and the state cookie must be set on the domain the
+  // callback lands on: a login started on another domain serving the app (an older vercel.app name) restarts there.
+  const startOnPublicUrl = async (c: Context, next: () => Promise<void>) => {
+    const url = new URL(c.req.url);
+    if (SECURE_COOKIES && url.origin !== PUBLIC_URL) return c.redirect(`${PUBLIC_URL}${url.pathname}${url.search}`);
+    await next();
+  };
+  app.use('/api/auth/login', startOnPublicUrl);
+  app.use('/api/drive/login', startOnPublicUrl);
+
   app.onError((err, c) => {
     console.error(err);
     return c.text('Server error', 500);

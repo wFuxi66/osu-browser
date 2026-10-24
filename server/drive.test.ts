@@ -31,7 +31,7 @@ describe('Google Drive sign-in', () => {
 
   async function connect(grantedScope = SCOPE) {
     const app = createApp();
-    const login = await app.request('/api/drive/login?return=/songs');
+    const login = await app.request('https://editor.example/api/drive/login?return=/songs');
     expect(login.status).toBe(302);
     const auth = new URL(login.headers.get('location')!);
     expect(auth.origin + auth.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');

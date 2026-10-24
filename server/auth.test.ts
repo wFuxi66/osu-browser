@@ -35,7 +35,7 @@ describe('osu! login', () => {
 
   async function login() {
     const app = createApp();
-    const start = await app.request('/api/auth/login?return=/songs');
+    const start = await app.request('https://editor.example/api/auth/login?return=/songs');
     const auth = new URL(start.headers.get('location')!);
     expect(auth.origin + auth.pathname).toBe('https://osu.ppy.sh/oauth/authorize');
     const c = cookies(start);
@@ -72,6 +72,12 @@ describe('osu! login', () => {
     vi.useRealTimers();
     const out = await app.request('/api/auth/logout', { method: 'POST', headers: { Cookie: `osu_session=${session}` } });
     expect(cookies(out).osu_session).toBe('');
+  });
+
+  it('restarts a login begun on another domain on PUBLIC_URL, where its callback lands', async () => {
+    const res = await createApp().request('https://old-name.example/api/auth/login?return=/songs');
+    expect(res.headers.get('location')).toBe('https://editor.example/api/auth/login?return=/songs');
+    expect(cookies(res).oauth_state).toBeUndefined();
   });
 
   it("lists the user's own beatmapsets from every list", async () => {

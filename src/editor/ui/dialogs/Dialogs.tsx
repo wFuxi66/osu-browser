@@ -4,7 +4,7 @@ import { OkCancel, WinDialog, WinTabs } from '../../../ui/win';
 import { runAiMod } from '../../aimod';
 import { ACTIONS, keyLabel, keysFor, type Keybinds } from '../../keybinds';
 import { editor, formatTimestamp, useEditor } from '../../store';
-import { TestPlay } from '../TestPlay';
+import { Player } from '../../../play/Player';
 import { SetupDialog } from './SetupDialog';
 import { TimingSetupDialog } from './TimingSetupDialog';
 import {
@@ -34,7 +34,7 @@ export function Dialogs() {
     case 'osuText': return <NotepadDialog kind="osu" />;
     case 'osbText': return <NotepadDialog kind="osb" />;
     case 'objectSettings': return <ObjectSettingsDialog />;
-    case 'test': return <TestPlay />;
+    case 'test': return <Player mode="test" />;
     default: return null;
   }
 }

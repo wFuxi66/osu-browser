@@ -41,7 +41,7 @@ export function drawBackground(
   h: number,
   dim: number,
   t: number,
-  opts: { frame?: SbFrame; storyboard?: boolean; background?: boolean } = {},
+  opts: { frame?: SbFrame; storyboard?: boolean; background?: boolean; video?: boolean } = {},
 ) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
@@ -56,7 +56,7 @@ export function drawBackground(
     drawCover(ctx, img, img.naturalWidth, img.naturalHeight, w, h);
     drew = true;
   }
-  const vid = editor.hasProject ? video.frameAt(t, prefs.showVideo && opts.background !== false) : null;
+  const vid = editor.hasProject ? video.frameAt(t, (opts.video ?? prefs.showVideo) && opts.background !== false) : null;
   if (vid) {
     drawCover(ctx, vid, vid.videoWidth, vid.videoHeight, w, h);
     drew = true;

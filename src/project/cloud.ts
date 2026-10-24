@@ -133,8 +133,8 @@ class Cloud {
         updatedAt: p.updatedAt,
         fileName: lite ? osz.replace(/.osz$/i, ' (edited files only).zip') : osz,
         description: lite
-          ? 'Only the edited files of this published beatmap set. Beatmap Web Editor downloads the rest from osu! mirrors when it opens it.'
-          : 'Beatmap package, synced by Beatmap Web Editor. Opens in osu!.',
+          ? 'Only the edited files of this published beatmap set. osu-browser downloads the rest from osu! mirrors when it opens it.'
+          : 'Beatmap package, synced by osu-browser. Opens in osu!.',
       },
       blob,
     );

@@ -5,7 +5,7 @@
 
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
-export const DRIVE_FOLDER = 'Beatmap Web Editor';
+export const DRIVE_FOLDER = 'osu-browser';
 /** App property marking our folder ("folder") and project files ("project"). */
 const APP_KEY = 'osuWebEditor';
 
@@ -84,11 +84,21 @@ class Drive {
 
   private async folder(): Promise<string> {
     if (this.folderId) return this.folderId;
-    const [found] = await this.search<{ id: string }>(
+    const [found] = await this.search<{ id: string; name: string }>(
       `mimeType='application/vnd.google-apps.folder' and trashed=false and appProperties has { key='${APP_KEY}' and value='folder' }`,
-      'id',
+      'id,name',
     );
-    if (found) return (this.folderId = found.id);
+    if (found) {
+      // Folders made before the app was renamed take the new name (it's found by its app property, not its name).
+      if (found.name !== DRIVE_FOLDER) {
+        void this.call(`${API}/files/${found.id}?fields=id`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+          body: JSON.stringify({ name: DRIVE_FOLDER }),
+        }).catch(() => undefined);
+      }
+      return (this.folderId = found.id);
+    }
     const r = await this.call(`${API}/files?fields=id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=UTF-8' },
@@ -170,7 +180,7 @@ class Drive {
     }
     const meta: Record<string, unknown> = {
       name: 'settings.json',
-      description: 'Beatmap Web Editor settings (key bindings, volumes, display options), synced between your computers.',
+      description: 'osu-browser settings (key bindings, volumes, display options), synced between your computers.',
       mimeType: 'application/json',
       appProperties: { [APP_KEY]: 'settings', updatedAt: String(updatedAt) },
     };

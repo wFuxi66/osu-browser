@@ -11,7 +11,16 @@ import { downloadBlob, exportOsz, oszFilename } from '../project/project';
 import { deleteDifficultyLocal, deleteProjectLocal, listProjectsLocal, loadProjectLocal, type DifficultySummary, type ProjectSummary } from '../project/storage';
 import { layoutCode } from '../editor/shortcuts';
 import { options, optionsOpen } from '../ui/options';
-import { ask, promptOpen, type PromptButton } from '../ui/prompt';
+import { ask, confirmBox, promptOpen, type PromptButton } from '../ui/prompt';
+import { screens, type SelectMode } from '../ui/screens';
+import { nowPlaying } from '../menu/nowPlaying';
+import { osuDifficulty } from '../osu/difficulty/osu';
+import { ModIcon } from '../play/ModIcon';
+import { ModSelect } from '../play/ModSelect';
+import { changesStars, effectiveStats, moddedBeatmap, modSelection, modsLabel, rateOf, useMods, withMod, type ModId } from '../play/mods';
+import { GradeIcon, Results } from '../play/Results';
+import { scores, useScores, type Score } from '../play/scores';
+import { gameplay } from '../play/session';
 import { DirectPanel } from './DirectPanel';
 import { difficultyColour, GROUP_LABELS, groupOf, matches, parseSearch, SORT_LABELS, sortSets, type GroupMode, type SortMode } from './filter';
 
@@ -51,10 +60,14 @@ function blobUrl(b: Blob | null): string | null {
   return u;
 }
 
-/** Edit-mode song select: every local (and synced) beatmap in a stable-style carousel. */
-export function SongSelect() {
-  useEditor();
+/** Song select, in play or edit mode: every local (and synced) beatmap in a stable-style carousel. */
+export function SongSelect({ mode }: { mode: SelectMode }) {
+  const ed = useEditor();
   const userKey = useCloud();
+  const play = mode === 'play';
+  const mods = useMods();
+  const [modSelect, setModSelect] = useState(false);
+  const [viewing, setViewing] = useState<Score | null>(null);
   const [sets, setSets] = useState<ProjectSummary[] | null>(null);
   const [search, setSearch] = useState('');
   const [{ group, sort }, setUi] = useState(loadUiPrefs);
@@ -64,7 +77,12 @@ export function SongSelect() {
   const [leaving, setLeaving] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
-  const [direct, setDirect] = useState<null | 'search' | 'mine'>(null);
+  // The main menu's osu!direct tab opens it straight away.
+  const [direct, setDirect] = useState<null | 'search' | 'mine'>(() => {
+    if (!screens.get().direct) return null;
+    screens.directOpened();
+    return 'search';
+  });
   const directOpen = direct !== null;
   const closeDirect = useCallback(() => setDirect(null), []);
   const haveSets = useMemo(() => new Map((sets ?? []).filter((s) => s.beatmapSetId > 0).map((s) => [s.beatmapSetId, s.id])), [sets]);
@@ -160,7 +178,10 @@ export function SongSelect() {
     if (has(sel)) return;
     const last = editor.lastOpened;
     if (last && has({ setId: last.projectId, diffId: last.diffId })) setSel({ setId: last.projectId, diffId: last.diffId });
-    else if (sel && visible.some((v) => v.set.id === sel.setId)) {
+    else if (!sel && nowPlaying.setId && visible.some((v) => v.set.id === nowPlaying.setId)) {
+      const v = visible.find((x) => x.set.id === nowPlaying.setId)!;
+      setSel({ setId: v.set.id, diffId: v.diffs.find((d) => d.id === nowPlaying.diffId)?.id ?? v.diffs[0].id });
+    } else if (sel && visible.some((v) => v.set.id === sel.setId)) {
       const v = visible.find((x) => x.set.id === sel.setId)!;
       setSel({ setId: v.set.id, diffId: v.diffs[0].id });
     } else setSel({ setId: visible[0].set.id, diffId: visible[0].diffs[0].id });
@@ -210,7 +231,10 @@ export function SongSelect() {
     // fades in, at full speed whatever the editor's playback rate was.
     const back = editor.returnedFrom === selSet.id;
     editor.returnedFrom = null;
+    nowPlaying.setId = selSet.id;
     const start = async () => {
+      // Coming from the main menu with this song playing, it carries on.
+      if (music.blob === selSet.audio && music.playing && !back) return;
       if (music.blob !== selSet.audio) await music.load(selSet.audio);
       if (cancelled) return;
       music.rate = 1;
@@ -238,27 +262,46 @@ export function SongSelect() {
     };
   }, [selSet?.id, selSet?.audio, directOpen]);
 
-  useEffect(() => () => music.pause(), []);
+  useEffect(() => {
+    nowPlaying.diffId = sel?.diffId ?? null;
+  }, [sel?.diffId]);
 
   // ------------------------------------------------------------------ actions
-  // Into the editor: song select and its music fade out while the map loads, then the editor fades in.
-  const openEditor = useCallback(
-    async (s: Selection | null = sel) => {
+  // Into the editor (or the game): song select and its music fade out while the map loads, then it fades in.
+  const open = useCallback(
+    async (s: Selection | null, session: 'edit' | 'play') => {
       if (!s || leaving) return;
       setLeaving(true);
       music.fadeOut(LEAVE_MS);
       try {
         const [p] = await Promise.all([loadProjectLocal(s.setId), new Promise((r) => setTimeout(r, LEAVE_MS))]);
         if (!p) throw new Error('That beatmap is no longer stored in this browser.');
-        await editor.openProject(p, Math.max(0, p.difficulties.findIndex((d) => d.id === s.diffId)));
+        await editor.openProject(p, Math.max(0, p.difficulties.findIndex((d) => d.id === s.diffId)), session);
       } catch (e) {
+        gameplay.modsOverride = null;
         editor.toast((e as Error).message, 'error');
         setLeaving(false);
         music.fadeIn(300);
       }
     },
-    [sel, leaving],
+    [leaving],
   );
+  const openEditor = useCallback((s: Selection | null = sel) => open(s, 'edit'), [open, sel]);
+  /** Play mode's Enter; Ctrl+Enter plays it with Autoplay. */
+  const startPlay = useCallback(
+    (s: Selection | null = sel, autoplay = false) => {
+      if (autoplay) gameplay.modsOverride = withMod(modSelection.get(), 'AU');
+      return open(s, 'play');
+    },
+    [open, sel],
+  );
+  /** The cookie, Enter and clicking the selected difficulty: play or edit, depending on the mode. */
+  const confirm = (s: Selection | null = sel, autoplay = false) => void (play ? startPlay(s, autoplay) : openEditor(s));
+  const goBack = () => {
+    if (linkOpen) setLinkOpen(false);
+    else if (search) setSearch('');
+    else screens.menu();
+  };
 
   const selectImported = async (projectId: string) => {
     const list = await refresh();
@@ -318,14 +361,18 @@ export function SongSelect() {
       title: `${selSet.artist} - ${selSet.songTitle} [${selDiff.version}]`,
       message: 'Beatmap options',
       buttons: [
-        { label: 'Edit', value: 'edit', tone: 'pink' },
+        ...(play ? [{ label: 'Play', value: 'play', tone: 'pink' as const }] : []),
+        { label: 'Edit', value: 'edit', tone: play ? 'blue' : 'pink' },
         { label: 'Export package (.osz)', value: 'export', tone: 'blue' },
+        ...(play && scores.for(selDiff.id).length ? [{ label: 'Clear local scores', value: 'scores', tone: 'grey' as const }] : []),
         { label: 'Delete...', value: 'delete', tone: 'red' },
         { label: 'Close', value: 'close', tone: 'grey' },
       ],
       cancelValue: 'close',
     });
     if (r === 'edit') void openEditor();
+    else if (r === 'play') void startPlay();
+    else if (r === 'scores') scores.clear(selDiff.id);
     else if (r === 'delete') void deleteDialog();
     else if (r === 'export')
       void run('Exporting…', async () => {
@@ -368,7 +415,7 @@ export function SongSelect() {
 
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keyHandler.current = (e: KeyboardEvent) => {
-    if (promptOpen() || optionsOpen() || busy || leaving || directOpen) return;
+    if (promptOpen() || optionsOpen() || busy || leaving || directOpen || modSelect || viewing) return;
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
     if ((e.ctrlKey || e.metaKey) && layoutCode(e) === 'KeyO') {
@@ -382,11 +429,12 @@ export function SongSelect() {
       case 'ArrowUp': moveDiff(-1); break;
       case 'ArrowRight': e.shiftKey ? moveGroup(1) : moveSet(1); break;
       case 'ArrowLeft': e.shiftKey ? moveGroup(-1) : moveSet(-1); break;
-      case 'Enter': void openEditor(); break;
+      case 'Enter': confirm(sel, e.ctrlKey || e.metaKey); break;
+      case 'F1': if (play) setModSelect(true); else handled = false; break;
       case 'F2': if (e.shiftKey) { const prev = randomHistory.current.pop(); if (prev) setSel(prev); } else random(); break;
       case 'F3': void optionsDialog(); break;
       case 'Delete': if (e.shiftKey) void deleteDialog(); else handled = false; break;
-      case 'Escape': if (linkOpen) setLinkOpen(false); else if (search) setSearch(''); break;
+      case 'Escape': goBack(); break;
       case 'Backspace':
         if (e.ctrlKey) setSearch((s) => s.replace(/\S*\s*$/, ''));
         else setSearch((s) => s.slice(0, -1));
@@ -421,7 +469,7 @@ export function SongSelect() {
     >
       <div className="ss-bg">{bg && <img key={bg} src={bg} alt="" />}</div>
 
-      <Carousel ref={carousel} rows={rows} sel={sel} onSelect={setSel} onOpen={(s) => void openEditor(s)} onOptions={optionsDialog}
+      <Carousel ref={carousel} rows={rows} sel={sel} thumbnails={ed.prefs.showThumbnails} onSelect={setSel} onOpen={(s) => confirm(s)} onOptions={optionsDialog}
         onToggleGroup={(key) => setExpandedGroups((g) => { const n = new Set(g); if (n.has(key)) n.delete(key); else n.add(key); return n; })} />
 
       <header className="ss-header">
@@ -429,7 +477,7 @@ export function SongSelect() {
           <path d="M0 0 H1000 V52 H330 C305 52 300 98 270 98 H0 Z" />
           <path className="edge" d="M1000 52 H330 C305 52 300 98 270 98 H0" />
         </svg>
-        <BeatmapInfoPanel set={selSet} diff={selDiff} />
+        <BeatmapInfoPanel set={selSet} diff={selDiff} mods={play ? mods : []} />
         <div className="ss-controls">
           <div className="ss-dropdowns">
             <label><span className="ss-dd-label">Group</span>
@@ -456,6 +504,12 @@ export function SongSelect() {
         {search && <span className="ss-search-count">{visible.reduce((n, v) => n + v.diffs.length, 0)} matches</span>}
       </div>
 
+      {play ? (
+        <div className="ss-left">
+          <SubmissionStatus set={selSet} diff={selDiff} onUpdate={() => selSet && selDiff && void updateSet(selSet, selDiff)} />
+          <Leaderboard diff={selDiff} onView={setViewing} />
+        </div>
+      ) : (
       <div className="ss-left">
         <SubmissionStatus set={selSet} diff={selDiff} onUpdate={() => selSet && selDiff && void updateSet(selSet, selDiff)} />
         <button className="ss-drop" onClick={async () => { const f = await pickFiles('audio/*,.mp3,.ogg'); if (f.length) handleFiles(f); }}>
@@ -476,20 +530,44 @@ export function SongSelect() {
           <button className="ss-wide" onClick={() => setLinkOpen(true)}>Open a beatmap from <b>osu.ppy.sh</b></button>
         )}
       </div>
+      )}
 
       <footer className="ss-footer">
-        <button className="ss-back" onClick={() => (linkOpen ? setLinkOpen(false) : setSearch(''))} title="Back (Esc)">
+        <button className="ss-back" onClick={goBack} title="Back (Esc)">
           <span className="ss-back-arrow">«</span> back
         </button>
         <button className="ss-footer-btn ss-settings" onClick={() => options.show()} title="Options (Ctrl+O)" aria-label="Options">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
         </button>
+        {play && (
+          <button className="ss-footer-btn ss-mods-btn" onClick={() => setModSelect(true)} title="Mods (F1)">
+            Mods
+            {mods.length > 0 && (
+              <span className="ss-mods-icons">
+                {mods.map((m) => <ModIcon key={m} id={m} size={30} />)}
+              </span>
+            )}
+          </button>
+        )}
         <button className="ss-footer-btn" onClick={random} title="Random (F2)">Random</button>
         <UserPanel onMyBeatmaps={() => setDirect('mine')} />
-        <button className="ss-cookie" onClick={() => void openEditor()} disabled={!selDiff} title="Edit (Enter)">
-          <span>edit</span>
+        <button className="ss-cookie" onClick={() => confirm()} disabled={!selDiff} title={play ? 'Play (Enter, Ctrl+Enter for autoplay)' : 'Edit (Enter)'}>
+          <span>{play ? 'play' : 'edit'}</span>
         </button>
       </footer>
+
+      {modSelect && <ModSelect onClose={() => setModSelect(false)} />}
+      {viewing && selSet && selDiff && (
+        <div className="ss-results">
+          <Results
+            score={viewing}
+            title={{ artist: selSet.artist, title: selSet.songTitle, version: selDiff.version, creator: selSet.creator }}
+            background={bg}
+            saved
+            onBack={() => setViewing(null)}
+          />
+        </div>
+      )}
 
       {directOpen && (
         <DirectPanel
@@ -522,24 +600,96 @@ export function SongSelect() {
   );
 }
 
-function BeatmapInfoPanel({ set, diff }: { set: ProjectSummary | null; diff: DifficultySummary | null }) {
+/** Star ratings with mods, calculated on demand (osu!standard only) and kept for the session. */
+const moddedStarCache = new Map<string, Promise<number | null>>();
+
+function useModdedStars(set: ProjectSummary | null, diff: DifficultySummary | null, mods: ModId[]): number | null {
+  const affects = !!diff && diff.mode === 0 && changesStars(mods);
+  const key = affects && set && diff ? `${diff.id}:${diff.checksum}:${modsLabel(mods)}` : '';
+  const [stars, setStars] = useState<{ key: string; value: number | null } | null>(null);
+  useEffect(() => {
+    if (!key || !set || !diff) return;
+    let p = moddedStarCache.get(key);
+    if (!p) {
+      p = loadProjectLocal(set.id).then((proj) => {
+        const d = proj?.difficulties.find((x) => x.id === diff.id);
+        return d ? osuDifficulty(moddedBeatmap(d.beatmap, mods), rateOf(mods)).starRating : null;
+      });
+      p.catch(() => moddedStarCache.delete(key));
+      moddedStarCache.set(key, p);
+    }
+    let live = true;
+    p.then((value) => live && setStars({ key, value }), () => {});
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  if (!diff) return null;
+  if (!key) return diff.stars;
+  return stars?.key === key ? stars.value : null;
+}
+
+function BeatmapInfoPanel({ set, diff, mods }: { set: ProjectSummary | null; diff: DifficultySummary | null; mods: ModId[] }) {
+  const stars = useModdedStars(set, diff, mods);
   if (!set || !diff) return <div className="ss-info" />;
   const objects = diff.circles + diff.sliders + diff.spinners;
+  // With mods, stable shows the stats as they play: Hard Rock's, and AR/OD at Double Time's speed.
+  const rate = rateOf(mods);
+  const s = effectiveStats(diff, mods);
+  const modded = mods.length > 0 && (rate !== 1 || mods.includes('HR') || mods.includes('EZ'));
+  const bpm = rate === 1 ? diff : { ...diff, bpmMin: diff.bpmMin * rate, bpmMax: diff.bpmMax * rate, bpmMain: diff.bpmMain * rate };
   const stats =
     diff.mode === 3
-      ? `Keys:${fmt(diff.cs, 0)} OD:${fmt(diff.od)} HP:${fmt(diff.hp)}`
+      ? `Keys:${fmt(diff.cs, 0)} OD:${fmt(s.od)} HP:${fmt(s.hp)}`
       : diff.mode === 1
-        ? `OD:${fmt(diff.od)} HP:${fmt(diff.hp)}`
-        : `CS:${fmt(diff.cs)} AR:${fmt(diff.ar)} OD:${fmt(diff.od)} HP:${fmt(diff.hp)}`;
+        ? `OD:${fmt(s.od)} HP:${fmt(s.hp)}`
+        : `CS:${fmt(s.cs)} AR:${fmt(s.ar)} OD:${fmt(s.od)} HP:${fmt(s.hp)}`;
   return (
     <div className="ss-info">
       <div className="ss-info-title">{set.artist} - {set.songTitle} [{diff.version}]</div>
       <div className="ss-info-mapper">Mapped by {set.creator || 'Unknown'}</div>
-      <div className="ss-info-line"><b>Length:</b> {formatLength(diff.length)} <b>BPM:</b> {formatBpm(diff)} <b>Objects:</b> {objects}</div>
+      <div className="ss-info-line"><b>Length:</b> {formatLength(diff.length / rate)} <b>BPM:</b> {formatBpm(bpm)} <b>Objects:</b> {objects}</div>
       <div className="ss-info-line">
         {diff.mode === 3 ? <><b>Notes:</b> {diff.circles} <b>Long notes:</b> {diff.sliders}</> : <><b>Circles:</b> {diff.circles} <b>Sliders:</b> {diff.sliders} <b>Spinners:</b> {diff.spinners}</>}
       </div>
-      <div className="ss-info-stats">{stats}{diff.stars !== null && <> Star Rating: {fmt(diff.stars, 2)}★</>}</div>
+      <div className={`ss-info-stats ${modded ? 'modded' : ''}`}>{stats}{stars !== null && <> Star Rating: {fmt(stars, 2)}★</>}</div>
+    </div>
+  );
+}
+
+/** Play mode's "Local Ranking": the scores set on this difficulty in this browser. */
+function Leaderboard({ diff, onView }: { diff: DifficultySummary | null; onView: (s: Score) => void }) {
+  useScores();
+  const list = diff ? scores.for(diff.id) : [];
+  return (
+    <div className="ss-board">
+      <div className="ss-board-head">Local Ranking</div>
+      {list.length === 0 && <div className="ss-board-empty">No records set!</div>}
+      <div className="ss-board-list">
+        {list.map((s, i) => (
+          <button
+            key={s.id}
+            className={`ss-score ${diff && s.checksum !== diff.checksum ? 'old' : ''}`}
+            title={diff && s.checksum !== diff.checksum ? 'Set on an earlier version of this difficulty' : undefined}
+            onClick={() => onView(s)}
+            onContextMenu={async (e) => {
+              e.preventDefault();
+              if (await confirmBox('osu!', `Delete ${s.player}'s score of ${s.score.toLocaleString()}?`)) scores.remove(s.diffId, s.id);
+            }}
+          >
+            <span className="ss-score-rank">{i + 1}</span>
+            <GradeIcon grade={s.grade} small />
+            <span className="ss-score-text">
+              <span className="ss-score-name">{s.player}</span>
+              <span className="ss-score-line">Score: {s.score.toLocaleString()} ({s.maxCombo}x)</span>
+            </span>
+            <span className="ss-score-right">
+              <span className="ss-score-mods">{modsLabel(s.mods)}</span>
+              <span className="ss-score-acc">{(s.accuracy * 100).toFixed(2)}%</span>
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -626,7 +776,7 @@ function LinkInput({ onOpen, onCancel }: { onOpen: (link: string) => void; onCan
 }
 
 /** The account dialog: Google Drive sync and the (optional) osu! login. */
-async function accountDialog(onMyBeatmaps: () => void) {
+export async function accountDialog(onMyBeatmaps: () => void) {
   const u = cloud.user;
   const buttons: PromptButton[] = [];
   if (cloud.driveConfigured) {
@@ -684,6 +834,7 @@ function UserPanel({ onMyBeatmaps }: { onMyBeatmaps: () => void }) {
 interface CarouselProps {
   rows: Row[];
   sel: Selection | null;
+  thumbnails: boolean;
   onSelect: (s: Selection) => void;
   onOpen: (s: Selection) => void;
   onOptions: () => void;
@@ -691,7 +842,7 @@ interface CarouselProps {
 }
 
 
-const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(function Carousel({ rows, sel, onSelect, onOpen, onOptions, onToggleGroup }, ref) {
+const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(function Carousel({ rows, sel, thumbnails, onSelect, onOpen, onOptions, onToggleGroup }, ref) {
   const wrap = useRef<HTMLDivElement>(null);
   const els = useRef(new Map<string, HTMLDivElement>());
   const scroll = useRef({ pos: 0, target: 0, init: false });
@@ -820,7 +971,7 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
           {r.kind === 'group' ? (
             <div className="ss-group-label">{r.label} <span>({r.count})</span></div>
           ) : (
-            <PanelBody set={r.set} diff={r.kind === 'diff' ? r.diff : null} diffs={r.kind === 'set' ? r.diffs : [r.diff]} />
+            <PanelBody set={r.set} thumbnails={thumbnails} diff={r.kind === 'diff' ? r.diff : null} diffs={r.kind === 'set' ? r.diffs : [r.diff]} />
           )}
         </div>
       ))}
@@ -828,11 +979,11 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
   );
 });
 
-function PanelBody({ set, diff, diffs }: { set: ProjectSummary; diff: DifficultySummary | null; diffs: DifficultySummary[] }) {
+function PanelBody({ set, diff, diffs, thumbnails }: { set: ProjectSummary; diff: DifficultySummary | null; diffs: DifficultySummary[]; thumbnails: boolean }) {
   const thumb = blobUrl(set.background);
   return (
     <>
-      <div className="ss-thumb">{thumb && <img src={thumb} alt="" loading="lazy" />}</div>
+      {thumbnails && <div className="ss-thumb">{thumb && <img src={thumb} alt="" loading="lazy" />}</div>}
       <div className="ss-panel-text">
         <div className="ss-panel-title">{set.songTitle || 'Untitled'}</div>
         <div className="ss-panel-artist">{set.artist || 'Unknown artist'} // {set.creator || 'Unknown'}</div>

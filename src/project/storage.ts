@@ -253,6 +253,36 @@ export interface Prefs {
   downloadVideo: boolean;
   /** Key binding changes from the defaults (see editor/keybinds.ts). */
   keybinds: Keybinds;
+
+  // Gameplay (play mode and the editor's test mode), as in stable's Options.
+  /** Background dim while playing (the editor has its own). */
+  playDim: number;
+  /** "Don't change dim level during breaks". */
+  keepDimInBreaks: boolean;
+  showLeaderboard: boolean;
+  progressDisplay: 'topright' | 'bottomright' | 'bottom' | 'none';
+  scoreMeter: 'none' | 'colour' | 'error';
+  scoreMeterSize: number;
+  /** "Always show key overlay" (it shows during autoplay anyway). */
+  keyOverlay: boolean;
+  /** "Show approach circle on first "Hidden" object". */
+  hiddenFirstApproach: boolean;
+  playSnaking: boolean;
+  playStoryboard: boolean;
+  playVideo: boolean;
+  showFps: boolean;
+  ignoreBeatmapHitsounds: boolean;
+  cursorSize: number;
+  /** Scale the cursor with the beatmap's circle size. */
+  autoCursorSize: boolean;
+  /** "Disable mouse wheel in play mode": otherwise the wheel changes the volume while playing, like stable. */
+  disableWheelInPlay: boolean;
+  /** "Disable mouse buttons in play mode": only the keys hit. */
+  disableMouseButtons: boolean;
+  // Main menu and song select
+  menuParallax: boolean;
+  menuTips: boolean;
+  showThumbnails: boolean;
   /** Sync these settings through Google Drive when it's connected. */
   syncSettings: boolean;
   /** When the settings last changed (ms), for newest-wins sync. */
@@ -279,6 +309,26 @@ export const DEFAULT_PREFS: Prefs = {
   skinnedTimeline: true,
   downloadVideo: true,
   keybinds: {},
+  playDim: 0.8,
+  keepDimInBreaks: false,
+  showLeaderboard: true,
+  progressDisplay: 'topright',
+  scoreMeter: 'error',
+  scoreMeterSize: 1,
+  keyOverlay: false,
+  hiddenFirstApproach: true,
+  playSnaking: true,
+  playStoryboard: true,
+  playVideo: true,
+  showFps: false,
+  ignoreBeatmapHitsounds: false,
+  cursorSize: 1,
+  autoCursorSize: false,
+  disableWheelInPlay: false,
+  disableMouseButtons: false,
+  menuParallax: true,
+  menuTips: true,
+  showThumbnails: true,
   syncSettings: true,
   updatedAt: 0,
 };

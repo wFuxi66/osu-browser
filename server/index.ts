@@ -50,5 +50,5 @@ if (existsSync('./dist/index.html')) {
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   const oauth = Boolean(process.env.OSU_CLIENT_ID && process.env.OSU_CLIENT_SECRET);
-  console.log(`osu! web editor server on http://localhost:${info.port} (login ${oauth ? 'configured' : 'NOT configured'})`);
+  console.log(`osu-browser server on http://localhost:${info.port} (login ${oauth ? 'configured' : 'NOT configured'})`);
 });

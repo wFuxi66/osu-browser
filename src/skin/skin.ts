@@ -15,6 +15,10 @@ export interface SkinIni {
   overlayAboveNumber: boolean;
   hitCirclePrefix: string;
   hitCircleOverlap: number;
+  scorePrefix: string;
+  scoreOverlap: number;
+  comboPrefix: string;
+  comboOverlap: number;
 }
 
 /** A skin image; w and h are in standard-definition pixels (an @2x file counts half). */
@@ -36,6 +40,9 @@ const BUILTIN: SkinEntry[] = [
   { id: DEFAULT_SKIN_ID, name: 'osu!default', builtin: true },
   { id: DRAWN_SKIN_ID, name: 'Drawn (no images)', builtin: true },
 ];
+
+/** The file names of stable's mod icons (selection-mod-<name>.png). */
+export const MOD_ICON_NAMES = ['easy', 'nofail', 'halftime', 'hardrock', 'suddendeath', 'perfect', 'doubletime', 'nightcore', 'hidden', 'flashlight', 'relax', 'relax2', 'spunout', 'autoplay', 'cinema', 'scorev2'];
 
 // Elements the editor draws, each with the names it may be found under (animated ones fall back to frame 0).
 const ELEMENTS: Record<string, string[]> = {
@@ -65,12 +72,41 @@ const ELEMENTS: Record<string, string[]> = {
   hit50: ['hit50', 'hit50-0'],
   hit100: ['hit100', 'hit100-0'],
   hit300: ['hit300', 'hit300-0'],
+  hit300g: ['hit300g', 'hit300g-0'],
+  hit300k: ['hit300k', 'hit300k-0'],
+  hit100k: ['hit100k', 'hit100k-0'],
+  // Gameplay
+  cursortrail: ['cursortrail'],
+  'scorebar-bg': ['scorebar-bg'],
+  'scorebar-colour': ['scorebar-colour', 'scorebar-colour-0'],
+  'section-pass': ['section-pass'],
+  'section-fail': ['section-fail'],
+  'play-warningarrow': ['play-warningarrow'],
+  'play-skip': ['play-skip', 'play-skip-0'],
+  'spinner-clear': ['spinner-clear'],
+  'spinner-spin': ['spinner-spin'],
+  'inputoverlay-key': ['inputoverlay-key'],
+  'inputoverlay-background': ['inputoverlay-background'],
+  'pause-overlay': ['pause-overlay'],
+  'fail-background': ['fail-background'],
+  'pause-continue': ['pause-continue'],
+  'pause-retry': ['pause-retry'],
+  'pause-back': ['pause-back'],
+  ...Object.fromEntries(['X', 'XH', 'S', 'SH', 'A', 'B', 'C', 'D'].flatMap((g) => [[`ranking-${g}`, [`ranking-${g}`]], [`ranking-${g}-small`, [`ranking-${g}-small`]]])),
+  // Mod icons (osu!default has none: they're drawn then)
+  ...Object.fromEntries(MOD_ICON_NAMES.map((n) => [`selection-mod-${n}`, [`selection-mod-${n}`]])),
 };
 
+/** The characters of the score and combo fonts, by the suffix of their file names. */
+const SCORE_GLYPHS: Record<string, string> = { ',': 'comma', '.': 'dot', '%': 'percent', x: 'x' };
+for (let d = 0; d < 10; d++) SCORE_GLYPHS[String(d)] = String(d);
+
 // What public/skins/default holds (all @2x).
+const DEFAULT_MISSING = /^(sliderstart|spinner-circle|play-skip|pause-|fail-background|selection-mod-)/;
 const DEFAULT_FILES = [
-  ...Object.keys(ELEMENTS).filter((k) => !k.startsWith('sliderstart') && k !== 'spinner-circle'),
+  ...Object.keys(ELEMENTS).filter((k) => !DEFAULT_MISSING.test(k)),
   ...Array.from({ length: 10 }, (_, i) => `default-${i}`),
+  ...Object.values(SCORE_GLYPHS).map((g) => `score-${g}`),
 ].map((n) => `${n === 'sliderb' ? 'sliderb0' : n}@2x.png`);
 
 const DEFAULT_INI: SkinIni = {
@@ -84,6 +120,10 @@ const DEFAULT_INI: SkinIni = {
   overlayAboveNumber: true,
   hitCirclePrefix: 'default',
   hitCircleOverlap: -2,
+  scorePrefix: 'score',
+  scoreOverlap: 0,
+  comboPrefix: 'score',
+  comboOverlap: 0,
 };
 
 function parseColour(v: string): Rgb | null {
@@ -123,6 +163,10 @@ export function parseSkinIni(text: string): SkinIni {
     } else if (section === 'fonts') {
       if (key === 'hitcircleprefix') ini.hitCirclePrefix = value.replace(/\\/g, '/').toLowerCase();
       else if (key === 'hitcircleoverlap') ini.hitCircleOverlap = Number(value) || 0;
+      else if (key === 'scoreprefix') ini.scorePrefix = value.replace(/\\/g, '/').toLowerCase();
+      else if (key === 'scoreoverlap') ini.scoreOverlap = Number(value) || 0;
+      else if (key === 'comboprefix') ini.comboPrefix = value.replace(/\\/g, '/').toLowerCase();
+      else if (key === 'combooverlap') ini.comboOverlap = Number(value) || 0;
     }
   }
   // Combo colours are read up to the first gap, like stable.
@@ -156,6 +200,18 @@ export class Skin {
   /** The hit circle number glyph for a digit. */
   digit(d: string): Texture | undefined {
     return this.get(`digit-${d}`);
+  }
+
+  /** A character of the score or combo font (digits, ",", ".", "%", "x"), with the font's overlap. */
+  glyph(font: 'score' | 'combo', ch: string): Texture | undefined {
+    // A skin without its own font uses the fallback's whole font rather than mixing.
+    const own = this.textures.get(`${font}:0`);
+    return own ? this.textures.get(`${font}:${ch}`) : this.fallback?.glyph(font, ch);
+  }
+
+  overlap(font: 'score' | 'combo'): number {
+    if (!this.textures.get(`${font}:0`) && this.fallback) return this.fallback.overlap(font);
+    return font === 'score' ? this.ini.scoreOverlap : this.ini.comboOverlap;
   }
 
   /** The texture multiplied by a colour, as osu! tints combo-coloured elements. */
@@ -215,6 +271,16 @@ async function buildSkin(id: string, files: Map<string, Blob>, ini: SkinIni, fal
       (async () => {
         const t = (await find(`${ini.hitCirclePrefix}-${d}`)) ?? (await find(`default-${d}`));
         if (t) textures.set(`digit-${d}`, t);
+      })(),
+    );
+  }
+  // The score and combo fonts: kept only when the skin has all ten digits, so fonts never mix.
+  for (const [font, prefix] of [['score', ini.scorePrefix], ['combo', ini.comboPrefix]] as const) {
+    jobs.push(
+      (async () => {
+        const found = await Promise.all(Object.entries(SCORE_GLYPHS).map(async ([ch, suffix]) => [ch, (await find(`${prefix}-${suffix}`)) ?? (await find(`score-${suffix}`))] as const));
+        if (found.filter(([ch, t]) => /\d/.test(ch) && t).length < 10) return;
+        for (const [ch, t] of found) if (t) textures.set(`${font}:${ch}`, t);
       })(),
     );
   }
@@ -400,6 +466,23 @@ class SkinManager {
 }
 
 export const skins = new SkinManager();
+
+const urls = new WeakMap<Texture, string>();
+
+/** A data URL of a skin texture, for showing it in the page (mod icons, grades) rather than on a canvas. */
+export function textureUrl(tex: Texture): string {
+  let u = urls.get(tex);
+  if (!u) {
+    const src = tex.image as ImageBitmap;
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    c.getContext('2d')!.drawImage(src, 0, 0);
+    u = c.toDataURL();
+    urls.set(tex, u);
+  }
+  return u;
+}
 
 /** Combo colours: the beatmap's, else the skin's, else osu!'s defaults. */
 export function comboColours(bm: Beatmap): Rgb[] {

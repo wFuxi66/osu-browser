@@ -1,8 +1,8 @@
-# osu! web editor
+# osu-browser
 
-An osu! (stable) style beatmap editor that runs in any modern browser. Drop an mp3 to start a new map, or open an `.osz` / beatmap folder to keep editing. When you're done, export the `.osz` (or a single `.osu`) and open it in osu!. Uploading to the osu! website isn't supported; use the real client for that.
+osu! (stable) in a browser tab: play your maps and map them, on any laptop. Drop an mp3 to start a new map, or open an `.osz` / beatmap folder to keep editing or to play it. When you're done, export the `.osz` (or a single `.osu`) and open it in osu!. Uploading to the osu! website isn't supported; use the real client for that.
 
-It follows stable's flow: you start in an edit-mode song select with your maps, open one into the editor, and Esc takes you back. Like stable, nothing autosaves: Ctrl+S saves the set in the browser (IndexedDB), and leaving with unsaved changes asks first. If you connect your Google Drive (optional), saving also syncs your maps to a "Beatmap Web Editor" folder in it, so they're there when you open the editor on another computer. Logging in with osu! (also optional) signs new maps with your name.
+It follows stable's flow: the main menu (the cookie: Play, Edit, Options, Exit), then song select in play or edit mode, then the game or the editor; Esc or "back" takes you back each time. Playing is mostly there to test your maps: scores stay in the browser, in song select's local ranking. Like stable, nothing autosaves in the editor: Ctrl+S saves the set in the browser (IndexedDB), and leaving with unsaved changes asks first. If you connect your Google Drive (optional), saving also syncs your maps to an "osu-browser" folder in it, so they're there when you open the app on another computer. Logging in with osu! (also optional) signs new maps with your name.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` the
 ### Enabling "Log in with osu!"
 
 1. Sign in on osu.ppy.sh and open <https://osu.ppy.sh/home/account/edit#oauth>, then click **New OAuth Application**.
-2. Name it (e.g. "osu! web editor"). For **Application Callback URL**, use `http://localhost:5173/api/auth/callback` for local development, or `https://your-domain/api/auth/callback` in production. It must match `OSU_REDIRECT_URI` exactly. You can register both: create a second application for production.
+2. Name it (e.g. "osu-browser"). For **Application Callback URL**, use `http://localhost:5173/api/auth/callback` for local development, or `https://your-domain/api/auth/callback` in production. It must match `OSU_REDIRECT_URI` exactly. You can register both: create a second application for production.
 3. Copy the **Client ID** and **Client Secret** into `.env` (`OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`). In production also set `PUBLIC_URL=https://your-domain` and `OSU_REDIRECT_URI=https://your-domain/api/auth/callback`.
 
 osu!'s OAuth needs a client secret for the token exchange, which is why there's a small backend. The session is an encrypted httpOnly cookie holding only who you are (id, name, avatar, country); the user's osu! token is dropped after sign-in, and the osu! API calls use the app's own client-credentials token. The editor only asks for the `identify public` scopes. Logging in signs new maps with your name and adds **My beatmaps** to the osu!direct panel: your pending/WIP, ranked, loved, graveyarded sets and guest difficulties, one click to open them. Without OAuth configured, the editor still works fully offline/local.
@@ -55,7 +55,7 @@ Caddy obtains the TLS certificate and proxies to the app. Check it with `curl ht
 
 **Plain Docker (behind your own proxy, or on Fly.io/Railway/Render):**
 
-`docker build -t osu-web-editor . && docker run -d -p 8787:8787 --env-file .env osu-web-editor`
+`docker build -t osu-browser . && docker run -d -p 8787:8787 --env-file .env osu-browser`
 
 The container is stateless (no database; maps live in browsers and Google Drive), listens on `PORT` (8787), and exposes `/api/health` for health checks.
 
@@ -63,7 +63,17 @@ The container is stateless (no database; maps live in browsers and Google Drive)
 
 Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapsets/…` link. The official API doesn't let third-party apps download beatmapsets, so the browser downloads them directly from public mirrors that allow CORS: osu.direct first, then nerinyan. When the app runs on the Node server, it also falls back to a server-side proxy that adds catboy.best. That proxy isn't deployed on Vercel. The "Search & download beatmaps" panel uses osu.direct's search API (also CORS-enabled) and the same downloads.
 
-## Feature checklist (vs. the stable editor)
+## Feature checklist (vs. stable)
+
+**Main menu & play mode**
+- [x] Stable's main menu: the cookie pulsing on the beat (brighter in kiai) with a visualiser ring, Play / Edit / Options / Exit sliding out (P, E, O, D for osu!direct), user panel with local plays and accuracy, "You have N beatmaps available!", Now Playing with previous/play/pause/stop/next and a seek bar, the current song's background with parallax, menu tips. The song carries on between the menu and song select
+- [x] Play-mode song select: Enter plays, Ctrl+Enter plays with Autoplay, F1 mod selection, local ranking (click a score for its ranking screen, right-click to delete it), the info panel's stats and star rating with the selected mods (AR/OD at Double Time's speed, like stable)
+- [x] Mod selection like stable's: Difficulty Reduction (EZ NF HT), Difficulty Increase (HR SD/PF DT/NC HD FL), Special (RX AP SO AU/CN V2), score multiplier, Q W E / A S D F G / Z X C V B keys, 1 reset, 2 close; icons come from the skin's `selection-mod-*.png` when it has them
+- [x] osu!standard gameplay as stable judges it: 300/100/50 windows from OD, notelock (and the early-click miss), sliders scored on head, ticks, repeats and tail (36 ms leniency, follow circle 2.4× once tracking), spinners by rotations (capped at 477 rpm), health drain with breaks, 激/喝, ScoreV1 (difficulty and mod multipliers) or ScoreV2, SS/S/A/B/C/D (silver with HD/FL). Easy's three lives, Sudden Death, Perfect, Relax, Autopilot, Spun Out, Autoplay, Cinema
+- [x] HUD like stable's, skinned when the skin has the images (score/combo fonts, health bar, grades, hit bursts, 激/喝): progress pie or bar, hit error meter, key overlay, live local leaderboard, section pass/fail and break arrows, FPS counter. Hitsounds follow your hits (and stop when a slider is dropped); combobreak, fail and applause sounds
+- [x] Lead-in before early first objects, Skip (Space), pause on Esc or when the tab loses focus (Continue asks you to click where the cursor was, like stable), quick retry (`), fail with the song winding down, ranking screen with hit counts, max combo, accuracy, health graph and unstable rate
+- [x] Gameplay options from stable: background dim (lighter in breaks unless turned off), leaderboard, progress display, score meter type and size, key overlay, approach circle on the first Hidden object, snaking sliders, video, storyboards, ignore beatmap hitsounds, cursor size and automatic cursor size, mouse wheel (changes the volume while playing) and mouse buttons in play mode, song select thumbnails, menu parallax and tips, delete all local scores
+- [ ] osu!taiko, osu!catch and osu!mania are shown as an autoplay preview, not playable yet
 
 **Screens & flow**
 - [x] Star ratings for all four modes (star dots, difficulty colours and "Star Rating" in the info panel), matching osu.ppy.sh: a port of lazer's difficulty calculators, checked against 467 ranked maps (`STARS_SETS="<set ids>" npx vitest run stars.website` compares more)
@@ -128,7 +138,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Wheel seeking by beat snap (wheel down = forward), eased like lazer, touchpad deltas grouped per notch, Shift 4x, Ctrl+wheel divisor, timing point / bookmark jumps, Z/X/C/V
 - [x] Exact seeking: browsers seek compressed audio only approximately (in VBR mp3s up to a few hundred ms off, measured in Edge), so the editor plays a decoded WAV copy of the song, which seeks to the sample; the clock also corrects itself when the audio is slow to resume after a seek
 - [x] Coloured beat snap ticks (1/1 … 1/16), timeline zoom, song overview with kiai/breaks/bookmarks
-- [x] Test mode (F5): playable osu!standard with judgements and autoplay; preview for other modes
+- [x] Test mode (F5): plays from the current time without failing, with quick Autoplay/HT/DT/EZ/HR/HD/FL toggles; Esc goes back to where you were (preview for other modes)
 
 **Design (F2)**
 - [x] Stable layout: Layer Toggles (incl. HitObjects), Transformation (move/scale/fade/rotate/colour), Tweening, Easing In/Out, Origin, Diff. Specific; Movement/Scale/Fade/Rotation keyframe timeline; Keyframe Control (+ / − / previous / next); Background Image/Video toggle; SB load readout; Sprite Library (I); W/A/S/D nudge; Ctrl+X/C/V sprites
@@ -143,4 +153,4 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 
 ## Credits
 
-Default hitsound samples (including `spinnerspin.wav`) and the osu!default skin images in `public/skins/default` are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0), unmodified. Slider maths follows osu-framework's `PathApproximator`. Star ratings are a TypeScript port of the difficulty calculators in [ppy/osu](https://github.com/ppy/osu) (lazer, MIT licence, version 2026.730.0, which is what osu.ppy.sh runs), together with lazer's `SliderPath` and osu-framework's `PathApproximator` (also MIT) in single precision. The UI font is [Ubuntu](https://design.ubuntu.com/font) (Ubuntu Font Licence), standing in for stable's Aller; icons are drawn in SVG, and no files are copied from an osu! install. This project isn't affiliated with ppy.
+Default hitsound and gameplay samples (including `spinnerspin.wav`, `combobreak.mp3`, `applause.mp3`) and the osu!default skin images in `public/skins/default` are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0), unmodified. Slider maths follows osu-framework's `PathApproximator`. Star ratings are a TypeScript port of the difficulty calculators in [ppy/osu](https://github.com/ppy/osu) (lazer, MIT licence, version 2026.730.0, which is what osu.ppy.sh runs), together with lazer's `SliderPath` and osu-framework's `PathApproximator` (also MIT) in single precision. The UI font is [Ubuntu](https://design.ubuntu.com/font) (Ubuntu Font Licence), standing in for stable's Aller; icons are drawn in SVG, and no files are copied from an osu! install. This project isn't affiliated with ppy.

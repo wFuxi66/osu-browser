@@ -290,7 +290,7 @@ export function drawSliderTick(ctx: CanvasRenderingContext2D, x: number, y: numb
 }
 
 /** The slider ball and its follow circle; angle is the ball's direction of travel. */
-export function drawSliderBall(ctx: CanvasRenderingContext2D, at: Vec2, angle: number, r: number, colour: Rgb, alpha: number) {
+export function drawSliderBall(ctx: CanvasRenderingContext2D, at: Vec2, angle: number, r: number, colour: Rgb, alpha: number, follow = 1) {
   const skin = skins.current;
   const ball = skin?.get('sliderb');
   ctx.save();
@@ -307,8 +307,8 @@ export function drawSliderBall(ctx: CanvasRenderingContext2D, at: Vec2, angle: n
       drawTexture(ctx, spec, at.x, at.y, k);
       ctx.globalCompositeOperation = 'source-over';
     }
-    const follow = skin.get('sliderfollowcircle');
-    if (follow) drawTexture(ctx, follow, at.x, at.y, k);
+    const followTex = skin.get('sliderfollowcircle');
+    if (followTex && follow > 0) drawTexture(ctx, followTex, at.x, at.y, k * follow);
     ctx.restore();
     return;
   }

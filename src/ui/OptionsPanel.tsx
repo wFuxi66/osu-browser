@@ -1,5 +1,5 @@
 // The Options panel, like stable's: slides in from the left over song select or the editor, with a section column,
-// a search box and every setting of the web editor (account and sync, audio, skin, editor display, downloads, keys).
+// a search box and every setting of osu-browser (account and sync, audio, skin, editor display, downloads, keys).
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useCloud } from '../App';
 import { ACTIONS, bind, comboOf, conflicts, keyLabel, keysFor, resetBinding, unbind } from '../editor/keybinds';
@@ -11,6 +11,7 @@ import { pickFiles } from '../project/open';
 import { skins, type SkinEntry } from '../skin/skin';
 import { options, useOptions, type OptionsSection } from './options';
 import { confirmBox } from './prompt';
+import { scores } from '../play/scores';
 
 interface Item {
   label: string;
@@ -209,6 +210,71 @@ export function OptionsPanel() {
       ],
     },
     {
+      id: 'graphics',
+      title: 'Graphics',
+      icon: <IconGraphics />,
+      groups: [
+        {
+          title: 'Renderer',
+          items: [{ label: 'Show FPS counter', keywords: 'frames performance', render: () => <Toggle label="Show FPS counter" hint="In the bottom-right corner while playing." value={p.showFps} onChange={(v) => set({ showFps: v })} /> }],
+        },
+        {
+          title: 'Detail settings',
+          items: [
+            { label: 'Snaking sliders', keywords: 'gameplay', render: () => <Toggle label="Snaking sliders" value={p.playSnaking} onChange={(v) => set({ playSnaking: v })} /> },
+            { label: 'Background video', keywords: 'gameplay video', render: () => <Toggle label="Background video" value={p.playVideo} onChange={(v) => set({ playVideo: v })} /> },
+            { label: 'Storyboards', keywords: 'gameplay storyboard', render: () => <Toggle label="Storyboards" value={p.playStoryboard} onChange={(v) => set({ playStoryboard: v })} /> },
+          ],
+        },
+        {
+          title: 'Main menu',
+          items: [
+            { label: 'Parallax', keywords: 'background move mouse', render: () => <Toggle label="Parallax" value={p.menuParallax} onChange={(v) => set({ menuParallax: v })} /> },
+            { label: 'Menu tips', keywords: 'hints', render: () => <Toggle label="Menu tips" value={p.menuTips} onChange={(v) => set({ menuTips: v })} /> },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'gameplay',
+      title: 'Gameplay',
+      icon: <IconGameplay />,
+      groups: [
+        {
+          title: 'General',
+          items: [
+            { label: 'Background dim', keywords: 'dim gameplay play', render: () => <Slider label="Background dim" value={p.playDim} min={0} max={1} step={0.05} format={pct} onChange={(v) => set({ playDim: v })} /> },
+            { label: "Don't change dim level during breaks", keywords: 'dim break', render: () => <Toggle label="Don't change dim level during breaks" value={p.keepDimInBreaks} onChange={(v) => set({ keepDimInBreaks: v })} /> },
+            { label: 'Show leaderboard during gameplay', keywords: 'scores local ranking', render: () => <Toggle label="Show leaderboard during gameplay" value={p.showLeaderboard} onChange={(v) => set({ showLeaderboard: v })} /> },
+            {
+              label: 'Progress display',
+              keywords: 'pie bar song progress',
+              render: () => (
+                <Choice
+                  label="Progress display"
+                  value={p.progressDisplay}
+                  options={[['topright', 'Top-Right (Pie)'], ['bottomright', 'Bottom-Right (Pie)'], ['bottom', 'Bottom (Bar)'], ['none', 'None']]}
+                  onChange={(v) => set({ progressDisplay: v })}
+                />
+              ),
+            },
+            {
+              label: 'Score meter type',
+              keywords: 'hit error unstable rate timing',
+              render: () => <Choice label="Score meter type" value={p.scoreMeter} options={[['none', 'None'], ['colour', 'Colour'], ['error', 'Hit error']]} onChange={(v) => set({ scoreMeter: v })} />,
+            },
+            { label: 'Score meter size', keywords: 'hit error', render: () => <Slider label="Score meter size" value={p.scoreMeterSize} min={0.5} max={2} step={0.05} format={(v) => `${v.toFixed(2)}x`} onChange={(v) => set({ scoreMeterSize: v })} /> },
+            { label: 'Always show key overlay', keywords: 'keys k1 k2 input', render: () => <Toggle label="Always show key overlay" hint="It always shows during autoplay." value={p.keyOverlay} onChange={(v) => set({ keyOverlay: v })} /> },
+            { label: 'Show approach circle on first "Hidden" object', keywords: 'hd mod', render: () => <Toggle label={'Show approach circle on first "Hidden" object'} value={p.hiddenFirstApproach} onChange={(v) => set({ hiddenFirstApproach: v })} /> },
+          ],
+        },
+        {
+          title: 'Song select',
+          items: [{ label: 'Show thumbnails', keywords: 'carousel background images', render: () => <Toggle label="Show thumbnails" value={p.showThumbnails} onChange={(v) => set({ showThumbnails: v })} /> }],
+        },
+      ],
+    },
+    {
       id: 'audio',
       title: 'Audio',
       icon: <IconAudio />,
@@ -219,6 +285,11 @@ export function OptionsPanel() {
             { label: 'Master', keywords: 'volume', render: () => <Slider label="Master" value={p.masterVolume} min={0} max={1} step={0.01} format={pct} onChange={(v) => set({ masterVolume: v })} /> },
             { label: 'Music', keywords: 'volume song', render: () => <Slider label="Music" value={p.musicVolume} min={0} max={1} step={0.01} format={pct} onChange={(v) => set({ musicVolume: v })} /> },
             { label: 'Effect', keywords: 'volume hitsounds samples', render: () => <Slider label="Effect" value={p.hitsoundVolume} min={0} max={1} step={0.01} format={pct} onChange={(v) => set({ hitsoundVolume: v })} /> },
+            {
+              label: 'Ignore beatmap hitsounds',
+              keywords: 'samples custom gameplay',
+              render: () => <Toggle label="Ignore beatmap hitsounds" hint="While playing, the skin's samples play instead of the beatmap's own. The editor always uses the beatmap's." value={p.ignoreBeatmapHitsounds} onChange={(v) => set({ ignoreBeatmapHitsounds: v })} />,
+            },
           ],
         },
         {
@@ -289,6 +360,8 @@ export function OptionsPanel() {
                 />
               ),
             },
+            { label: 'Cursor size', keywords: 'cursor scale', render: () => <Slider label="Cursor size" value={p.cursorSize} min={0.5} max={2} step={0.05} format={(v) => `${v.toFixed(2)}x`} onChange={(v) => set({ cursorSize: v })} /> },
+            { label: 'Automatic cursor size', keywords: 'cursor circle size', render: () => <Toggle label="Automatic cursor size" hint="Smaller on maps with small circles." value={p.autoCursorSize} onChange={(v) => set({ autoCursorSize: v })} /> },
             {
               label: 'Skinned timeline',
               keywords: 'timeline circles skin',
@@ -349,10 +422,50 @@ export function OptionsPanel() {
       ],
     },
     {
+      id: 'maintenance',
+      title: 'Maintenance',
+      icon: <IconMaintenance />,
+      groups: [
+        {
+          title: 'General',
+          items: [
+            {
+              label: 'Delete all local scores',
+              keywords: 'scores ranking leaderboard clear reset',
+              render: () => (
+                <Button
+                  tone="grey"
+                  onClick={async () => {
+                    if (await confirmBox('osu!', 'Delete every score set in this browser?')) {
+                      scores.clear();
+                      editor.toast('Deleted all local scores.');
+                    }
+                  }}
+                >
+                  Delete all local scores
+                </Button>
+              ),
+            },
+          ],
+        },
+      ],
+    },
+    {
       id: 'input',
       title: 'Input',
       icon: <IconInput />,
       groups: [
+        {
+          title: 'Mouse',
+          items: [
+            {
+              label: 'Disable mouse wheel in play mode',
+              keywords: 'scroll volume gameplay',
+              render: () => <Toggle label="Disable mouse wheel in play mode" hint="Otherwise the wheel changes the volume while playing." value={p.disableWheelInPlay} onChange={(v) => set({ disableWheelInPlay: v })} />,
+            },
+            { label: 'Disable mouse buttons in play mode', keywords: 'click gameplay keys', render: () => <Toggle label="Disable mouse buttons in play mode" value={p.disableMouseButtons} onChange={(v) => set({ disableMouseButtons: v })} /> },
+          ],
+        },
         ...[...new Set(ACTIONS.map((x) => x.group))].map((group) => ({
           title: `Keys: ${group}`,
           items: ACTIONS.filter((x) => x.group === group).map((x) => ({
@@ -385,6 +498,9 @@ export function OptionsPanel() {
     },
   ];
 
+  // Stable's order.
+  const order: OptionsSection[] = ['general', 'graphics', 'gameplay', 'audio', 'skin', 'input', 'editor', 'downloads', 'maintenance'];
+  sections.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (it: Item, group: Group, s: Section) => {
     const hay = `${it.label} ${it.keywords ?? ''} ${group.title} ${s.title}`.toLowerCase();
@@ -405,7 +521,7 @@ export function OptionsPanel() {
         <div className="op-body" ref={body} onScroll={onScroll}>
           <div className="op-head" ref={head}>
             <div className="op-title">Options</div>
-            <div className="op-sub">Change the way the editor behaves</div>
+            <div className="op-sub">Change the way osu-browser behaves</div>
             <input className="op-search" placeholder="Type to search!" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
           </div>
           {sections.map((s) => {
@@ -467,6 +583,21 @@ function Slider({ label, value, min, max, step, format, onChange }: { label: str
   );
 }
 
+function Choice<T extends string>({ label, value, options: choices, onChange }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return (
+    <label className="op-field op-choice">
+      <span>{label}:</span>
+      <select value={value} onChange={(e) => onChange(e.target.value as T)}>
+        {choices.map(([v, text]) => (
+          <option key={v} value={v}>
+            {text}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function Button({ tone, children, onClick, disabled }: { tone: 'pink' | 'blue' | 'grey'; children: ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
     <button className={`op-button ${tone}`} onClick={onClick} disabled={disabled}>
@@ -524,4 +655,7 @@ const IconAudio = () => svg(<><path d="M11 5 6 9H2v6h4l5 4V5z" /><path d="M15.5 
 const IconSkin = () => svg(<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /></>);
 const IconEditor = () => svg(<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></>);
 const IconDownload = () => svg(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5M12 15V3" /></>);
+const IconGraphics = () => svg(<><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>);
+const IconGameplay = () => svg(<circle cx="12" cy="12" r="8.5" />);
+const IconMaintenance = () => svg(<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z" />);
 const IconInput = () => svg(<><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" /></>);

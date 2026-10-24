@@ -1,7 +1,7 @@
 // Whether the Options panel is open (and on which section), shared by song select, the editor and the panel itself.
 import { useSyncExternalStore } from 'react';
 
-export type OptionsSection = 'general' | 'audio' | 'skin' | 'editor' | 'downloads' | 'input';
+export type OptionsSection = 'general' | 'graphics' | 'gameplay' | 'audio' | 'skin' | 'input' | 'editor' | 'downloads' | 'maintenance';
 
 let state: { open: boolean; section: OptionsSection; rev: number } = { open: false, section: 'general', rev: 0 };
 const listeners = new Set<() => void>();

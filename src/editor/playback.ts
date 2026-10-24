@@ -13,7 +13,13 @@ export function onFrame(cb: FrameCallback): () => void {
   return () => callbacks.delete(cb);
 }
 
-let events: SoundEvent[] = [];
+/**
+ * While someone plays the map (not autoplay), hitsounds follow their hits, so the objects' sounds aren't scheduled
+ * here; storyboard samples still are.
+ */
+export const scheduling = { manualHitsounds: false };
+
+let events: (SoundEvent & { storyboard?: boolean })[] = [];
 let sustains: SustainedSound[] = [];
 let eventsRev = -1;
 let eventsDiff = -1;
@@ -33,7 +39,7 @@ function rebuildEvents() {
   eventsSbRev = sbRev;
   const bm = editor.bm;
   events = bm.hitObjects.flatMap((o) => objectSoundEvents(bm, o));
-  for (const s of samples) events.push({ time: s.time, play: (d) => hitsounds.playFile(s.file, s.volume / 100, d) });
+  for (const s of samples) events.push({ time: s.time, storyboard: true, play: (d) => hitsounds.playFile(s.file, s.volume / 100, d) });
   events.sort((a, b) => a.time - b.time);
   sustains = bm.hitObjects.flatMap((o) => objectSustainedSounds(bm, o)).sort((a, b) => a.start - b.start);
 }
@@ -74,7 +80,7 @@ function schedule(now: number) {
   if (!wasPlaying || now < lastTime - 5 || now > lastTime + 500 || rate !== lastRate) {
     scheduledUpTo = now - 1;
     hitsounds.stopLoops();
-    for (const s of sustains) {
+    for (const s of scheduling.manualHitsounds ? [] : sustains) {
       if (s.start > scheduledUpTo) break;
       if (now < s.end - 20) s.play(0, now - s.start, rate);
     }
@@ -83,10 +89,12 @@ function schedule(now: number) {
   lastTime = now;
   lastRate = rate;
   const until = now + LOOKAHEAD * rate;
-  for (let i = firstSustainAfter(scheduledUpTo); i < sustains.length && sustains[i].start <= until; i++) {
+  const manual = scheduling.manualHitsounds;
+  for (let i = firstSustainAfter(scheduledUpTo); !manual && i < sustains.length && sustains[i].start <= until; i++) {
     sustains[i].play(Math.max(0, (sustains[i].start - now) / rate / 1000), 0, rate);
   }
   for (let i = firstIndexAfter(scheduledUpTo); i < events.length && events[i].time <= until; i++) {
+    if (manual && !events[i].storyboard) continue;
     const delay = Math.max(0, (events[i].time - now) / rate / 1000);
     events[i].play(delay);
   }

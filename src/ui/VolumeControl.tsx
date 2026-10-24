@@ -3,6 +3,7 @@
 // In the editor, Alt+wheel only reaches it in the bottom-right corner; elsewhere it stays the editor's.
 import { useEffect, useRef, useState } from 'react';
 import { editor, useEditor } from '../editor/store';
+import { gameplay } from '../play/session';
 import type { Prefs } from '../project/storage';
 
 type Meter = 'master' | 'music' | 'effect';
@@ -55,7 +56,9 @@ export function VolumeControl() {
     };
     const onWheel = (e: WheelEvent) => {
       const over = state.current.visible ? meterAt(e.clientX, e.clientY) : null;
-      if (!over) {
+      // While playing, the wheel alone changes the volume, as in stable (unless "Disable mouse wheel in play mode").
+      const playing = gameplay.active && !editor.prefs.disableWheelInPlay && !e.ctrlKey && !e.metaKey;
+      if (!over && !playing) {
         if (!e.altKey || e.ctrlKey || e.metaKey) return;
         // Alt+wheel over the playfield or timeline stays the editor's (distance spacing, zoom) outside the
         // bottom-right corner, as in stable.

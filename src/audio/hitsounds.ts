@@ -6,6 +6,9 @@ import { HitSound, type Beatmap, type HitObject, type SampleSet } from '../osu/t
 
 const SET_NAMES = ['normal', 'normal', 'soft', 'drum'];
 const DEFAULT_SAMPLE_NAMES = ['hitnormal', 'hitwhistle', 'hitfinish', 'hitclap', 'slidertick', 'sliderslide', 'sliderwhistle'];
+/** Gameplay sounds that aren't hitsounds (osu!default's, or the skin's). */
+const GAME_SAMPLES = ['combobreak', 'failsound', 'sectionpass', 'sectionfail', 'applause'];
+export type GameSample = 'combobreak' | 'failsound' | 'sectionpass' | 'sectionfail' | 'applause' | 'spinnerbonus';
 
 class HitsoundEngine {
   ctx: AudioContext | null = null;
@@ -19,6 +22,8 @@ class HitsoundEngine {
   private loops = new Set<AudioBufferSourceNode>();
   volume = 0.8;
   enabled = true;
+  /** Gameplay's "Ignore beatmap hitsounds": the beatmap's own samples are skipped for the skin's. */
+  ignoreBeatmap = false;
 
   private ensureCtx(): AudioContext {
     if (!this.ctx) {
@@ -58,13 +63,15 @@ class HitsoundEngine {
         );
       }
     }
-    jobs.push(
-      fetch('/samples/spinnerspin.wav')
-        .then((r) => r.arrayBuffer())
-        .then((b) => ctx.decodeAudioData(b))
-        .then((buf) => void this.defaults.set('spinnerspin', buf))
-        .catch(() => undefined),
-    );
+    for (const file of ['spinnerspin.wav', 'spinnerbonus.wav', ...GAME_SAMPLES.map((n) => `${n}.mp3`)]) {
+      jobs.push(
+        fetch(`/samples/${file}`)
+          .then((r) => r.arrayBuffer())
+          .then((b) => ctx.decodeAudioData(b))
+          .then((buf) => void this.defaults.set(file.replace(/\.\w+$/, ''), buf))
+          .catch(() => undefined),
+      );
+    }
     this.loadingDefaults = Promise.all(jobs).then(() => undefined);
     return this.loadingDefaults;
   }
@@ -100,7 +107,7 @@ class HitsoundEngine {
     const next = new Map<string, AudioBuffer>();
     const jobs: Promise<void>[] = [];
     for (const [name, blob] of files) {
-      const m = /^((?:normal|soft|drum)-(?:hit|slider)w+|spinnerspin).(wav|ogg|mp3)$/.exec(name);
+      const m = /^((?:normal|soft|drum)-(?:hit|slider)\w+|spinnerspin|spinnerbonus|combobreak|failsound|sectionpass|sectionfail|applause)\.(wav|ogg|mp3)$/.exec(name);
       if (!m || blob.size === 0) continue;
       jobs.push(
         blob
@@ -114,7 +121,13 @@ class HitsoundEngine {
     if (rev === this.skinRev) this.skin = next;
   }
 
+  /** Play the skin's (or osu!default's) combobreak, fail, section pass/fail, applause or spinner bonus sound. */
+  playGame(name: GameSample, volume = 1, delay = 0) {
+    this.playBuffer(this.skin.get(name) ?? this.defaults.get(name), volume, delay);
+  }
+
   private lookup(set: string, name: string, index: number): AudioBuffer | undefined {
+    if (this.ignoreBeatmap) return this.skin.get(`${set}-${name}`) ?? this.defaults.get(`${set}-${name}`);
     if (index > 1) {
       const c = this.custom.get(`${set}-${name}${index}`);
       if (c) return c;
@@ -156,7 +169,7 @@ class HitsoundEngine {
     const as = additionSet || ns;
     const idx = index || tp.sampleIndex;
     const vol = (volume || tp.volume) / 100;
-    if (filename) {
+    if (filename && !this.ignoreBeatmap) {
       this.playBuffer(this.custom.get(filename.toLowerCase()), vol, delay);
       return;
     }

@@ -165,7 +165,7 @@ const hasSel = () => editor.selection.size > 0;
 const isMania = () => editor.bm.general.mode === 3;
 
 export function handleKeyDown(e: KeyboardEvent) {
-  if (!editor.hasProject || isTyping(e) || promptOpen() || optionsOpen()) return;
+  if (!editor.hasProject || editor.session === 'play' || isTyping(e) || promptOpen() || optionsOpen()) return;
   if (editor.dialog && e.key !== 'Escape') return;
   const code = layoutCode(e);
   const combo = comboOf(e, code);
@@ -225,7 +225,7 @@ function handleDesignKey(code: string, ctrl: boolean, shift: boolean): boolean {
 }
 
 export function handleWheel(e: WheelEvent) {
-  if (!editor.hasProject || editor.dialog) return;
+  if (!editor.hasProject || editor.session === 'play' || editor.dialog) return;
   const target = e.target as HTMLElement;
   const area = target.closest<HTMLElement>('[data-wheel]')?.dataset.wheel;
   if (!area) return;

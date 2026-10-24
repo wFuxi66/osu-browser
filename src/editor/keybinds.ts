@@ -98,8 +98,10 @@ export const ACTIONS: ActionDef[] = [
   a('Timing', 'addBookmark', 'Add bookmark', 'Ctrl+KeyB'),
   a('Timing', 'removeBookmark', 'Remove bookmark', 'Ctrl+Shift+KeyB'),
 
-  a('Test mode', 'hit1', 'Hit (key 1)', 'KeyZ'),
-  a('Test mode', 'hit2', 'Hit (key 2)', 'KeyX'),
+  a('Gameplay', 'hit1', 'Left click (K1)', 'KeyZ'),
+  a('Gameplay', 'hit2', 'Right click (K2)', 'KeyX'),
+  a('Gameplay', 'skip', 'Skip the intro', 'Space'),
+  a('Gameplay', 'quickRetry', 'Quick retry', 'Backquote'),
 ];
 
 export type ActionId = string;
@@ -108,8 +110,8 @@ export type Keybinds = Record<ActionId, string[]>;
 
 const BY_ID = new Map(ACTIONS.map((x) => [x.id, x]));
 
-/** Test mode has its own keys, so they don't clash with the editor's. */
-export const scopeOf = (id: ActionId) => (BY_ID.get(id)?.group === 'Test mode' ? 'test' : 'editor');
+/** Gameplay (and the editor's test mode) has its own keys, so they don't clash with the editor's. */
+export const scopeOf = (id: ActionId) => (BY_ID.get(id)?.group === 'Gameplay' ? 'test' : 'editor');
 
 export function keysFor(id: ActionId, binds: Keybinds): string[] {
   return binds[id] ?? BY_ID.get(id)?.keys ?? [];

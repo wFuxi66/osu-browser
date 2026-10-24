@@ -110,6 +110,8 @@ class Editor {
   private dirtyBeforeChange = false;
   /** The map last open in the editor, so song select can return to it. */
   lastOpened: { projectId: string; diffId: string } | null = null;
+  /** Whether the open project is being edited or played (song select's Play loads it without the editor). */
+  session: 'edit' | 'play' = 'edit';
   /** Set when leaving the editor, so song select restarts that song from the beginning instead of the preview point. */
   returnedFrom: string | null = null;
 
@@ -184,7 +186,9 @@ class Editor {
 
   // ---------------------------------------------------------------- project lifecycle
 
-  async openProject(p: Project, diffIndex = 0) {
+  /** Opens a project in the editor, or (`play`) loads it to be played from song select. */
+  async openProject(p: Project, diffIndex = 0, session: 'edit' | 'play' = 'edit') {
+    this.session = session;
     this.project = p;
     this.diffIndex = Math.min(diffIndex, p.difficulties.length - 1);
     this.selection.clear();
@@ -201,7 +205,7 @@ class Editor {
     void skins.setBeatmap(this.prefs.beatmapSkins ? p.files : null);
     const audio = findFile(p, this.bm.general.audioFilename);
     await music.load(audio ?? null, true);
-    const left = editorTimes()[p.difficulties[this.diffIndex].id];
+    const left = session === 'edit' ? editorTimes()[p.difficulties[this.diffIndex].id] : 0;
     if (left > 0 && (!music.duration || left < music.duration)) music.seek(left);
     void hitsounds.setCustomSamples(p.files, this.bm.general.audioFilename);
     this.emit();
@@ -215,8 +219,10 @@ class Editor {
     if (this.project) {
       const diffId = this.project.difficulties[this.diffIndex].id;
       this.lastOpened = { projectId: this.project.id, diffId };
-      this.returnedFrom = this.project.id;
-      rememberEditorTime(diffId, time);
+      if (this.session === 'edit') {
+        this.returnedFrom = this.project.id;
+        rememberEditorTime(diffId, time);
+      }
     }
     this.project = null;
     this.dialog = null;

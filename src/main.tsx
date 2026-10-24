@@ -10,6 +10,7 @@ import '@fontsource/ubuntu/700.css';
 import './styles.css';
 import './stable.css';
 import './editor.css';
+import './play.css';
 
 installShortcuts();
 

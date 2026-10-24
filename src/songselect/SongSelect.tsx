@@ -5,7 +5,8 @@ import { editor, useEditor } from '../editor/store';
 import { fmt, formatBpm, formatLength } from '../osu/info';
 import { cloud } from '../project/cloud';
 import { DRIVE_FOLDER } from '../project/drive';
-import { filesFromDrop, openNewBeatmap, pickFiles, projectFromFiles, projectFromLink } from '../project/open';
+import { mapStatus, onlineSet, statusLabel, type MapStatus } from '../project/online';
+import { filesFromDrop, openNewBeatmap, pickFiles, projectFromFiles, projectFromLink, updateToLatest } from '../project/open';
 import { downloadBlob, exportOsz, oszFilename } from '../project/project';
 import { deleteDifficultyLocal, deleteProjectLocal, listProjectsLocal, loadProjectLocal, type DifficultySummary, type ProjectSummary } from '../project/storage';
 import { ask, promptOpen, type PromptButton } from '../ui/prompt';
@@ -108,6 +109,31 @@ export function SongSelect() {
     } finally {
       setBusy(null);
     }
+  };
+
+  // The status box's "Update to latest version", with stable's warning.
+  const updateSet = async (set: ProjectSummary, diff: DifficultySummary) => {
+    const r = await ask({
+      look: 'game',
+      title: 'Retrieving the latest version will destroy ALL local changes to this beatmap.  Are you sure you want to do this?',
+      buttons: [
+        { label: 'Yes, discard my local changes!', value: 'yes', tone: 'red' },
+        { label: 'Nooo, I need those!', value: 'no', tone: 'grey' },
+      ],
+      cancelValue: 'no',
+    });
+    if (r !== 'yes') return;
+    await run('Downloading the latest version…', async () => {
+      const p = await updateToLatest(set.id, set.beatmapSetId);
+      if (cloud.syncing) await cloud.upload(p).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
+      await refresh();
+      const same =
+        p.difficulties.find((d) => diff.beatmapId > 0 && d.beatmap.metadata.beatmapId === diff.beatmapId) ??
+        p.difficulties.find((d) => d.beatmap.metadata.version === diff.version) ??
+        p.difficulties[0];
+      setSel({ setId: p.id, diffId: same.id });
+      editor.toast('Updated to the latest version.');
+    });
   };
 
   // ------------------------------------------------------------------ rows
@@ -404,7 +430,7 @@ export function SongSelect() {
       </div>
 
       <div className="ss-left">
-        <SubmissionStatus set={selSet} />
+        <SubmissionStatus set={selSet} diff={selDiff} onUpdate={() => selSet && selDiff && void updateSet(selSet, selDiff)} />
         <button className="ss-drop" onClick={async () => { const f = await pickFiles('audio/*,.mp3,.ogg'); if (f.length) handleFiles(f); }}>
           <span><span>Drop an <b>mp3</b> file here<br />to start mapping</span></span>
         </button>
@@ -486,20 +512,63 @@ function BeatmapInfoPanel({ set, diff }: { set: ProjectSummary | null; diff: Dif
   );
 }
 
-function SubmissionStatus({ set }: { set: ProjectSummary | null }) {
-  if (!set) return null;
-  const submitted = set.beatmapSetId > 0;
+const STATUS_ICONS = {
+  heart: <path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.9 4.5 6.6 4.5c2.2 0 3.7 1.3 4.4 2.6h2c.7-1.3 2.2-2.6 4.4-2.6 3.7 0 5.7 3.9 4.2 7.3C19.5 16.4 12 21 12 21z" fill="currentColor" />,
+  check: <path d="M3.5 12.5l5.5 5.5L20.5 6.5" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />,
+  cross: <path d="M5 5l14 14M19 5L5 19" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />,
+  update: (
+    <>
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" />
+      <path d="M20.5 2.5v6.5H14z" fill="currentColor" />
+    </>
+  ),
+};
+
+/** Stable's status box: whether the selected difficulty is the version on osu!, an older or edited one, or unsubmitted. */
+function SubmissionStatus({ set, diff, onUpdate }: { set: ProjectSummary | null; diff: DifficultySummary | null; onUpdate: () => void }) {
+  const [status, setStatus] = useState<MapStatus | null>(null);
+  const setId = set?.beatmapSetId ?? 0;
+  const checksum = diff?.checksum ?? '';
+  useEffect(() => {
+    setStatus(null);
+    if (!checksum) return;
+    if (!(setId > 0)) {
+      setStatus({ kind: 'unsubmitted' });
+      return;
+    }
+    let live = true;
+    onlineSet(setId).then(
+      (s) => live && setStatus(mapStatus(checksum, s)),
+      () => {}, // offline: show nothing rather than guess
+    );
+    return () => {
+      live = false;
+    };
+  }, [setId, checksum]);
+
+  // Keep the box's space while loading so the buttons below don't jump.
+  if (!status) return <div className="ss-status ss-status-empty" />;
+  let icon: keyof typeof STATUS_ICONS, text: string, tone: string;
+  if (status.kind === 'unsubmitted') [icon, text, tone] = ['cross', 'Not submitted', 'unsubmitted'];
+  else if (status.kind === 'update') [icon, text, tone] = ['update', 'Update to latest version', 'update'];
+  else {
+    const ranked = ['ranked', 'approved', 'qualified'].includes(status.status);
+    const loved = status.status === 'loved';
+    [icon, text, tone] = [ranked || loved ? 'heart' : 'check', statusLabel(status.status), loved ? 'loved' : ranked ? 'ranked' : 'pending'];
+  }
+  const page = `https://osu.ppy.sh/beatmapsets/${setId}${diff?.beatmapId ? `#${['osu', 'taiko', 'fruits', 'mania'][diff.mode]}/${diff.beatmapId}` : ''}`;
   return (
-    <a
-      className={`ss-status ${submitted ? 'submitted' : ''}`}
-      href={submitted ? `https://osu.ppy.sh/beatmapsets/${set.beatmapSetId}` : undefined}
-      target="_blank"
-      rel="noreferrer"
-      title={submitted ? 'Open the beatmap page on osu.ppy.sh' : undefined}
+    <button
+      className={`ss-status ${tone}`}
+      disabled={status.kind === 'unsubmitted'}
+      title={status.kind === 'update' ? 'Replace this beatmap set with the version on osu!' : status.kind === 'latest' ? 'Open the beatmap page on osu.ppy.sh' : undefined}
+      onClick={() => (status.kind === 'update' ? onUpdate() : window.open(page, '_blank', 'noopener'))}
     >
-      <span className="ss-status-icon">{submitted ? '♪' : '✕'}</span>
-      <span>{submitted ? 'Submitted' : 'Not submitted'}</span>
-    </a>
+      <svg className="ss-status-icon" viewBox="0 0 24 24" aria-hidden="true">
+        {STATUS_ICONS[icon]}
+      </svg>
+      <span>{text}</span>
+    </button>
   );
 }
 

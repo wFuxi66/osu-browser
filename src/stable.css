@@ -67,10 +67,17 @@
 .ss-panel.selected .ss-star.on { background: #ffcc22; box-shadow: none; }
 
 .ss-left { position: absolute; z-index: 3; left: calc(var(--u) * 18); top: calc(var(--u) * 186); width: calc(var(--u) * 340); display: flex; flex-direction: column; gap: calc(var(--u) * 12); }
-.ss-status { display: flex; align-items: center; gap: calc(var(--u) * 14); height: calc(var(--u) * 38); border: calc(var(--u) * 2.5) solid #fff; background: rgba(0,0,0,0.85); color: #ff66aa; font-size: calc(var(--u) * 26); font-weight: 300; padding: 0 calc(var(--u) * 10); text-decoration: none; margin-bottom: calc(var(--u) * 48); }
-.ss-status.submitted { color: #8fd3ff; cursor: pointer; }
-.ss-status-icon { color: #fff; font-weight: 700; font-size: calc(var(--u) * 26); width: calc(var(--u) * 30); text-align: center; }
-.ss-status > span:last-child { flex: 1; text-align: center; }
+/* Stable's status box: white frame, white icon, the text coloured by state. */
+.ss-status { display: flex; align-items: center; gap: calc(var(--u) * 14); height: calc(var(--u) * 38); box-sizing: border-box; border: calc(var(--u) * 2.5) solid #fff; border-radius: 0; background: rgba(0,0,0,0.85); color: #ff6fa6; font-family: var(--osu-font); font-size: calc(var(--u) * 26); font-weight: 300; padding: 0 calc(var(--u) * 10); margin-bottom: calc(var(--u) * 48); cursor: pointer; }
+.ss-status:disabled { cursor: default; }
+.ss-status:hover:not(:disabled) { background: rgba(30,30,30,0.9); border: calc(var(--u) * 2.5) solid #fff; }
+.ss-status.ranked { color: #e2f5a2; }
+.ss-status.loved { color: #ff9fd3; }
+.ss-status.pending { color: #ffe9a6; }
+.ss-status.update { color: #fff; }
+.ss-status-empty { visibility: hidden; }
+.ss-status-icon { flex: none; width: calc(var(--u) * 26); height: calc(var(--u) * 26); color: #fff; }
+.ss-status > span:last-child { flex: 1; text-align: center; white-space: nowrap; }
 .ss-drop { height: calc(var(--u) * 128); background: rgba(0,0,0,0.78); border: none; border-radius: calc(var(--u) * 8); padding: calc(var(--u) * 8); color: #fff; font-family: var(--osu-font); font-size: calc(var(--u) * 17); font-weight: 300; line-height: 1.3; cursor: pointer; }
 .ss-drop > span { display: grid; place-items: center; height: 100%; border: calc(var(--u) * 2) dashed #d4e157; border-radius: calc(var(--u) * 3); }
 .ss-drop b { color: #d4e157; font-weight: 400; }

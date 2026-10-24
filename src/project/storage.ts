@@ -3,7 +3,7 @@ import { beatmapInfo, type BeatmapInfo } from '../osu/info';
 import { parseOsu } from '../osu/parser';
 import { STAR_RATING_VERSION, starRating } from '../osu/stars';
 import { serializeBeatmap } from '../osu/serializer';
-import { projectTitle, type Project, type ProjectOrigin } from './project';
+import { checksumOf, projectTitle, type DifficultySource, type Project, type ProjectOrigin } from './project';
 
 const DB_NAME = 'osu-web-editor';
 const STORE = 'projects';
@@ -23,6 +23,7 @@ interface StoredProject {
 interface StoredDifficulty {
   id: string;
   osu: string;
+  source?: DifficultySource;
   /** Star rating cached at save time, so song select doesn't recalculate every map on each visit. */
   stars?: { version: string; value: number | null };
 }
@@ -35,6 +36,9 @@ function storedStars(d: StoredDifficulty, bm: ReturnType<typeof parseOsu>): { va
 
 export interface DifficultySummary extends BeatmapInfo {
   id: string;
+  beatmapId: number;
+  /** osu!'s checksum for the difficulty as it is now (see checksumOf). */
+  checksum: string;
 }
 
 export interface ProjectSummary {
@@ -96,7 +100,7 @@ export async function saveProjectLocal(p: Project, syncedAt?: number): Promise<v
     difficulties: p.difficulties.map((d) => {
       const osu = serializeBeatmap(d.beatmap);
       const prev = existing?.difficulties.find((e) => e.id === d.id && e.osu === osu);
-      return { id: d.id, osu, stars: { version: STAR_RATING_VERSION, value: storedStars(prev ?? { id: d.id, osu }, parseOsu(osu)).value } };
+      return { id: d.id, osu, source: d.source, stars: { version: STAR_RATING_VERSION, value: storedStars(prev ?? { id: d.id, osu }, parseOsu(osu)).value } };
     }),
     syncedAt: syncedAt ?? existing?.syncedAt ?? 0,
     origin: p.origin ?? existing?.origin,
@@ -127,7 +131,7 @@ export async function loadProjectLocal(id: string): Promise<Project | null> {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     files: new Map(r.files.map((f) => [f.name, f.blob])),
-    difficulties: r.difficulties.map((d) => ({ id: d.id, beatmap: parseOsu(d.osu) })),
+    difficulties: r.difficulties.map((d) => ({ id: d.id, beatmap: parseOsu(d.osu), source: d.source })),
     origin: r.origin,
   };
 }
@@ -145,7 +149,7 @@ function summarize(r: StoredProject, backfill: StoredProject[]): ProjectSummary 
       fresh = true;
       d.stars = { version: STAR_RATING_VERSION, value: stars.value };
     }
-    return { id: d.id, bm, stars: stars.value };
+    return { id: d.id, bm, stars: stars.value, checksum: checksumOf(d.osu, d.source) };
   });
   if (fresh) backfill.push(r);
   const order = (m: (typeof maps)[number]) => m.stars ?? m.bm.difficulty.overallDifficulty;
@@ -171,7 +175,7 @@ function summarize(r: StoredProject, backfill: StoredProject[]): ProjectSummary 
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     syncedAt: r.syncedAt,
-    difficulties: maps.map(({ id, bm, stars }) => ({ id, ...beatmapInfo(bm, stars) })),
+    difficulties: maps.map(({ id, bm, stars, checksum }) => ({ id, beatmapId: bm.metadata.beatmapId, checksum, ...beatmapInfo(bm, stars) })),
     background: findBlob(maps.find((x) => x.bm.events.background)?.bm.events.background?.filename),
     audio: findBlob(first?.general.audioFilename),
   };

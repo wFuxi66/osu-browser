@@ -2,11 +2,35 @@ import JSZip from 'jszip';
 import { parseOsu } from '../osu/parser';
 import { serializeBeatmap } from '../osu/serializer';
 import { createEmptyBeatmap, type Beatmap } from '../osu/types';
+import { md5, md5Text } from '../osu/md5';
 import { readId3 } from './id3';
 
 export interface Difficulty {
   id: string;
   beatmap: Beatmap;
+  /** For a difficulty imported from a .osu file: what it was, to tell whether it still is (see diffSource). */
+  source?: DifficultySource;
+}
+
+/**
+ * The imported .osu file's MD5 (osu!'s checksum for it) and the MD5 of the editor's own text for it at import.
+ * The editor writes .osu files equivalently but not byte for byte, so while its text still hashes to
+ * `savedMd5` the difficulty is unchanged and osu! knows it as `md5`.
+ */
+export interface DifficultySource {
+  md5: string;
+  savedMd5: string;
+}
+
+function imported(bytes: Uint8Array): Difficulty {
+  const beatmap = parseOsu(new TextDecoder().decode(bytes));
+  return { id: uid(), beatmap, source: { md5: md5(bytes), savedMd5: md5Text(serializeBeatmap(beatmap)) } };
+}
+
+/** osu!'s checksum for a difficulty as it is now: its original file's while unchanged, else that of the text the editor writes. */
+export function checksumOf(savedText: string, source: DifficultySource | undefined): string {
+  const saved = md5Text(savedText);
+  return source && source.savedMd5 === saved ? source.md5 : saved;
 }
 
 export interface Project {
@@ -86,8 +110,7 @@ export async function importOsz(data: Blob | ArrayBuffer): Promise<Project> {
     const name = entry.name.slice(prefix.length);
     if (!name) continue;
     if (name.toLowerCase().endsWith('.osu')) {
-      const text = await entry.async('string');
-      difficulties.push({ id: uid(), beatmap: parseOsu(text) });
+      difficulties.push(imported(await entry.async('uint8array')));
     } else {
       files.set(name, new Blob([await entry.async('arraybuffer')], { type: mimeFor(name) }));
     }
@@ -105,7 +128,7 @@ export async function importLooseFiles(list: File[]): Promise<Project> {
   const prefix = commonPrefix(list.map((f) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name));
   for (const f of list) {
     const rel = ((f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name).slice(prefix.length);
-    if (rel.toLowerCase().endsWith('.osu')) difficulties.push({ id: uid(), beatmap: parseOsu(await f.text()) });
+    if (rel.toLowerCase().endsWith('.osu')) difficulties.push(imported(new Uint8Array(await f.arrayBuffer())));
     else files.set(rel, f);
   }
   if (difficulties.length === 0) throw new Error('No .osu difficulty found among the dropped files.');

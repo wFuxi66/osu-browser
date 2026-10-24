@@ -1,8 +1,11 @@
 // Getting beatmaps into the app: dropped/picked files, folders and osu.ppy.sh links.
 import { editor } from '../editor/store';
+import { md5Text } from '../osu/md5';
+import { serializeBeatmap } from '../osu/serializer';
 import { cloud } from './cloud';
 import { createProjectFromAudio, importLooseFiles, importOsz, type Project } from './project';
-import { saveProjectLocal } from './storage';
+import { onlineSet } from './online';
+import { loadProjectLocal, saveProjectLocal } from './storage';
 import { originOf } from './syncpack';
 
 export const AUDIO_RE = /\.(mp3|ogg|wav|m4a|flac)$/i;
@@ -37,6 +40,18 @@ export async function openNewBeatmap(project: Project) {
   editor.openDialog('setup');
 }
 
+/**
+ * Old .osu files have no BeatmapSetID line; we know it from the download. Filling it in isn't an edit: the
+ * difficulty is still the file osu! has (see DifficultySource).
+ */
+function fillSetId(p: Project, setId: number) {
+  for (const d of p.difficulties) {
+    if (d.beatmap.metadata.beatmapSetId > 0) continue;
+    d.beatmap.metadata.beatmapSetId = setId;
+    if (d.source) d.source.savedMd5 = md5Text(serializeBeatmap(d.beatmap));
+  }
+}
+
 /** Download a published set by link or id and store it. */
 export async function projectFromLink(link: string, onProgress?: (fraction: number) => void): Promise<Project> {
   const m = /(?:beatmapsets\/|^)(\d+)/.exec(link.trim());
@@ -44,10 +59,32 @@ export async function projectFromLink(link: string, onProgress?: (fraction: numb
   const setId = Number(m[1]);
   const data = await cloud.fetchBeatmapset(setId, onProgress);
   const p = await importOsz(data);
-  // Old .osu files have no BeatmapSetID line; we know it from the download.
-  for (const d of p.difficulties) if (!(d.beatmap.metadata.beatmapSetId > 0)) d.beatmap.metadata.beatmapSetId = setId;
+  fillSetId(p, setId);
   // These are exactly the mirror's files, so cloud sync can leave them out without asking the mirror again.
   p.origin = await originOf(setId, p.files);
+  await saveProjectLocal(p);
+  return p;
+}
+
+/**
+ * Song select's "Update to latest version": replaces a stored set with the version on osu! (downloaded from the
+ * mirrors), dropping all local changes like stable does. Nothing changes if the mirrors don't have that version yet.
+ */
+export async function updateToLatest(projectId: string, setId: number): Promise<Project> {
+  const online = await onlineSet(setId, true);
+  if (!online) throw new Error('This beatmap set is no longer on osu!.');
+  const latest = await importOsz(await cloud.fetchBeatmapset(setId));
+  const current = new Set(online.beatmaps.map((b) => b.checksum));
+  if (!latest.difficulties.every((d) => d.source && current.has(d.source.md5))) {
+    throw new Error("The download mirrors don't have the latest version of this set yet, so nothing was changed. Try again in a while.");
+  }
+  const p = await loadProjectLocal(projectId);
+  if (!p) throw new Error('This beatmap is no longer in song select.');
+  fillSetId(latest, setId);
+  p.files = latest.files;
+  p.difficulties = latest.difficulties;
+  p.origin = await originOf(setId, latest.files);
+  p.updatedAt = Date.now();
   await saveProjectLocal(p);
   return p;
 }

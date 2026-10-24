@@ -5,7 +5,7 @@ import type { DifficultySummary, ProjectSummary } from '../project/storage';
 import { groupOf, matches, parseSearch, sortSets } from './filter';
 
 function diff(over: Partial<DifficultySummary> = {}): DifficultySummary {
-  return { id: 'd', version: 'Insane', mode: 0, hp: 5, cs: 4, od: 8, ar: 9, circles: 10, sliders: 5, spinners: 1, length: 90000, bpmMin: 180, bpmMax: 180, bpmMain: 180, previewTime: -1, stars: null, ...over };
+  return { id: 'd', beatmapId: 0, checksum: '', version: 'Insane', mode: 0, hp: 5, cs: 4, od: 8, ar: 9, circles: 10, sliders: 5, spinners: 1, length: 90000, bpmMin: 180, bpmMax: 180, bpmMain: 180, previewTime: -1, stars: null, ...over };
 }
 
 function set(over: Partial<ProjectSummary> = {}): ProjectSummary {

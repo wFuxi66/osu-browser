@@ -117,5 +117,42 @@ export function createApp() {
     return c.json({ ok: true });
   });
 
+  // ---------------------------------------------------------------- published beatmap info
+
+  // An app token (client credentials, public scope) for the osu! API, shared by every request.
+  let appToken: { value: string; expires: number } | null = null;
+  async function osuAppToken(): Promise<string> {
+    if (appToken && appToken.expires > Date.now() + 60_000) return appToken.value;
+    const res = await fetch('https://osu.ppy.sh/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: 'client_credentials', scope: 'public' }),
+    });
+    if (!res.ok) throw new Error(`osu! token request failed (${res.status})`);
+    const t = (await res.json()) as { access_token: string; expires_in: number };
+    appToken = { value: t.access_token, expires: Date.now() + t.expires_in * 1000 };
+    return t.access_token;
+  }
+
+  // A set's ranked status and its difficulties' checksums, for song select's status box. Straight from the
+  // osu! API (mirrors can lag behind a pending map's updates); the browser falls back to osu.direct.
+  app.get('/api/beatmapsets/:id', async (c) => {
+    if (!CLIENT_ID || !CLIENT_SECRET) return c.text('osu! API access is not configured on this server.', 501);
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.text('Invalid beatmapset id', 400);
+    const res = await fetch(`https://osu.ppy.sh/api/v2/beatmapsets/${id}`, {
+      headers: { Authorization: `Bearer ${await osuAppToken()}`, Accept: 'application/json' },
+    });
+    const cache = { 'Cache-Control': 'public, max-age=60' };
+    if (res.status === 404) return c.json({ found: false }, 200, cache);
+    if (!res.ok) return c.text(`osu! API error (${res.status})`, 502);
+    const s = (await res.json()) as { status: string; beatmaps?: { id: number; checksum: string; status: string; version: string }[] };
+    return c.json(
+      { found: true, status: s.status, beatmaps: (s.beatmaps ?? []).map((b) => ({ id: b.id, checksum: b.checksum, status: b.status, version: b.version })) },
+      200,
+      cache,
+    );
+  });
+
   return app;
 }

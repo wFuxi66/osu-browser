@@ -1,7 +1,9 @@
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import { createEmptyBeatmap } from '../osu/types';
-import { exportOsz, type Project } from './project';
+import { md5Text } from '../osu/md5';
+import { serializeBeatmap } from '../osu/serializer';
+import { checksumOf, exportOsz, importOsz, type Project } from './project';
 import { buildSyncPackage, MANIFEST, originOf, restoreSyncPackage } from './syncpack';
 
 const bytes = (s: string) => new Blob([new TextEncoder().encode(s)]);
@@ -70,5 +72,33 @@ describe('cloud sync packages', () => {
       const { project: back } = await restoreSyncPackage(await pkg.arrayBuffer(), () => Promise.reject(new Error('no mirror needed')));
       expect([...back.files.keys()]).toEqual(['audio.mp3']);
     }
+  });
+
+  it('knows which difficulties are still the ones osu! has, across devices', async () => {
+    // Equivalent .osu files the editor would write differently (LF line endings, extra blank lines).
+    const a = project(123, {}).difficulties[0].beatmap;
+    const b = project(123, {}).difficulties[0].beatmap;
+    b.metadata.version = 'Hard';
+    const rawA = serializeBeatmap(a).replace(/\r\n/g, '\n') + '\n\n';
+    const rawB = serializeBeatmap(b).replace(/\r\n/g, '\n') + '\n';
+    const zip = new JSZip();
+    zip.file('a.osu', rawA);
+    zip.file('b.osu', rawB);
+    zip.file('audio.mp3', 'the song');
+    const p = await importOsz(await zip.generateAsync({ type: 'arraybuffer' }));
+    const easy = p.difficulties.find((d) => d.beatmap.metadata.version === 'Insane')!;
+    const hard = p.difficulties.find((d) => d.beatmap.metadata.version === 'Hard')!;
+    expect(md5Text(rawA)).not.toBe(md5Text(serializeBeatmap(a)));
+    expect(checksumOf(serializeBeatmap(easy.beatmap), easy.source)).toBe(md5Text(rawA));
+    hard.beatmap.metadata.tags = 'edited';
+    expect(checksumOf(serializeBeatmap(hard.beatmap), hard.source)).not.toBe(md5Text(rawB));
+
+    const { blob } = await buildSyncPackage(p);
+    const { project: back } = await restoreSyncPackage(await blob.arrayBuffer(), () => Promise.reject(new Error('no mirror needed')));
+    expect(back.files.has(MANIFEST)).toBe(false);
+    const sum = (d: (typeof back.difficulties)[number]) => checksumOf(serializeBeatmap(d.beatmap), d.source);
+    const byVersion = new Map(back.difficulties.map((d) => [d.beatmap.metadata.version, sum(d)]));
+    expect(byVersion.get('Insane')).toBe(md5Text(rawA));
+    expect(byVersion.get('Hard')).toBe(md5Text(serializeBeatmap(hard.beatmap)));
   });
 });

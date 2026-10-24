@@ -2,7 +2,11 @@
 // its .osu files, any file that differs from what the mirrors serve for the set, and a manifest naming the
 // files to take from the mirror's copy when the package is restored on another device. That keeps audio,
 // backgrounds and videos of published sets out of cloud storage. Original maps upload the whole set.
-import { exportOsz, importOsz, type FileRef, type Project, type ProjectOrigin } from './project';
+// The manifest also carries each difficulty's source (project.ts), so another device can tell an unchanged
+// difficulty from an edited one, the way song select's status box needs to.
+import { md5Text } from '../osu/md5';
+import { serializeBeatmap } from '../osu/serializer';
+import { exportOsz, importOsz, type DifficultySource, type FileRef, type Project, type ProjectOrigin } from './project';
 
 export const MANIFEST = '.osu-web-editor-sync.json';
 
@@ -11,6 +15,8 @@ interface Manifest {
   beatmapSetId: number;
   /** Files to take from the mirror's copy of the set, by their name in the project. */
   mirrorFiles: Record<string, FileRef>;
+  /** Difficulty sources, by the MD5 of the difficulty's .osu text in the package. */
+  sources?: Record<string, DifficultySource>;
 }
 
 export function setIdOf(p: Project): number {
@@ -46,19 +52,21 @@ export async function originOf(setId: number, files: Map<string, Blob>): Promise
 /** The package to upload: lite when the project knows what the mirrors serve for its set, otherwise the full .osz. */
 export async function buildSyncPackage(p: Project): Promise<{ blob: Blob; lite: boolean }> {
   const setId = setIdOf(p);
-  const origin = p.origin?.setId === setId ? p.origin.files : null;
-  if (!(setId > 0) || !origin) return { blob: await exportOsz(p), lite: false };
+  const origin = setId > 0 && p.origin?.setId === setId ? p.origin.files : null;
   const mirrorFiles: Record<string, FileRef> = {};
   const own = new Map<string, Blob>();
   for (const [name, blob] of p.files) {
-    const ref = origin[fileKey(name)];
+    const ref = origin?.[fileKey(name)];
     if (ref && ref.size === blob.size && ref.sha256 === (await sha256(blob))) mirrorFiles[name] = ref;
     else own.set(name, blob);
   }
-  if (Object.keys(mirrorFiles).length === 0) return { blob: await exportOsz(p), lite: false };
-  const manifest: Manifest = { version: 1, beatmapSetId: setId, mirrorFiles };
+  const sources: Record<string, DifficultySource> = {};
+  for (const d of p.difficulties) if (d.source) sources[md5Text(serializeBeatmap(d.beatmap))] = d.source;
+  const lite = Object.keys(mirrorFiles).length > 0;
+  if (!lite && Object.keys(sources).length === 0) return { blob: await exportOsz(p), lite };
+  const manifest: Manifest = { version: 1, beatmapSetId: setId, mirrorFiles, sources };
   own.set(MANIFEST, new Blob([JSON.stringify(manifest)], { type: 'application/json' }));
-  return { blob: await exportOsz({ ...p, files: own }), lite: true };
+  return { blob: await exportOsz({ ...p, files: own }), lite };
 }
 
 /**
@@ -71,9 +79,11 @@ export async function restoreSyncPackage(
 ): Promise<{ project: Project; warnings: string[] }> {
   const p = await importOsz(data);
   const manifestFile = p.files.get(MANIFEST);
-  if (!manifestFile) return { project: p, warnings: [] };
   p.files.delete(MANIFEST);
-  const m = JSON.parse(await manifestFile.text()) as Manifest;
+  const m = manifestFile ? (JSON.parse(await manifestFile.text()) as Manifest) : null;
+  // importOsz took the package's .osu files for originals; the manifest says what they really came from.
+  for (const d of p.difficulties) d.source = d.source && m?.sources?.[d.source.md5];
+  if (!m || Object.keys(m.mirrorFiles).length === 0) return { project: p, warnings: [] };
   const mirror = await importOsz(await fetchSet(m.beatmapSetId));
   const byKey = new Map([...mirror.files].map(([name, blob]) => [fileKey(name), blob]));
   const missing: string[] = [];

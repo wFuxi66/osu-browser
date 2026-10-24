@@ -1,8 +1,9 @@
 // osu!mania compose surface: vertical scrolling columns, notes and holds placed by clicking columns.
 import { music } from '../../audio/music';
-import { redLineAt, tickColour, tickDivisorOf } from '../../osu/timing';
+import { redLineAt } from '../../osu/timing';
 import { defaultSample, newObjectId, type HitObject } from '../../osu/types';
 import { editor, maniaColumn, maniaX } from '../store';
+import { drawBeatLines } from './scrolling';
 import type { Modifiers } from './snapping';
 import type { PlayfieldMode } from './types';
 
@@ -66,32 +67,7 @@ export class ManiaMode implements PlayfieldMode {
     // Beat snap lines
     const tStart = this.timeAtY(this.h, t);
     const tEnd = this.timeAtY(0, t);
-    const divisor = editor.beatDivisor;
-    const reds = bm.timingPoints.filter((p) => p.uninherited);
-    for (let i = 0; i < Math.max(1, reds.length); i++) {
-      const red = reds[i] ?? redLineAt(bm, 0);
-      const segEnd = reds[i + 1]?.time ?? Infinity;
-      const step = red.beatLength / divisor;
-      if (!(step > 0)) continue;
-      const from = Math.max(tStart, i === 0 ? -Infinity : red.time);
-      const to = Math.min(tEnd, segEnd);
-      if (from > to) continue;
-      let k = Math.ceil((from - red.time) / step);
-      for (; red.time + k * step <= to; k++) {
-        const time = red.time + k * step;
-        const d = tickDivisorOf(((k % (divisor * red.meter)) + divisor * red.meter) % (divisor * red.meter), divisor);
-        const y = this.yAtTime(time, t);
-        const isBar = ((k % (divisor * red.meter)) + divisor * red.meter) % (divisor * red.meter) === 0;
-        ctx.strokeStyle = tickColour(d);
-        ctx.globalAlpha = isBar ? 0.9 : d === 1 ? 0.6 : 0.35;
-        ctx.lineWidth = isBar ? 2 : 1;
-        ctx.beginPath();
-        ctx.moveTo(this.left, y);
-        ctx.lineTo(this.left + this.colW * keys, y);
-        ctx.stroke();
-      }
-    }
-    ctx.globalAlpha = 1;
+    drawBeatLines(ctx, bm, editor.beatDivisor, tStart, tEnd, (time) => this.yAtTime(time, t), this.left, this.left + this.colW * keys);
 
     // Judgement line
     ctx.strokeStyle = '#fff';

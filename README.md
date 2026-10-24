@@ -63,7 +63,7 @@ The home screen accepts an `osu.ppy.sh/beatmapsets/…` link. The official API d
 - [x] Hitsounds: whistle/finish/clap (W/E/R), sampleset and addition set (Shift/Ctrl+Q–R), per-object volume and custom index, per-edge slider hitsounds (click an edge in the timeline)
 - [x] Hitsound playback with default samples and beatmap custom samples (`soft-hitclap2.wav` etc.)
 - [x] AiMod (Ctrl+Shift+A): unsnapped objects, overlaps, off-screen, missing files/metadata, breaks…
-- [x] osu!taiko (don/kat/big, drumrolls, dendens), osu!mania (columns, notes, holds), osu!catch (std-style view)
+- [x] osu!taiko (don/kat/big, drumrolls, dendens), osu!mania (columns, notes, holds), osu!catch (scrolling catch view: fruits/juice streams/banana showers, juice streams placed by clicking (time, x) vertices, catch-style distance snap, hyperdash highlighting, catcher preview)
 
 **Timing (F3 / F6)**
 - [x] Red and green lines (Ctrl+P / Ctrl+Shift+P), delete (Ctrl+I)

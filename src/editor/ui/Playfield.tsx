@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { findFile } from '../../project/project';
 import { onFrame } from '../playback';
+import { CatchMode } from '../playfield/catchMode';
 import { ManiaMode } from '../playfield/maniaMode';
 import { StdMode } from '../playfield/stdMode';
 import { TaikoMode } from '../playfield/taikoMode';
@@ -82,7 +83,7 @@ export function Playfield() {
       const m = editor.bm.general.mode;
       if (m !== modeKey) {
         modeKey = m;
-        mode = m === 3 ? new ManiaMode() : m === 1 ? new TaikoMode() : new StdMode();
+        mode = m === 3 ? new ManiaMode() : m === 1 ? new TaikoMode() : m === 2 ? new CatchMode() : new StdMode();
         mode.layout(w, h);
         activePlayfield.current = mode;
       }

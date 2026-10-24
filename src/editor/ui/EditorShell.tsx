@@ -95,16 +95,16 @@ function Toolbox() {
       {(mode === 0 || mode === 2) && (
         <>
           <div className="panel-title">Snapping</div>
-          <Toggle on={ed.gridSnap} onClick={() => { ed.gridSnap = !ed.gridSnap; ed.emit(); }} label="Grid snap" hint="T" />
+          {mode === 0 && <Toggle on={ed.gridSnap} onClick={() => { ed.gridSnap = !ed.gridSnap; ed.emit(); }} label="Grid snap" hint="T" />}
           <Toggle on={ed.distanceSnap} onClick={() => { ed.distanceSnap = !ed.distanceSnap; ed.emit(); }} label="Distance snap" hint="Y" />
-          <div className="field">
+          {mode === 0 && <div className="field">
             <span>Grid size</span>
             <select value={ed.gridSize} onChange={(e) => ed.setGridSize(Number(e.target.value))}>
               {GRID_SIZES.map((g) => (
                 <option key={g} value={g}>{{ 4: 'Tiny', 8: 'Small', 16: 'Medium', 32: 'Large' }[g]} ({g})</option>
               ))}
             </select>
-          </div>
+          </div>}
           <div className="field">
             <span>Distance spacing</span>
             <input type="number" step={0.1} min={0.1} max={6} value={ed.bm.editor.distanceSpacing} onChange={(e) => ed.setDistanceSpacing(Number(e.target.value))} />

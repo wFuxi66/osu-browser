@@ -43,6 +43,8 @@ function MenuList({ items, onDone, sub }: { items: Item[]; onDone: () => void; s
             onMouseEnter={() => setHoverSub(it.submenu ? i : null)}
             onClick={(e) => {
               e.stopPropagation();
+              // Touch has no hover: tapping an item with a submenu opens it.
+              if (it.submenu) setHoverSub(i);
               if (it.disabled || it.submenu) return;
               onDone();
               it.action?.();

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { installShortcuts } from './editor/shortcuts';
 import './editor/playback';
+import './ui/touch';
 import '@fontsource/ubuntu/300.css';
 import '@fontsource/ubuntu/400.css';
 import '@fontsource/ubuntu/500.css';

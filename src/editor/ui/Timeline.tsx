@@ -9,6 +9,7 @@ import { onFrame } from '../playback';
 import { drawHitCircle, rgba, shade } from '../render/draw';
 import { editor, shiftObjectTime, snapSliderLength } from '../store';
 import { fmt } from '../../osu/info';
+import { attachTouch, touchMods, touchedRecently } from '../../ui/touch';
 
 /** Object row geometry as fractions of the timeline height. */
 const OBJ_R = 0.32;
@@ -18,7 +19,10 @@ type Drag =
   | { kind: 'move'; startTime: number; anchorTime: number; originals: Map<number, HitObject>; moved: boolean }
   | { kind: 'end'; obj: HitObject; original: HitObject; moved: boolean }
   | { kind: 'box'; t0: number; t1: number; additive: boolean }
-  | { kind: 'scrub' };
+  | { kind: 'scrub' }
+  | { kind: 'pan'; x0: number; t0: number };
+
+type Mods = { ctrl: boolean; shift: boolean };
 
 export function Timeline() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -55,7 +59,7 @@ export function Timeline() {
       const bm = editor.bm;
       const t = music.time;
       const ppm = pxPerMs();
-      const r = h * OBJ_R;
+      const r = h * OBJ_R * (touchedRecently() ? 1.5 : 1);
       const cy = h * OBJ_Y;
       if (Math.abs(y - cy) > r * 1.3) return null;
       let best: { obj: HitObject; part: 'body' | 'end' | 'edge'; edge?: number } | null = null;
@@ -82,28 +86,36 @@ export function Timeline() {
       return best;
     };
 
+    const modsOf = (e: PointerEvent): Mods => {
+      const t = touchMods.get();
+      return { ctrl: e.ctrlKey || e.metaKey || t.ctrl, shift: e.shiftKey || t.shift };
+    };
+
     const onDown = (e: PointerEvent) => {
-      if (!editor.hasProject) return;
+      if (!editor.hasProject || e.pointerType === 'touch') return;
+      if (e.button === 0) canvas.setPointerCapture(e.pointerId);
       const { x, y } = local(e);
+      pressAt(x, y, e.button, modsOf(e));
+    };
+
+    const pressAt = (x: number, y: number, button: number, m: Mods) => {
       // The timing view's timeline only seeks.
       if (editor.screen === 'timing') {
-        if (e.button !== 0) return;
-        canvas.setPointerCapture(e.pointerId);
+        if (button !== 0) return;
         dragRef.current = { kind: 'scrub' };
         music.seek(Math.round(snapTime(editor.bm, timeAt(x), editor.beatDivisor)));
         return;
       }
       const hit = hitTest(x, y);
-      if (e.button === 2) {
+      if (button === 2) {
         if (hit) editor.deleteObject(hit.obj.id);
         return;
       }
-      if (e.button !== 0) return;
-      canvas.setPointerCapture(e.pointerId);
-      const ctrl = e.ctrlKey || e.metaKey;
+      if (button !== 0) return;
+      const ctrl = m.ctrl;
       if (!hit) {
-        dragRef.current = { kind: 'box', t0: timeAt(x), t1: timeAt(x), additive: ctrl || e.shiftKey };
-        if (!ctrl && !e.shiftKey) editor.clearSelection();
+        dragRef.current = { kind: 'box', t0: timeAt(x), t1: timeAt(x), additive: ctrl || m.shift };
+        if (!ctrl && !m.shift) editor.clearSelection();
         return;
       }
       if (ctrl) {
@@ -130,13 +142,19 @@ export function Timeline() {
     };
 
     const onMove = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
+      dragTo(local(e).x, modsOf(e).shift);
+    };
+
+    const dragTo = (x: number, shift: boolean) => {
       const d = dragRef.current;
       if (!d) return;
-      const { x } = local(e);
       const bm = editor.bm;
       const raw = timeAt(x);
-      const snap = (t: number) => (e.shiftKey ? Math.round(t) : Math.round(snapTime(bm, t, editor.beatDivisor)));
-      if (d.kind === 'scrub') {
+      const snap = (t: number) => (shift ? Math.round(t) : Math.round(snapTime(bm, t, editor.beatDivisor)));
+      if (d.kind === 'pan') {
+        music.seek(snap(Math.max(0, d.t0 - (x - d.x0) / pxPerMs())));
+      } else if (d.kind === 'scrub') {
         // Seeking already happened on press; moving the strip under the cursor would run away.
       } else if (d.kind === 'box') {
         d.t1 = raw;
@@ -198,11 +216,41 @@ export function Timeline() {
     };
 
     const onDbl = (e: MouseEvent) => {
+      if (touchedRecently()) return;
       const { x, y } = local(e);
+      seekAt(x, y);
+    };
+
+    const seekAt = (x: number, y: number) => {
       const hit = hitTest(x, y);
       if (hit) music.seek(hit.obj.time);
       else music.seek(Math.round(snapTime(editor.bm, timeAt(x), editor.beatDivisor)));
     };
+
+    // Touch: dragging empty timeline (or anywhere on the timing screen) scrolls it, a long press deletes the
+    // object under the finger or starts a box selection, and a pinch zooms.
+    let zoom0 = 1;
+    const detachTouch = attachTouch(canvas, {
+      press: (x, y, kind) => {
+        if (!editor.hasProject) return;
+        const m = { ...touchMods.get() };
+        const hit = editor.screen === 'timing' ? null : hitTest(x, y);
+        if (kind === 'long') pressAt(x, y, hit ? 2 : 0, m);
+        else if (kind === 'drag' && !hit) dragRef.current = { kind: 'pan', x0: x, t0: music.time };
+        else pressAt(x, y, 0, m);
+      },
+      move: (x) => dragTo(x, touchMods.get().shift),
+      release: onUp,
+      doubleTap: (x, y) => editor.hasProject && seekAt(x, y),
+      pinch: {
+        start: () => {
+          onUp();
+          zoom0 = editor.hasProject ? editor.bm.editor.timelineZoom : 1;
+        },
+        update: (_dx, scale) => editor.hasProject && editor.setTimelineZoom(zoom0 * scale),
+        end: () => {},
+      },
+    });
 
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointermove', onMove);
@@ -213,6 +261,7 @@ export function Timeline() {
     return () => {
       off();
       ro.disconnect();
+      detachTouch();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);

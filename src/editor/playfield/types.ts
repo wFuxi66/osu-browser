@@ -13,6 +13,8 @@ export interface PlayfieldMode {
   pointerLeave(): void;
   pointerUp(): void;
   doubleClick(x: number, y: number): void;
+  /** On touch, whether a drag only moves the placement preview and the click happens where the finger lifts. */
+  touchPreview?(): boolean;
   /** Handle Escape; returns true if something was cancelled. */
   cancel(): boolean;
   /** Finish an in-progress placement (Enter). */

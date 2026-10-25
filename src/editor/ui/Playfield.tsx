@@ -9,6 +9,7 @@ import type { PlayfieldMode } from '../playfield/types';
 import { editor } from '../store';
 import { fitFrame, storyboard, type SbFrame } from '../storyboard/runtime';
 import { video } from '../video';
+import { attachTouch, touchMods, touchedRecently } from '../../ui/touch';
 
 /** The active compose surface, exposed so keyboard shortcuts can reach it (Escape/Enter). */
 export const activePlayfield: { current: PlayfieldMode | null } = { current: null };
@@ -113,30 +114,70 @@ export function Playfield() {
       const r = canvas.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
     };
-    const syncMods = (e: MouseEvent | KeyboardEvent) => {
+    type ModKeys = { shiftKey: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean };
+    let keyMods: ModKeys = { shiftKey: false, altKey: false, ctrlKey: false, metaKey: false };
+    const syncMods = (e: ModKeys) => {
       if (!mode) return;
-      mode.mods = { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey };
+      const t = touchMods.get();
+      mode.mods = { shift: e.shiftKey || t.shift, alt: e.altKey || t.alt, ctrl: e.ctrlKey || e.metaKey || t.ctrl };
     };
     const down = (e: PointerEvent) => {
-      if (!editor.hasProject) return;
+      if (!editor.hasProject || e.pointerType === 'touch') return;
       syncMods(e);
       canvas.setPointerCapture(e.pointerId);
       const p = local(e);
       ensureMode().pointerDown(p.x, p.y, e.button);
     };
     const move = (e: PointerEvent) => {
-      if (!editor.hasProject) return;
+      if (!editor.hasProject || e.pointerType === 'touch') return;
       syncMods(e);
       const p = local(e);
       ensureMode().pointerMove(p.x, p.y);
     };
-    const up = () => mode?.pointerUp();
-    const leave = () => mode?.pointerLeave();
+    const up = (e: PointerEvent) => e.pointerType !== 'touch' && mode?.pointerUp();
+    const leave = (e: PointerEvent) => e.pointerType !== 'touch' && mode?.pointerLeave();
     const dbl = (e: MouseEvent) => {
+      if (touchedRecently()) return;
       const p = local(e);
       mode?.doubleClick(p.x, p.y);
     };
-    const keys = (e: KeyboardEvent) => syncMods(e);
+    const keys = (e: KeyboardEvent) => {
+      keyMods = e;
+      syncMods(e);
+    };
+    // Touch: a long press is the right click, placement tools preview under the finger and place on lift,
+    // and a two-finger horizontal swipe seeks like the wheel (swiping left moves forward in time).
+    let swipeSteps = 0;
+    const detachTouch = attachTouch(canvas, {
+      hover: (x, y) => {
+        if (!editor.hasProject) return;
+        syncMods(keyMods);
+        ensureMode().pointerMove(x, y);
+      },
+      previewOnly: () => editor.hasProject && !!ensureMode().touchPreview?.(),
+      press: (x, y, kind) => {
+        if (!editor.hasProject) return;
+        syncMods(keyMods);
+        ensureMode().pointerDown(x, y, kind === 'long' ? 2 : 0);
+      },
+      move: (x, y) => {
+        syncMods(keyMods);
+        mode?.pointerMove(x, y);
+      },
+      release: () => mode?.pointerUp(),
+      leave: () => mode?.pointerLeave(),
+      doubleTap: (x, y) => mode?.doubleClick(x, y),
+      pinch: {
+        start: () => (swipeSteps = 0),
+        update: (dx) => {
+          if (!editor.hasProject) return;
+          const steps = Math.trunc(-dx / 40);
+          for (; swipeSteps < steps; swipeSteps++) editor.seekTick(1);
+          for (; swipeSteps > steps; swipeSteps--) editor.seekTick(-1);
+        },
+        end: () => {},
+      },
+    });
     canvas.addEventListener('pointerdown', down);
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
@@ -150,6 +191,7 @@ export function Playfield() {
       off();
       ro.disconnect();
       activePlayfield.current = null;
+      detachTouch();
       canvas.removeEventListener('pointerdown', down);
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);

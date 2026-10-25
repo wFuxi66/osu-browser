@@ -21,6 +21,7 @@ import {
   type View,
 } from '../render/draw';
 import { editor, PLAYFIELD_H, PLAYFIELD_W, snapSliderLength, translateObject } from '../store';
+import { touchedRecently } from '../../ui/touch';
 import { clampToPlayfield, distanceSnapActive, distanceSnapCentre, gridSnapActive, snapPosition, type Modifiers } from './snapping';
 
 type Drag =
@@ -445,7 +446,8 @@ export class StdPlayfield {
 
   private hitControlPoint(p: Vec2, v: View, s: Slider): number {
     const verts = [{ x: s.x, y: s.y }, ...s.points];
-    const tol = 8 / v.scale;
+    // A fingertip needs a bigger target than the cursor.
+    const tol = (touchedRecently() ? 16 : 8) / v.scale;
     for (let i = verts.length - 1; i >= 0; i--) if (Math.abs(verts[i].x - p.x) <= tol && Math.abs(verts[i].y - p.y) <= tol) return i;
     return -1;
   }

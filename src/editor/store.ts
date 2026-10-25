@@ -702,6 +702,11 @@ class Editor {
     this.setGridSize(GRID_SIZES[(i + 1) % GRID_SIZES.length]);
   }
 
+  setTimelineZoom(z: number) {
+    this.bm.editor.timelineZoom = Math.round(Math.max(0.1, Math.min(8, z)) * 100) / 100;
+    this.emit();
+  }
+
   setDistanceSpacing(v: number) {
     this.bm.editor.distanceSpacing = Math.round(Math.max(0.1, Math.min(6, v)) * 100) / 100;
     this.emit();

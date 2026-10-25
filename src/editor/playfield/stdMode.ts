@@ -1,5 +1,5 @@
 import { toOsu, type View } from '../render/draw';
-import { PLAYFIELD_H, PLAYFIELD_W } from '../store';
+import { editor, PLAYFIELD_H, PLAYFIELD_W } from '../store';
 import { StdPlayfield } from './stdPlayfield';
 import type { PlayfieldMode } from './types';
 
@@ -48,6 +48,9 @@ export class StdMode implements PlayfieldMode {
   }
   doubleClick(x: number, y: number) {
     this.pf.doubleClick(this.osu(x, y));
+  }
+  touchPreview() {
+    return editor.tool !== 'select';
   }
   cancel() {
     return this.pf.cancel();

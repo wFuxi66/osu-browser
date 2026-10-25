@@ -161,6 +161,11 @@ const RUN: Record<string, () => void> = {
   removeBookmark: () => editor.removeBookmark(),
 };
 
+/** Runs a bindable action by name, for buttons that stand in for keys (the touch toolbar). */
+export function runAction(name: string) {
+  RUN[name]?.();
+}
+
 const hasSel = () => editor.selection.size > 0;
 const isMania = () => editor.bm.general.mode === 3;
 
@@ -245,9 +250,7 @@ export function handleWheel(e: WheelEvent) {
   }
   if (e.altKey) {
     if (area === 'timeline') {
-      const z = editor.bm.editor.timelineZoom * (dir > 0 ? 1 / 1.15 : 1.15);
-      editor.bm.editor.timelineZoom = Math.round(Math.max(0.1, Math.min(8, z)) * 100) / 100;
-      editor.emit();
+      editor.setTimelineZoom(editor.bm.editor.timelineZoom * (dir > 0 ? 1 / 1.15 : 1.15));
     } else {
       editor.setDistanceSpacing(editor.bm.editor.distanceSpacing + (dir > 0 ? -1 : 1) * (e.shiftKey ? 0.01 : 0.1));
     }

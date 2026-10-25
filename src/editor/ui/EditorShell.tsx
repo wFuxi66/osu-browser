@@ -19,6 +19,7 @@ import { MenuBar } from './MenuBar';
 import { activePlayfield, Playfield } from './Playfield';
 import { SongProgress } from './SongProgress';
 import { Timeline } from './Timeline';
+import { TouchBar } from './TouchBar';
 import { TimingScreen, TimingTopRight } from './TimingScreen';
 import { StageBackground } from './StageBackground';
 import { shortcutOf } from '../keybinds';
@@ -39,6 +40,7 @@ export function EditorShell() {
           <>
             <ComposeLeft />
             <ComposeRight />
+            <TouchBar />
           </>
         )}
         {ed.screen !== 'design' && <Tip />}
@@ -84,10 +86,7 @@ function ScreenTabs() {
 
 function ZoomButtons() {
   const ed = useEditor();
-  const set = (v: number) => {
-    ed.bm.editor.timelineZoom = Math.round(Math.max(0.1, Math.min(8, v)) * 100) / 100;
-    ed.emit();
-  };
+  const set = (v: number) => ed.setTimelineZoom(v);
   const z = ed.hasProject ? ed.bm.editor.timelineZoom : 1;
   return (
     <div className="ed-zoom">

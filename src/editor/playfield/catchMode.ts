@@ -526,6 +526,10 @@ export class CatchMode implements PlayfieldMode {
     this.hover = null;
   }
 
+  touchPreview() {
+    return !!this.stream || editor.tool === 'circle' || editor.tool === 'slider';
+  }
+
   doubleClick(x: number, y: number) {
     if (this.stream) return this.finishStream();
     const hit = this.hitTest(x, y, music.time);

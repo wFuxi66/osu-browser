@@ -646,6 +646,9 @@ class Editor {
   get canRedo() {
     return this.redoStack.length > 0;
   }
+  get canPaste() {
+    return this.clipboard.length > 0;
+  }
 
   private pruneSelection() {
     const ids = new Set(this.bm.hitObjects.map((o) => o.id));

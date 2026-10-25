@@ -208,11 +208,14 @@ const IDLE_MORE: [string, string][] = [
   ['seekLast', 'Last ⏭'],
 ];
 
+// What each held key does in the compose screen, named for that rather than the key.
 const MODS: [keyof TouchMods, string][] = [
+  ['ctrl', 'Multi-select'],
+  ['alt', 'Dist snap ⇄'],
   ['shift', 'Shift'],
-  ['ctrl', 'Ctrl'],
-  ['alt', 'Alt'],
 ];
+
+const RATES = [1, 0.75, 0.5, 0.25];
 
 type Btn = { label: string; run: () => void; disabled?: boolean; accent?: boolean; danger?: boolean };
 
@@ -259,6 +262,10 @@ function ContextBar() {
       { label: 'Redo', run: act('redo'), disabled: !ed.canRedo },
       { label: 'Paste', run: act('paste'), disabled: !ed.canPaste },
       { label: 'Select all', run: act('selectAll') },
+      {
+        label: `Speed ${Math.round(music.rate * 100)}%`,
+        run: () => ed.setPlaybackRate(RATES[(RATES.findIndex((r) => Math.abs(r - music.rate) < 0.001) + 1) % RATES.length]),
+      },
     ];
     extra = IDLE_MORE;
   }

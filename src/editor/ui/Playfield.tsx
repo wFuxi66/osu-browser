@@ -161,12 +161,14 @@ export function Playfield() {
     const detachTouch = attachTouch(canvas, {
       hover: (x, y) => {
         if (!editor.hasProject) return;
+        if (music.playing) music.pause();
         syncMods(keyMods);
         ensureMode().pointerMove(x, lift(y));
       },
       previewOnly: () => editor.hasProject && !!ensureMode().touchPreview?.(),
       press: (x, y, kind) => {
         if (!editor.hasProject) return;
+        if (music.playing) music.pause(); // placing at a moving time is hopeless with a finger
         syncMods(keyMods);
         placeRev = kind === 'tap' && editor.tool === 'circle' ? editor.contentRev : null;
         ensureMode().pointerDown(x, lift(y), kind === 'long' ? 2 : 0, kind === 'drag');

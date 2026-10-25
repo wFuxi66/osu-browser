@@ -674,6 +674,16 @@ class Editor {
     this.emit();
   }
 
+  /**
+   * Touch: a tap outside the playfield (`outside`) or on the timeline with the circle, slider or spinner tool, and
+   * nothing half-placed, goes back to the select tool. Returns whether it did.
+   */
+  leavePlacement(outside: boolean): boolean {
+    if (!outside || this.tool === 'select' || this.placing) return false;
+    this.setTool('select');
+    return true;
+  }
+
   setScreen(s: Screen) {
     this.screen = s;
     this.placing = null;

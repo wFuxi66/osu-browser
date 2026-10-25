@@ -49,6 +49,11 @@ export class StdMode implements PlayfieldMode {
   doubleClick(x: number, y: number) {
     this.pf.doubleClick(this.osu(x, y));
   }
+  inPlayfield(x: number, y: number) {
+    // A little slack so a tap aimed at the edge still places.
+    const p = this.osu(x, y);
+    return p.x >= -12 && p.x <= PLAYFIELD_W + 12 && p.y >= -12 && p.y <= PLAYFIELD_H + 12;
+  }
   touchPreview() {
     return editor.tool !== 'select';
   }

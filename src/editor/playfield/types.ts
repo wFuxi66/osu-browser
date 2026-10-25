@@ -16,6 +16,8 @@ export interface PlayfieldMode {
   doubleClick(x: number, y: number): void;
   /** On touch, whether a drag only moves the placement preview and the click happens where the finger lifts. */
   touchPreview?(): boolean;
+  /** Whether a screen point is on the playfield (touch: tapping outside it with a placement tool goes back to select). */
+  inPlayfield?(x: number, y: number): boolean;
   /** Handle Escape; returns true if something was cancelled. */
   cancel(): boolean;
   /** Finish an in-progress placement (Enter). */

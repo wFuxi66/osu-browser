@@ -234,6 +234,7 @@ export function Timeline() {
       press: (x, y, kind) => {
         if (!editor.hasProject) return;
         const m = { ...touchMods.get() };
+        if (kind === 'tap' && editor.screen === 'compose') editor.leavePlacement(true);
         const hit = editor.screen === 'timing' ? null : hitTest(x, y);
         if (kind === 'long') pressAt(x, y, hit ? 2 : 0, m);
         else if (kind === 'drag' && !hit) dragRef.current = { kind: 'pan', x0: x, t0: music.time };

@@ -170,6 +170,7 @@ export function Playfield() {
         if (!editor.hasProject) return;
         if (music.playing) music.pause(); // placing at a moving time is hopeless with a finger
         syncMods(keyMods);
+        if (kind === 'tap' && editor.leavePlacement(ensureMode().inPlayfield?.(x, lift(y)) === false)) return;
         placeRev = kind === 'tap' && editor.tool === 'circle' ? editor.contentRev : null;
         ensureMode().pointerDown(x, lift(y), kind === 'long' ? 2 : 0, kind === 'drag');
       },

@@ -8,6 +8,7 @@ import { skins } from './skin/skin';
 import { MainMenu } from './menu/MainMenu';
 import { Player } from './play/Player';
 import { SongSelect } from './songselect/SongSelect';
+import { useBackButton } from './ui/backButton';
 import { screens, useScreens } from './ui/screens';
 import { OptionsPanel } from './ui/OptionsPanel';
 import { PromptHost } from './ui/PromptHost';
@@ -25,6 +26,7 @@ export function useCloud() {
 export function App() {
   const ed = useEditor();
   const scr = useScreens();
+  useBackButton(ed.hasProject || scr.screen !== 'menu');
   useEffect(() => {
     // Back from connecting Google Drive: song select shows the result and syncs.
     if (new URLSearchParams(location.search).has('drive')) screens.select('edit');

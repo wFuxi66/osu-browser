@@ -194,7 +194,11 @@
 
 /* Touch screens: controls that shrink to a few pixels on a phone get a finger-sized minimum. */
 [data-touch] .wm-title { padding: 0 12px; }
-[data-touch] .wm-item { height: 34px; }
+[data-touch] .wm-item { min-height: 34px; height: auto; flex-wrap: wrap; }
+/* Touch: long menus scroll inside the screen, and submenus open inline under their item (a flyout beside a
+   scrolling list would be clipped by it). */
+[data-touch] .wm-list:not(.sub) { max-height: calc(100dvh - 30px); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+[data-touch] .wm-list.sub { position: static; flex-basis: 100%; min-width: 0; margin: 0 0 4px 22px; padding: 0; border: none; border-left: 2px solid #99d1ff; box-shadow: none; background: #fafafa; }
 [data-touch] .ed-transport button { min-width: 30px; height: max(30px, calc(var(--u) * 26)); justify-content: center; }
 [data-touch] .ed-divisor-track { height: 28px; margin-top: calc(var(--u) * 7 - 14px); }
 [data-touch] .ed-rate button { min-width: 30px; }

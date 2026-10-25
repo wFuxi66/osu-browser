@@ -179,6 +179,10 @@
 .ed-thumb-play svg { width: 26px; height: 26px; }
 .ed-ctx { position: absolute; z-index: 4; right: calc(var(--u) * 76 + 10px); bottom: calc(var(--u) * 33 + 10px); display: flex; align-items: flex-end; gap: 6px; }
 .ed-ctx-bar { display: flex; flex-direction: column; gap: 6px; }
+.ed-ctx-bar.two { display: grid; grid-template-columns: repeat(2, auto); }
+.ed-node-menu { position: absolute; z-index: 6; display: flex; gap: 6px; transform: translate(-50%, calc(-100% - 28px)); padding: 6px; border-radius: 12px; background: rgba(0,0,0,0.85); }
+.ed-node-menu button { height: 40px; padding: 0 12px; border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; background: rgba(30,30,36,0.9); color: #fff; font-size: 13px; white-space: nowrap; }
+.ed-node-menu button.danger { background: rgba(170,40,50,0.85); }
 .ed-ctx button { min-width: 72px; height: 40px; padding: 0 8px; border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; background: rgba(30,30,36,0.8); color: rgba(255,255,255,0.9); font-size: 13px; white-space: nowrap; }
 .ed-ctx button:disabled { opacity: 0.35; }
 .ed-ctx button.accent { background: #1b8ff0; border-color: #1b8ff0; color: #fff; }

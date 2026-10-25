@@ -6,6 +6,7 @@ import { runAction } from '../shortcuts';
 import { editor, useEditor } from '../store';
 import { touchMods, useTouch, useTouchMods, type TouchMods } from '../../ui/touch';
 import { PauseIcon, PlayIcon } from './icons';
+import { nodeMenu } from '../playfield/stdPlayfield';
 import { activePlayfield } from './Playfield';
 
 // Phone layout: time controls under the left thumb (play/pause and a jog strip), editing actions under the right
@@ -28,6 +29,7 @@ export function TouchBar() {
         <PlayButton />
       </div>
       <ContextBar />
+      <NodeMenuPopup />
     </>
   );
 }
@@ -158,6 +160,7 @@ function JogStrip() {
 }
 
 const SELECTION_MORE: [string, string][] = [
+  ['cut', 'Cut'],
   ['reverse', 'Reverse'],
   ['clone', 'Clone'],
   ['rotateCw', 'Rot +90°'],
@@ -211,12 +214,15 @@ function ContextBar() {
   } else if (hasSel) {
     buttons = [
       { label: 'Copy', run: act('copy') },
-      { label: 'Cut', run: act('cut') },
       { label: 'Flip H', run: act('flipH') },
       { label: 'Flip V', run: act('flipV') },
       { label: 'Delete', run: act('delete'), danger: true },
       { label: 'Deselect', run: () => ed.clearSelection() },
     ];
+    const sel = ed.selectedObjects;
+    if (sel.length === 1 && sel[0].kind === 'slider') {
+      buttons.push({ label: 'Len −', run: () => ed.nudgeSliderLength(-1) }, { label: 'Len +', run: () => ed.nudgeSliderLength(1) });
+    }
     extra = SELECTION_MORE;
   } else {
     buttons = [
@@ -252,7 +258,7 @@ function ContextBar() {
           </div>
         </div>
       )}
-      <div className="ed-ctx-bar">
+      <div className={`ed-ctx-bar ${buttons.length > 4 ? 'two' : ''}`}>
         {buttons.map((b) => (
           <button
             key={b.label}
@@ -269,6 +275,23 @@ function ContextBar() {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Red/white and delete for the slider control point just tapped (see StdPlayfield.openNodeMenu). */
+function NodeMenuPopup() {
+  const ed = useEditor();
+  const m = nodeMenu.current;
+  if (!m || ed.tool !== 'select' || !ed.selection.has(m.sliderId)) return null;
+  return (
+    <div className="ed-node-menu" style={{ left: m.x, top: m.y }}>
+      <button onClick={m.toggleRed}>{m.red ? 'Make white' : 'Make red'}</button>
+      {m.canDelete && (
+        <button className="danger" onClick={m.remove}>
+          Delete node
+        </button>
+      )}
     </div>
   );
 }

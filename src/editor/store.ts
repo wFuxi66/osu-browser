@@ -1048,6 +1048,20 @@ class Editor {
     });
   }
 
+  /** Touch: lengthen or shorten the one selected slider by a beat-snap tick, within its path. */
+  nudgeSliderLength(dir: 1 | -1) {
+    const s = this.selectedObjects;
+    if (s.length !== 1 || s[0].kind !== 'slider') return;
+    const sl = s[0];
+    const tick = (this.bm.difficulty.sliderMultiplier * 100 * svAt(this.bm, sl.time)) / this.beatDivisor;
+    if (tick <= 0) return;
+    const max = Math.max(1, Math.floor((getSliderPath({ ...sl, length: 0 }).rawLength + 0.01) / tick));
+    const ticks = Math.min(max, Math.max(1, Math.round(sl.length / tick) + dir));
+    const length = Number((ticks * tick).toFixed(6));
+    if (length === sl.length) return;
+    this.commit(() => (sl.length = length));
+  }
+
   copy(cut = false) {
     const sel = this.selectedObjects;
     if (!sel.length) return;

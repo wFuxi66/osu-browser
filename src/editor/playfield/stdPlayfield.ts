@@ -31,10 +31,29 @@ type Drag =
 
 const SPINNER_RADIUS = 180;
 
+/** Touch: the menu shown after tapping a slider's control point (screen position, stage-local CSS px). */
+export interface NodeMenu {
+  sliderId: number;
+  x: number;
+  y: number;
+  red: boolean;
+  canDelete: boolean;
+  toggleRed(): void;
+  remove(): void;
+}
+export const nodeMenu: { current: NodeMenu | null } = { current: null };
+
+function closeNodeMenu() {
+  if (!nodeMenu.current) return;
+  nodeMenu.current = null;
+  editor.emit();
+}
+
 export class StdPlayfield {
   hover: Vec2 | null = null;
   mods: Modifiers = { shift: false, alt: false, ctrl: false };
   private drag: Drag | null = null;
+  private view: View = { scale: 1, ox: 0, oy: 0 };
   /** Slider whose control points show because the cursor is on it (or on one of its points). */
   private hoverSlider: Slider | null = null;
 
@@ -456,6 +475,8 @@ export class StdPlayfield {
 
   pointerDown(p: Vec2, button: number, v: View, touchDrag = false) {
     const t = music.time;
+    this.view = v;
+    closeNodeMenu();
     if (button === 2) {
       this.rightClick(p, v, t);
       return;
@@ -585,6 +606,7 @@ export class StdPlayfield {
       if (d.moved) editor.endChange();
       else editor.cancelChange();
     }
+    if (d.kind === 'point' && !d.moved && touchedRecently()) this.openNodeMenu(d.slider, d.index);
   }
 
   doubleClick(p: Vec2) {
@@ -623,6 +645,8 @@ export class StdPlayfield {
         this.deleteControlPoint(sel, idx);
         return;
       }
+      // Touch: a long press on the selected slider's body adds a node (Ctrl+click on desktop).
+      if (idx < 0 && touchedRecently() && this.insertControlPoint(sel, p)) return;
     }
     const hit = this.hitTest(p, t);
     if (hit) editor.deleteObject(hit.id);
@@ -742,6 +766,29 @@ export class StdPlayfield {
   }
 
   // ------------------------------------------------------------------ control point editing
+
+  private openNodeMenu(s: Slider, idx: number) {
+    const verts = [{ x: s.x, y: s.y }, ...s.points];
+    const q = verts[idx];
+    const same = (j: number) => j >= 0 && j < verts.length && j !== idx && verts[j].x === q.x && verts[j].y === q.y;
+    const v = this.view;
+    nodeMenu.current = {
+      sliderId: s.id,
+      x: v.ox + q.x * v.scale,
+      y: v.oy + q.y * v.scale,
+      red: same(idx - 1) || same(idx + 1),
+      canDelete: idx > 0 && s.points.length > 1,
+      toggleRed: () => {
+        this.toggleRedAnchor(s, idx);
+        closeNodeMenu();
+      },
+      remove: () => {
+        this.deleteControlPoint(s, idx);
+        closeNodeMenu();
+      },
+    };
+    editor.emit();
+  }
 
   private toggleRedAnchor(s: Slider, idx: number) {
     if (idx === 0) return;

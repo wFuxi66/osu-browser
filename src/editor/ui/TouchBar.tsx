@@ -231,6 +231,10 @@ function ContextBar() {
   const mode = ed.placing ? 'placing' : hasSel ? 'selection' : 'idle';
   useEffect(() => setMore(false), [mode]);
 
+  const speed: Btn = {
+    label: `Speed ${Math.round(music.rate * 100)}%`,
+    run: () => ed.setPlaybackRate(RATES[(RATES.findIndex((r) => Math.abs(r - music.rate) < 0.001) + 1) % RATES.length]),
+  };
   let buttons: Btn[];
   let extra: [string, string][] = [];
   if (ed.placing) {
@@ -256,16 +260,28 @@ function ContextBar() {
       buttons.push({ label: 'Len −', run: () => ed.nudgeSliderLength(-1) }, { label: 'Len +', run: () => ed.nudgeSliderLength(1) });
     }
     extra = SELECTION_MORE;
+  } else if (ed.hasProject && (ed.tool === 'circle' || ed.tool === 'slider') && (ed.bm.general.mode === 0 || ed.bm.general.mode === 2)) {
+    // Placing: distance spacing instead of clipboard actions (Alt + wheel on desktop). Changing it turns distance
+    // snap on, since that's what it's for.
+    const ds = (d: number) => () => {
+      ed.distanceSnap = true;
+      ed.setDistanceSpacing(ed.bm.editor.distanceSpacing + d);
+    };
+    buttons = [
+      { label: 'Undo', run: act('undo'), disabled: !ed.canUndo },
+      { label: 'Redo', run: act('redo'), disabled: !ed.canRedo },
+      { label: 'DS −0.1', run: ds(-0.1) },
+      { label: 'DS +0.1', run: ds(0.1) },
+      speed,
+    ];
+    extra = IDLE_MORE;
   } else {
     buttons = [
       { label: 'Undo', run: act('undo'), disabled: !ed.canUndo },
       { label: 'Redo', run: act('redo'), disabled: !ed.canRedo },
       { label: 'Paste', run: act('paste'), disabled: !ed.canPaste },
       { label: 'Select all', run: act('selectAll') },
-      {
-        label: `Speed ${Math.round(music.rate * 100)}%`,
-        run: () => ed.setPlaybackRate(RATES[(RATES.findIndex((r) => Math.abs(r - music.rate) < 0.001) + 1) % RATES.length]),
-      },
+      speed,
     ];
     extra = IDLE_MORE;
   }

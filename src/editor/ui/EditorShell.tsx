@@ -23,6 +23,7 @@ import { TouchBar } from './TouchBar';
 import { TimingScreen, TimingTopRight } from './TimingScreen';
 import { StageBackground } from './StageBackground';
 import { shortcutOf } from '../keybinds';
+import { useTouch } from '../../ui/touch';
 
 /** The stable editor layout: menu strip, then a full-window stage with the panels laid over the playfield. */
 export function EditorShell() {
@@ -249,6 +250,8 @@ function ComposeRight() {
   const ed = useEditor();
   const s = ed.selectionHitsoundState();
   const mode = ed.bm.general.mode;
+  // No hover tooltips on a phone: the distance snap button shows its spacing instead of "Snap".
+  const touch = useTouch();
   return (
     <div className="ed-right">
       {mode !== 3 && <Toggle on={s.newCombo} onClick={() => ed.toggleNewCombo()} top="New" bottom="Combo" icon={<NewComboIcon />} title="New Combo (Q)" />}
@@ -256,7 +259,7 @@ function ComposeRight() {
       <Toggle on={s.finish} onClick={() => ed.toggleAddition(4)} top="Finish" icon={<FinishIcon />} title="Finish (E)" />
       <Toggle on={s.clap} onClick={() => ed.toggleAddition(8)} top="Clap" icon={<ClapIcon />} title="Clap (R)" />
       {mode === 0 && <Toggle on={ed.gridSnap} onClick={() => { ed.gridSnap = !ed.gridSnap; ed.emit(); }} top="Grid" bottom="Snap" icon={<GridSnapIcon />} title="Grid Snap (T, hold Shift to toggle)" />}
-      {(mode === 0 || mode === 2) && <Toggle on={ed.distanceSnap} onClick={() => { ed.distanceSnap = !ed.distanceSnap; ed.emit(); }} top="Distance" bottom="Snap" icon={<DistanceSnapIcon />} title={`Distance Snap (Y, hold Alt to toggle) · ${fmt(ed.bm.editor.distanceSpacing, 2)}x (Alt + wheel)`} />}
+      {(mode === 0 || mode === 2) && <Toggle on={ed.distanceSnap} onClick={() => { ed.distanceSnap = !ed.distanceSnap; ed.emit(); }} top="Distance" bottom={touch ? `${fmt(ed.bm.editor.distanceSpacing, 2)}x` : 'Snap'} icon={<DistanceSnapIcon />} title={`Distance Snap (Y, hold Alt to toggle) · ${fmt(ed.bm.editor.distanceSpacing, 2)}x (Alt + wheel)`} />}
       <Toggle on={ed.locked} onClick={() => { ed.locked = !ed.locked; ed.emit(); }} top="Lock" bottom="Notes" icon={<LockIcon />} title="Lock Notes (L)" />
     </div>
   );

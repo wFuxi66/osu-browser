@@ -847,6 +847,9 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
   const els = useRef(new Map<string, HTMLDivElement>());
   const scroll = useRef({ pos: 0, target: 0, init: false });
   const rightDrag = useRef(false);
+  // A finger drags the list; past a few pixels it is a scroll, not a tap on a panel.
+  const fingerDrag = useRef<{ y0: number; from: number; lastY: number; lastT: number; v: number; moved: boolean } | null>(null);
+  const draggedAt = useRef(-Infinity);
   const hovered = useRef<string | null>(null);
 
   // Row geometry in px; scales with the window height like stable (768 "osu!pixel" tall screen).
@@ -934,14 +937,47 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
       ref={wrap}
       onWheel={(e) => (scroll.current.target += e.deltaY * (e.deltaMode === 1 ? 30 : 1))}
       onPointerDown={(e) => {
+        if (e.pointerType === 'touch') {
+          fingerDrag.current = { y0: e.clientY, from: scroll.current.pos, lastY: e.clientY, lastT: e.timeStamp, v: 0, moved: false };
+          return;
+        }
         if (e.button === 2 && !(e.target as HTMLElement).closest('.ss-panel')) {
           rightDrag.current = true;
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           absoluteScroll(e.clientY);
         }
       }}
-      onPointerMove={(e) => rightDrag.current && absoluteScroll(e.clientY)}
-      onPointerUp={() => (rightDrag.current = false)}
+      onPointerMove={(e) => {
+        const f = fingerDrag.current;
+        if (f && e.pointerType === 'touch') {
+          if (!f.moved && Math.abs(e.clientY - f.y0) > 8) {
+            f.moved = true;
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          }
+          if (!f.moved) return;
+          const dt = Math.max(1, e.timeStamp - f.lastT);
+          f.v = 0.8 * ((f.lastY - e.clientY) / dt) + 0.2 * f.v;
+          f.lastY = e.clientY;
+          f.lastT = e.timeStamp;
+          scroll.current.pos = scroll.current.target = f.from - (e.clientY - f.y0);
+          return;
+        }
+        if (rightDrag.current) absoluteScroll(e.clientY);
+      }}
+      onPointerUp={(e) => {
+        rightDrag.current = false;
+        const f = fingerDrag.current;
+        fingerDrag.current = null;
+        if (f?.moved && e.pointerType === 'touch') {
+          // Fling: keep going for about a third of a second's worth of the release speed.
+          scroll.current.target += f.v * 350;
+          draggedAt.current = e.timeStamp;
+        }
+      }}
+      onPointerCancel={() => (fingerDrag.current = null)}
+      onClickCapture={(e) => {
+        if (e.timeStamp - draggedAt.current < 300) e.stopPropagation();
+      }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {rows.map((r) => (

@@ -1,7 +1,7 @@
 /* Stable look: in-game screens are sized in "osu!pixels" of a 768-pixel-tall screen (--u), like the game
    scales its UI with the window height. WinForms-style dialogs use fixed pixel sizes, like Windows does. */
 :root {
-  --u: calc(100vh / 768);
+  --u: calc(100dvh / 768);
   --osu-font: "Ubuntu", "Aller", "Segoe UI", system-ui, sans-serif;
   --win-font: "Segoe UI", Tahoma, system-ui, sans-serif;
   --osu-blue: #3b7fe6;
@@ -364,3 +364,9 @@
 .op-key-reset { font: inherit; color: #ffcc22; background: none; border: none; padding: 0 4px; font-size: 16px; }
 .ss-footer-btn.ss-settings { width: calc(var(--u) * 58); display: grid; place-items: center; }
 .ss-footer-btn.ss-settings svg { width: calc(var(--u) * 26); height: calc(var(--u) * 26); }
+
+/* Touch screens: dialogs fit a landscape phone and scroll; their controls get finger-sized. */
+[data-touch] .win-window { max-height: 96dvh; max-width: 100vw; }
+[data-touch] .win-body { overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+[data-touch] .win-window button { min-height: 32px; }
+[data-touch] .win-window input, [data-touch] .win-window select { min-height: 28px; }

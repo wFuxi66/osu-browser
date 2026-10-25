@@ -12,6 +12,7 @@ import { screens, useScreens } from './ui/screens';
 import { OptionsPanel } from './ui/OptionsPanel';
 import { PromptHost } from './ui/PromptHost';
 import { VolumeControl } from './ui/VolumeControl';
+import { FullscreenButton, RotateHint } from './ui/TouchChrome';
 
 export function useCloud() {
   return useSyncExternalStore(
@@ -48,6 +49,8 @@ export function App() {
       <Toasts />
       <PromptHost />
       <VolumeControl />
+      {!ed.hasProject && scr.screen === 'menu' && <FullscreenButton />}
+      <RotateHint />
     </>
   );
 }

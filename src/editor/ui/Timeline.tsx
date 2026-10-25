@@ -9,7 +9,7 @@ import { onFrame } from '../playback';
 import { drawHitCircle, rgba, shade } from '../render/draw';
 import { editor, shiftObjectTime, snapSliderLength } from '../store';
 import { fmt } from '../../osu/info';
-import { attachTouch, touchMods, touchedRecently } from '../../ui/touch';
+import { attachTouch, touchMods, touchedRecently, undoTap } from '../../ui/touch';
 
 /** Object row geometry as fractions of the timeline height. */
 const OBJ_R = 0.32;
@@ -242,6 +242,7 @@ export function Timeline() {
       move: (x) => dragTo(x, touchMods.get().shift),
       release: onUp,
       doubleTap: (x, y) => editor.hasProject && seekAt(x, y),
+      multiTap: (n) => editor.hasProject && undoTap(n, () => editor.undo(), () => editor.redo()),
       pinch: {
         start: () => {
           onUp();

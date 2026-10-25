@@ -25,6 +25,7 @@ export function TouchBar() {
     <>
       <div className="ed-thumb-left">
         <AutoAdvance />
+        <LoopButton />
         <JogStrip />
         <PlayButton />
       </div>
@@ -55,6 +56,34 @@ function AutoAdvance() {
     <button className={`ed-thumb-advance ${n ? 'on' : ''}`} onClick={next} title="Move forward after placing a circle">
       {n ? `+${n}` : 'Auto'}
       <small>{n ? (n === 1 ? 'tick' : 'ticks') : 'off'}</small>
+    </button>
+  );
+}
+
+/** A–B loop: first tap marks A at the current time, the second marks B and starts looping, the third clears. */
+function LoopButton() {
+  const [loop, setLoop] = useState<{ a: number; b: number | null } | null>(null);
+  useEffect(() => {
+    if (loop?.b == null) return;
+    const { a, b } = loop;
+    return onFrame((t) => {
+      if (music.playing && t >= b) music.seek(a);
+    });
+  }, [loop]);
+  // A loop belongs to one difficulty's timeline position; drop it when the map changes.
+  const project = useEditor().project;
+  useEffect(() => setLoop(null), [project]);
+  const tap = () => {
+    const t = Math.round(editor.snap(music.time));
+    if (!loop) setLoop({ a: t, b: null });
+    else if (loop.b === null) {
+      if (t !== loop.a) setLoop(t > loop.a ? { a: loop.a, b: t } : { a: t, b: loop.a });
+    } else setLoop(null);
+  };
+  return (
+    <button className={`ed-thumb-advance ${loop ? 'on' : ''}`} onClick={tap} title="Loop a section">
+      {!loop ? 'Loop' : loop.b === null ? 'A →' : 'A–B'}
+      <small>{!loop ? 'off' : loop.b === null ? 'set B' : 'clear'}</small>
     </button>
   );
 }

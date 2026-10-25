@@ -50,6 +50,14 @@ export function useTouchMods() {
 
 let lastTouchAt = -Infinity;
 
+/** Two-finger tap undoes, three-finger tap redoes (the drawing-app convention). */
+export function undoTap(fingers: number, undo: () => void, redo: () => void) {
+  if (fingers === 2) undo();
+  else if (fingers === 3) redo();
+  else return;
+  navigator.vibrate?.(10);
+}
+
 /** The browser's own dblclick after two taps is ignored: TouchGesture reports double taps itself. */
 export function touchedRecently() {
   return performance.now() - lastTouchAt < 1000;
@@ -60,6 +68,8 @@ export function touchedRecently() {
 export const TAP_SLOP = 10;
 export const LONG_PRESS_MS = 450;
 export const DOUBLE_TAP_MS = 300;
+/** A two- or three-finger touch shorter than this that barely moves is a multi-finger tap. */
+export const MULTI_TAP_MS = 300;
 
 /** How a press started: a quick tap, a drag past the slop, or a finger held still (the right click). */
 export type PressKind = 'tap' | 'drag' | 'long';
@@ -77,6 +87,8 @@ export interface GestureHandlers {
   doubleTap?(x: number, y: number): void;
   /** Two fingers: `dx` is how far their midpoint moved, `scale` the change in their spread. */
   pinch?: { start(): void; update(dx: number, scale: number): void; end(): void };
+  /** Two or three fingers tapped together (undo / redo). */
+  multiTap?(fingers: number): void;
 }
 
 type State = 'idle' | 'pending' | 'preview' | 'pressed' | 'pinch';
@@ -89,13 +101,17 @@ export class TouchGesture {
   private moved = false;
   private fingers = new Map<number, { x: number; y: number }>();
   private pinch0 = { mid: 0, dist: 1 };
+  private multi = { t: 0, fingers: 0, moved: false };
   private lastTap = { x: 0, y: 0, t: -Infinity };
 
   constructor(private h: GestureHandlers) {}
 
   down(id: number, x: number, y: number, now: number) {
     this.fingers.set(id, { x, y });
+    if (this.state === 'pinch') this.multi.fingers = Math.max(this.multi.fingers, this.fingers.size);
     if (this.fingers.size === 2 && this.h.pinch) {
+      // A finger already pressing something isn't the start of a tap.
+      this.multi = { t: now, fingers: 2, moved: this.state === 'pressed' || now - this.start.t > MULTI_TAP_MS };
       if (this.state === 'pressed') this.h.release();
       if (this.state !== 'idle') this.h.leave?.();
       this.state = 'pinch';
@@ -119,6 +135,7 @@ export class TouchGesture {
     if (this.state === 'pinch') {
       if (this.fingers.size < 2) return;
       const s = this.spread();
+      if (Math.abs(s.mid - this.pinch0.mid) > TAP_SLOP || Math.abs(s.dist / this.pinch0.dist - 1) > 0.1) this.multi.moved = true;
       this.h.pinch!.update(s.mid - this.pinch0.mid, s.dist / this.pinch0.dist);
       return;
     }
@@ -148,6 +165,8 @@ export class TouchGesture {
       if (this.fingers.size === 0) {
         this.h.pinch!.end();
         this.state = 'idle';
+        const m = this.multi;
+        if (!m.moved && now - m.t < MULTI_TAP_MS) this.h.multiTap?.(m.fingers);
       }
       return;
     }

@@ -10,7 +10,7 @@ import type { PlayfieldMode } from '../playfield/types';
 import { editor } from '../store';
 import { fitFrame, storyboard, type SbFrame } from '../storyboard/runtime';
 import { video } from '../video';
-import { attachTouch, touchMods, touchedRecently } from '../../ui/touch';
+import { attachTouch, touchMods, touchedRecently, undoTap } from '../../ui/touch';
 
 /** How far above the finger (CSS px) the placement cursor sits on touch. */
 const CURSOR_LIFT = 50;
@@ -183,6 +183,7 @@ export function Playfield() {
       },
       leave: () => mode?.pointerLeave(),
       doubleTap: (x, y) => mode?.doubleClick(x, y),
+      multiTap: (n) => editor.hasProject && undoTap(n, () => editor.undo(), () => editor.redo()),
       pinch: {
         start: () => (swipeSteps = 0),
         update: (dx) => {

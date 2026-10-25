@@ -170,7 +170,7 @@
 /* Touch toolbar: keyboard actions and held modifiers as buttons, in the free margin right of the tools. */
 /* Phone layout (touch only): time controls under the left thumb, a context action bar under the right one. */
 .ed-thumb-left { position: absolute; z-index: 4; left: calc(var(--u) * 84 + 10px); top: calc(var(--u) * 141); bottom: calc(var(--u) * 33 + 10px); width: 56px; display: flex; flex-direction: column; gap: 10px; }
-.ed-jog { flex: 1; min-height: 80px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 8px 0; border: 1px solid rgba(255,255,255,0.15); border-radius: 28px; background: rgba(20,20,26,0.7) repeating-linear-gradient(to bottom, transparent 0 14px, rgba(255,255,255,0.22) 14px 16px); color: rgba(255,255,255,0.6); font-size: 14px; touch-action: none; user-select: none; }
+.ed-jog { flex: 1; min-height: 60px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 8px 0; border: 1px solid rgba(255,255,255,0.15); border-radius: 28px; background: rgba(20,20,26,0.7) repeating-linear-gradient(to bottom, transparent 0 14px, rgba(255,255,255,0.22) 14px 16px); color: rgba(255,255,255,0.6); font-size: 14px; touch-action: none; user-select: none; }
 .ed-jog-arrow { pointer-events: none; }
 .ed-thumb-advance { flex: none; height: 44px; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; background: rgba(30,30,36,0.8); color: rgba(255,255,255,0.85); font-size: 13px; }
 .ed-thumb-advance small { font-size: 10px; opacity: 0.7; }

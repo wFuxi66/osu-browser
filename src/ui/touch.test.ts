@@ -16,6 +16,7 @@ function recorder(previewOnly = false) {
       update: (dx, s) => log.push(`pinch ${dx} ${s}`),
       end: () => log.push('pinch end'),
     },
+    multiTap: (n) => log.push(`tap ${n}`),
   };
   return { g: new TouchGesture(h), log };
 }
@@ -83,5 +84,38 @@ describe('TouchGesture', () => {
     g.up(2, 110);
     expect(log).toEqual(['hover 0,0', 'leave', 'pinch start', 'pinch 50 2', 'pinch end']);
     expect(g.tick(LONG_PRESS_MS + 10)).toBe(false);
+  });
+
+  it('a quick two- or three-finger tap is reported once all fingers lift', () => {
+    const { g, log } = recorder();
+    g.down(1, 10, 10, 0);
+    g.down(2, 60, 10, 20);
+    g.up(1, 120);
+    g.up(2, 130);
+    expect(log.at(-1)).toBe('tap 2');
+    const r = recorder();
+    r.g.down(1, 10, 10, 0);
+    r.g.down(2, 60, 10, 10);
+    r.g.down(3, 110, 10, 20);
+    r.g.up(1, 150);
+    r.g.up(2, 150);
+    r.g.up(3, 160);
+    expect(r.log.at(-1)).toBe('tap 3');
+  });
+
+  it('a pinch or a slow two-finger hold is not a tap', () => {
+    const { g, log } = recorder();
+    g.down(1, 10, 10, 0);
+    g.down(2, 60, 10, 20);
+    g.move(2, 120, 10);
+    g.up(1, 120);
+    g.up(2, 130);
+    expect(log.some((l) => l.startsWith('tap'))).toBe(false);
+    const r = recorder();
+    r.g.down(1, 10, 10, 0);
+    r.g.down(2, 60, 10, 20);
+    r.g.up(1, 500);
+    r.g.up(2, 500);
+    expect(r.log.some((l) => l.startsWith('tap'))).toBe(false);
   });
 });

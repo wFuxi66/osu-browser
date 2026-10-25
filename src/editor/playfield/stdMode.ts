@@ -50,8 +50,7 @@ export class StdMode implements PlayfieldMode {
     this.pf.doubleClick(this.osu(x, y));
   }
   touchPreview() {
-    // The slider tool draws freehand when a drag starts with nothing in progress.
-    return editor.tool !== 'select' && !(editor.tool === 'slider' && !editor.placing);
+    return editor.tool !== 'select';
   }
   cancel() {
     return this.pf.cancel();

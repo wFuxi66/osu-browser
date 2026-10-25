@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { music } from '../../audio/music';
 import { findFile } from '../../project/project';
 import { onFrame } from '../playback';
 import { CatchMode } from '../playfield/catchMode';
@@ -146,8 +147,10 @@ export function Playfield() {
       syncMods(e);
     };
     // Touch: a long press is the right click, placement tools preview under the finger and place on lift,
-    // and a two-finger horizontal swipe seeks like the wheel (swiping left moves forward in time).
+    // and a two-finger horizontal swipe seeks like the wheel (swiping left moves forward in time). With auto-advance
+    // on, placing a circle moves time forward so the next one can be tapped right away.
     let swipeSteps = 0;
+    let placeRev: number | null = null;
     const detachTouch = attachTouch(canvas, {
       hover: (x, y) => {
         if (!editor.hasProject) return;
@@ -158,13 +161,19 @@ export function Playfield() {
       press: (x, y, kind) => {
         if (!editor.hasProject) return;
         syncMods(keyMods);
+        placeRev = kind === 'tap' && editor.tool === 'circle' ? editor.contentRev : null;
         ensureMode().pointerDown(x, y, kind === 'long' ? 2 : 0);
       },
       move: (x, y) => {
         syncMods(keyMods);
         mode?.pointerMove(x, y);
       },
-      release: () => mode?.pointerUp(),
+      release: () => {
+        mode?.pointerUp();
+        const ticks = editor.prefs.touchAutoAdvance;
+        if (placeRev !== null && editor.contentRev !== placeRev && ticks > 0 && !music.playing) editor.seekTick(1, ticks);
+        placeRev = null;
+      },
       leave: () => mode?.pointerLeave(),
       doubleTap: (x, y) => mode?.doubleClick(x, y),
       pinch: {

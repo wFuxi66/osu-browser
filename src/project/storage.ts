@@ -253,6 +253,8 @@ export interface Prefs {
   downloadVideo: boolean;
   /** Key binding changes from the defaults (see editor/keybinds.ts). */
   keybinds: Keybinds;
+  /** Touch editor: beat-snap ticks to move forward after placing a circle (0 = off). */
+  touchAutoAdvance: number;
 
   // Gameplay (play mode and the editor's test mode), as in stable's Options.
   /** Background dim while playing (the editor has its own). */
@@ -308,6 +310,7 @@ export const DEFAULT_PREFS: Prefs = {
   beatmapSkins: false,
   skinnedTimeline: true,
   downloadVideo: true,
+  touchAutoAdvance: 0,
   keybinds: {},
   playDim: 0.8,
   keepDimInBreaks: false,

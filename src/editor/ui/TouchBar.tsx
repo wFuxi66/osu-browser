@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { music } from '../../audio/music';
-import { beatLengthAt } from '../../osu/timing';
+import { beatLengthAt, redLineAt } from '../../osu/timing';
 import { onFrame } from '../playback';
 import { runAction } from '../shortcuts';
 import { editor, useEditor } from '../store';
@@ -23,6 +23,7 @@ export function TouchBar() {
   return (
     <>
       <div className="ed-thumb-left">
+        <AutoAdvance />
         <JogStrip />
         <PlayButton />
       </div>
@@ -39,6 +40,30 @@ function PlayButton() {
       {playing ? <PauseIcon /> : <PlayIcon />}
     </button>
   );
+}
+
+const ADVANCE_STEPS = [0, 1, 2, 4];
+
+/** Cycles how many ticks placing a circle moves time forward (see Playfield). */
+function AutoAdvance() {
+  const ed = useEditor();
+  const n = ed.prefs.touchAutoAdvance;
+  const next = () => ed.setPrefs({ touchAutoAdvance: ADVANCE_STEPS[(ADVANCE_STEPS.indexOf(n) + 1) % ADVANCE_STEPS.length] });
+  return (
+    <button className={`ed-thumb-advance ${n ? 'on' : ''}`} onClick={next} title="Move forward after placing a circle">
+      {n ? `+${n}` : 'Auto'}
+      <small>{n ? (n === 1 ? 'tick' : 'ticks') : 'off'}</small>
+    </button>
+  );
+}
+
+/** A buzz for each tick the jog strip passes: stronger on beats, strongest on the first beat of a measure. */
+function buzz(t: number) {
+  const red = redLineAt(editor.bm, t);
+  const beats = (t - red.time) / red.beatLength;
+  const beat = Math.round(beats);
+  if (Math.abs(beats - beat) > 0.01) navigator.vibrate?.(6);
+  else navigator.vibrate?.(beat % Math.max(1, red.meter) === 0 ? 30 : 15);
 }
 
 /**
@@ -68,6 +93,7 @@ function JogStrip() {
       const dir = d.acc > 0 ? 1 : -1;
       editor.seekTick(dir);
       d.acc -= dir * TICK_PX;
+      buzz(music.time);
     }
   };
 
@@ -99,6 +125,7 @@ function JogStrip() {
     if (!d.moved) {
       const r = e.currentTarget.getBoundingClientRect();
       editor.seekTick(e.clientY < r.top + r.height / 2 ? 1 : -1);
+      buzz(music.time);
       return;
     }
     // Lifted while still moving: keep stepping with decaying speed.

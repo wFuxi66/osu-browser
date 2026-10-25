@@ -149,7 +149,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Storyboard script editing (.osb and difficulty events), preserved on export
 - [x] Storyboard playback in the compose background and Design preview: sprites, animations, F/M/MX/MY/S/V/R/C/P, loops, HitSound triggers, all 35 easings, [Variables], widescreen, storyboard samples
 - [x] Visual sprite editor: add from the library (drag onto the preview), select/drag to move (keyframes at the current time), Shift+drag scale, Ctrl+drag rotate, per-time property keyframes, command list with easing, layers/origin/draw order, .osb vs difficulty, undo
-- [x] Video playback in the editor background, synced to the music (formats the browser can decode: mp4/H.264, webm)
+- [x] Video playback in the editor background, synced to the music. Videos the browser can't play (.avi, .flv, old codecs) are converted to 720p H.264 in the browser with ffmpeg.wasm the first time, and the copy is cached; the set keeps its original file
 
 **Not yet**
 - [ ] Live mapping mode (Ctrl+Tab, which browsers keep for switching tabs), osu!mania sample import and "Open Difficulty → For Reference" (osu!mania only in stable): out of scope, this editor is for osu!standard

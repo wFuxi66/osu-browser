@@ -150,6 +150,23 @@ class Editor {
     }, kind === 'error' ? 6000 : 2500);
   }
 
+  /** A toast that stays up, with text that can change, until it's closed. */
+  stickyToast(text: string) {
+    const id = Date.now() + Math.random();
+    this.toasts = [...this.toasts, { id, text, kind: 'info' as const }];
+    this.emit();
+    return {
+      update: (next: string) => {
+        this.toasts = this.toasts.map((x) => (x.id === id ? { ...x, text: next } : x));
+        this.emit();
+      },
+      close: () => {
+        this.toasts = this.toasts.filter((x) => x.id !== id);
+        this.emit();
+      },
+    };
+  }
+
   /** Changes settings. Changes the user makes are stamped and synced through Google Drive a few seconds later. */
   setPrefs(p: Partial<Prefs>, fromSync = false) {
     const changed = !fromSync && Object.keys(p).length > 0;

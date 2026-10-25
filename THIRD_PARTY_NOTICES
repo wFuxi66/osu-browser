@@ -32,3 +32,15 @@ The hitsound samples in public/samples and the osu!default skin images in
 public/skins/default are from ppy/osu-resources and are NOT covered by the MIT
 License above: they are licensed CC BY-NC 4.0 by ppy Pty Ltd (see the
 ATTRIBUTION.md files in those folders). osu! is a trademark of ppy Pty Ltd.
+
+--------------------------------------------------------------------------------
+
+Video converter
+
+Background videos the browser can't play are converted with ffmpeg.wasm
+(https://github.com/ffmpegwasm/ffmpeg.wasm). @ffmpeg/ffmpeg is MIT licensed.
+@ffmpeg/core, the FFmpeg build it loads (with libx264), is a separate program
+licensed GPL-2.0-or-later and is NOT covered by the MIT License above; it is
+shipped unmodified from npm, and its source is at
+https://github.com/ffmpegwasm/ffmpeg.wasm (FFmpeg: https://ffmpeg.org,
+x264: https://code.videolan.org/videolan/x264).

@@ -155,6 +155,10 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [ ] Live mapping mode (Ctrl+Tab, which browsers keep for switching tabs), osu!mania sample import and "Open Difficulty → For Reference" (osu!mania only in stable): out of scope, this editor is for osu!standard
 - [ ] Upload Beatmap (use the real client)
 
+## Contributing
+
+Issues and pull requests are welcome. The rule is that osu! stable is the reference: anything that behaves differently from stable is a bug, so the most useful report is "in stable, X does Y; here it does Z". Open an issue before a large change, and run `npm run typecheck` and `npm test` before opening a pull request.
+
 ## Credits
 
 Default hitsound and gameplay samples (including `spinnerspin.wav`, `combobreak.mp3`, `applause.mp3`) and the osu!default skin images in `public/skins/default` are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0), unmodified. Slider maths follows osu-framework's `PathApproximator`. Star ratings are a TypeScript port of the difficulty calculators in [ppy/osu](https://github.com/ppy/osu) (lazer, MIT licence, version 2026.730.0, which is what osu.ppy.sh runs), together with lazer's `SliderPath` and osu-framework's `PathApproximator` (also MIT) in single precision. The UI font is [Ubuntu](https://design.ubuntu.com/font) (Ubuntu Font Licence), standing in for stable's Aller; icons are drawn in SVG, and no files are copied from an osu! install. This project isn't affiliated with ppy.

@@ -14,6 +14,7 @@ import {
   drawSkinSpinner,
   drawSliderBall,
   drawSliderBody,
+  drawSliderEndCircle,
   drawSliderTick,
   strokePolyline,
   toScreen,
@@ -199,10 +200,12 @@ export class StdPlayfield {
     const colour = this.comboColour(o);
     const { track, border } = sliderColours(bm, colour);
     let pts = path.points;
+    let snaked = true;
     if (editor.prefs.snakingSliders && t < o.time) {
       const appear = o.time - p.preempt;
       const snake = Math.min(1, Math.max(0, (t - appear) / (p.preempt / 3)));
       pts = path.pathBetween(0, snake);
+      snaked = snake >= 1;
     }
     const bodyAlpha = t > info.endTime ? alpha : alpha;
     drawSliderBody(ctx, pts.map(toS), r, track, border, bodyAlpha * 0.9, selected);
@@ -212,6 +215,18 @@ export class StdPlayfield {
     for (const tp of sliderTickProgresses(bm, o)) {
       const q = toS(path.positionAt(tp));
       drawSliderTick(ctx, q.x, q.y, r, alpha);
+    }
+
+    // End circles where a span still to come finishes (even spans end at the far end)
+    const spanNow = t < o.time ? 0 : Math.min(o.slides - 1, Math.floor((t - o.time) / Math.max(1, span)));
+    const moreSpans = spanNow < o.slides - 1;
+    if (moreSpans || spanNow % 2 === 1) {
+      const q = toS(path.positionAt(0));
+      drawSliderEndCircle(ctx, q.x, q.y, r, colour, alpha);
+    }
+    if (snaked && (moreSpans || spanNow % 2 === 0)) {
+      const q = toS(path.positionAt(1));
+      drawSliderEndCircle(ctx, q.x, q.y, r, colour, alpha);
     }
 
     // Reverse arrows

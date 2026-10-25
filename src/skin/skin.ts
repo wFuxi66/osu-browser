@@ -51,6 +51,8 @@ const ELEMENTS: Record<string, string[]> = {
   hitcircleselect: ['hitcircleselect'],
   sliderstartcircle: ['sliderstartcircle'],
   sliderstartcircleoverlay: ['sliderstartcircleoverlay', 'sliderstartcircleoverlay-0'],
+  sliderendcircle: ['sliderendcircle'],
+  sliderendcircleoverlay: ['sliderendcircleoverlay', 'sliderendcircleoverlay-0'],
   approachcircle: ['approachcircle'],
   reversearrow: ['reversearrow'],
   followpoint: ['followpoint', 'followpoint-0'],
@@ -102,7 +104,7 @@ const SCORE_GLYPHS: Record<string, string> = { ',': 'comma', '.': 'dot', '%': 'p
 for (let d = 0; d < 10; d++) SCORE_GLYPHS[String(d)] = String(d);
 
 // What public/skins/default holds (all @2x).
-const DEFAULT_MISSING = /^(sliderstart|spinner-circle|play-skip|pause-|fail-background|selection-mod-)/;
+const DEFAULT_MISSING = /^(sliderstart|sliderend|spinner-circle|play-skip|pause-|fail-background|selection-mod-)/;
 const DEFAULT_FILES = [
   ...Object.keys(ELEMENTS).filter((k) => !DEFAULT_MISSING.test(k)),
   ...Array.from({ length: 10 }, (_, i) => `default-${i}`),
@@ -190,6 +192,11 @@ export class Skin {
 
   get(name: string): Texture | undefined {
     return this.textures.get(name) ?? this.fallback?.get(name);
+  }
+
+  /** Whether the skin itself (not its fallback) has this element. */
+  has(name: string): boolean {
+    return this.textures.has(name);
   }
 
   /** Whether this skin has any element of its own (rather than only falling back). */

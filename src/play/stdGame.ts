@@ -14,6 +14,7 @@ import {
   drawReverseArrow,
   drawSliderBall,
   drawSliderBody,
+  drawSliderEndCircle,
   drawSliderTick,
   drawTexture,
   toScreen,
@@ -745,6 +746,10 @@ export class StdGame {
       drawSliderBody(ctx, pts, R, track, border, alpha * 0.9, false);
 
       const spanNow = t < g.start ? 0 : Math.min(o.slides - 1, Math.floor((t - g.start) / Math.max(1, g.span)));
+      // End circles where a span still to come finishes (even spans end at the far end), the last one fading with the body.
+      const moreSpans = spanNow < o.slides - 1;
+      if (moreSpans || spanNow % 2 === 1) drawSliderEndCircle(ctx, pts[0].x, pts[0].y, R, g.colour, alpha);
+      if (snake >= 1 && (moreSpans || spanNow % 2 === 0)) drawSliderEndCircle(ctx, pts[pts.length - 1].x, pts[pts.length - 1].y, R, g.colour, alpha);
       if (t <= g.end) {
         for (const p of g.parts) {
           if (p.kind !== 'tick' || p.done || p.span !== spanNow || (snake < 1 && p.progress > snake)) continue;

@@ -150,9 +150,12 @@ export function Playfield() {
       syncMods(e);
     };
     // Touch: a long press is the right click, placement tools preview under the finger and place on lift,
-    // and a two-finger horizontal swipe seeks like the wheel (swiping left moves forward in time). With auto-advance
+    // a two-finger horizontal swipe seeks like the wheel (swiping left moves forward in time), and a pinch changes
+    // distance spacing like Alt + wheel. With auto-advance
     // on, placing a circle moves time forward so the next one can be tapped right away.
     let swipeSteps = 0;
+    let pinchKind: 'seek' | 'spacing' | null = null;
+    let ds0 = 1;
     let placeRev: number | null = null;
     // While placing, the cursor sits above the finger so the finger doesn't hide it, easing back to the finger
     // near the bottom edge so the bottom of the playfield stays reachable.
@@ -186,14 +189,34 @@ export function Playfield() {
       doubleTap: (x, y) => mode?.doubleClick(x, y),
       multiTap: (n) => editor.hasProject && undoTap(n, () => editor.undo(), () => editor.redo()),
       pinch: {
-        start: () => (swipeSteps = 0),
-        update: (dx) => {
-          if (!editor.hasProject) return;
-          const steps = Math.trunc(-dx / 40);
-          for (; swipeSteps < steps; swipeSteps++) editor.seekTick(1);
-          for (; swipeSteps > steps; swipeSteps--) editor.seekTick(-1);
+        start: () => {
+          swipeSteps = 0;
+          pinchKind = null;
+          ds0 = editor.hasProject ? editor.bm.editor.distanceSpacing : 1;
         },
-        end: () => {},
+        update: (dx, scale) => {
+          if (!editor.hasProject) return;
+          // Whichever moves first decides: a swipe seeks, a pinch changes distance spacing (osu! and catch only).
+          const dsModes = editor.bm.general.mode === 0 || editor.bm.general.mode === 2;
+          if (!pinchKind) pinchKind = dsModes && Math.abs(scale - 1) > 0.12 ? 'spacing' : Math.abs(dx) > 20 ? 'seek' : null;
+          if (pinchKind === 'spacing') {
+            const ds = Math.round(ds0 * scale * 10) / 10;
+            if (ds !== editor.bm.editor.distanceSpacing) {
+              editor.distanceSnap = true;
+              editor.setDistanceSpacing(ds);
+              navigator.vibrate?.(6);
+            }
+          } else if (pinchKind === 'seek') {
+            const steps = Math.trunc(-dx / 40);
+            for (; swipeSteps < steps; swipeSteps++) editor.seekTick(1);
+            for (; swipeSteps > steps; swipeSteps--) editor.seekTick(-1);
+          }
+        },
+        end: () => {
+          if (pinchKind === 'spacing' && editor.hasProject && editor.bm.editor.distanceSpacing !== ds0) {
+            editor.toast(`Distance spacing: ${editor.bm.editor.distanceSpacing}x`);
+          }
+        },
       },
     });
     canvas.addEventListener('pointerdown', down);

@@ -12,6 +12,9 @@ import { fitFrame, storyboard, type SbFrame } from '../storyboard/runtime';
 import { video } from '../video';
 import { attachTouch, touchMods, touchedRecently } from '../../ui/touch';
 
+/** How far above the finger (CSS px) the placement cursor sits on touch. */
+const CURSOR_LIFT = 50;
+
 /** The active compose surface, exposed so keyboard shortcuts can reach it (Escape/Enter). */
 export const activePlayfield: { current: PlayfieldMode | null } = { current: null };
 
@@ -151,22 +154,26 @@ export function Playfield() {
     // on, placing a circle moves time forward so the next one can be tapped right away.
     let swipeSteps = 0;
     let placeRev: number | null = null;
+    // While placing, the cursor sits above the finger so the finger doesn't hide it, easing back to the finger
+    // near the bottom edge so the bottom of the playfield stays reachable.
+    const lift = (y: number) =>
+      editor.hasProject && ensureMode().touchPreview?.() ? y - CURSOR_LIFT * Math.min(1, Math.max(0, (h - y) / (CURSOR_LIFT * 2))) : y;
     const detachTouch = attachTouch(canvas, {
       hover: (x, y) => {
         if (!editor.hasProject) return;
         syncMods(keyMods);
-        ensureMode().pointerMove(x, y);
+        ensureMode().pointerMove(x, lift(y));
       },
       previewOnly: () => editor.hasProject && !!ensureMode().touchPreview?.(),
       press: (x, y, kind) => {
         if (!editor.hasProject) return;
         syncMods(keyMods);
         placeRev = kind === 'tap' && editor.tool === 'circle' ? editor.contentRev : null;
-        ensureMode().pointerDown(x, y, kind === 'long' ? 2 : 0);
+        ensureMode().pointerDown(x, lift(y), kind === 'long' ? 2 : 0, kind === 'drag');
       },
       move: (x, y) => {
         syncMods(keyMods);
-        mode?.pointerMove(x, y);
+        mode?.pointerMove(x, lift(y));
       },
       release: () => {
         mode?.pointerUp();

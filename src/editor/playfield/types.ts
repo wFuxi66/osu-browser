@@ -8,7 +8,8 @@ export interface PlayfieldMode {
   readonly cursor?: Vec2 | null;
   layout(width: number, height: number): void;
   draw(ctx: CanvasRenderingContext2D, time: number): void;
-  pointerDown(x: number, y: number, button: number): void;
+  /** `touchDrag`: a finger started dragging here (on touch, dragging empty space moves the selection). */
+  pointerDown(x: number, y: number, button: number, touchDrag?: boolean): void;
   pointerMove(x: number, y: number): void;
   pointerLeave(): void;
   pointerUp(): void;

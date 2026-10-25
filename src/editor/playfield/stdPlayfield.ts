@@ -454,7 +454,7 @@ export class StdPlayfield {
 
   // ------------------------------------------------------------------ interaction
 
-  pointerDown(p: Vec2, button: number, v: View) {
+  pointerDown(p: Vec2, button: number, v: View, touchDrag = false) {
     const t = music.time;
     if (button === 2) {
       this.rightClick(p, v, t);
@@ -505,7 +505,9 @@ export class StdPlayfield {
       }
     }
 
-    const hit = this.hitTest(p, t);
+    // On touch, dragging empty space moves the selection like a trackpad, so the finger doesn't cover it.
+    const sel0 = touchDrag && !this.mods.ctrl && !this.mods.shift ? editor.selectedObjects : [];
+    const hit = this.hitTest(p, t) ?? (sel0.length ? sel0[0] : null);
     if (hit) {
       if (this.mods.ctrl || this.mods.shift) {
         editor.toggleSelect(hit.id);

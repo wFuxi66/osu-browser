@@ -34,8 +34,8 @@ export class StdMode implements PlayfieldMode {
     return toOsu(this.view, { x, y });
   }
 
-  pointerDown(x: number, y: number, button: number) {
-    this.pf.pointerDown(this.osu(x, y), button, this.view);
+  pointerDown(x: number, y: number, button: number, touchDrag = false) {
+    this.pf.pointerDown(this.osu(x, y), button, this.view, touchDrag);
   }
   pointerMove(x: number, y: number) {
     this.pf.pointerMove(this.osu(x, y));

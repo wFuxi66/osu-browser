@@ -4,7 +4,7 @@ import { autoCurveType, computeRawPath, dist, getSliderPath, sliderPositionAtSpa
 import { comboColourIndex, sliderTickProgresses, stackedPosition } from '../../osu/processing';
 import { sliderSpanDuration } from '../../osu/timing';
 import { comboColours, sliderColours } from '../../skin/skin';
-import { defaultSample, newObjectId, type HitObject, type Rgb, type Slider, type Vec2 } from '../../osu/types';
+import { defaultSample, newObjectId, type CurveType, type HitObject, type Rgb, type Slider, type Vec2 } from '../../osu/types';
 import {
   drawApproachCircle,
   drawFollowPoints,
@@ -27,7 +27,8 @@ import { clampToPlayfield, distanceSnapActive, distanceSnapCentre, gridSnapActiv
 type Drag =
   | { kind: 'move'; start: Vec2; anchor: HitObject; anchorStart: Vec2; originals: Map<number, HitObject>; moved: boolean }
   | { kind: 'box'; start: Vec2; end: Vec2; additive: boolean }
-  | { kind: 'point'; slider: Slider; index: number; moved: boolean };
+  | { kind: 'point'; slider: Slider; index: number; moved: boolean }
+  | { kind: 'draw'; stroke: Vec2[] };
 
 const SPINNER_RADIUS = 180;
 
@@ -491,6 +492,14 @@ export class StdPlayfield {
         editor.spinnerClick();
         return;
       case 'slider':
+        // Touch: dragging with nothing in progress draws the slider freehand.
+        if (touchDrag && !editor.placing) {
+          const head = clampToPlayfield(snapPosition(p, this.mods, this.placementTime()));
+          this.drag = { kind: 'draw', stroke: [head] };
+          editor.placing = { kind: 'slider', vertices: [head], time: this.placementTime() };
+          editor.emit();
+          return;
+        }
         this.sliderClick(p);
         return;
     }
@@ -579,6 +588,11 @@ export class StdPlayfield {
         translateObject(o, dx, dy);
       }
       editor.touch();
+    } else if (d.kind === 'draw') {
+      const q = clampToPlayfield(p);
+      if (dist(q, d.stroke[d.stroke.length - 1]) >= 4) d.stroke.push(q);
+      if (editor.placing?.kind === 'slider') editor.placing.vertices = simplifyStroke(d.stroke);
+      editor.emit();
     } else if (d.kind === 'point') {
       const s = d.slider;
       const q = clampToPlayfield(this.snapNonHead(p));
@@ -602,6 +616,14 @@ export class StdPlayfield {
     const d = this.drag;
     this.drag = null;
     if (!d) return;
+    if (d.kind === 'draw') {
+      const placing = editor.placing?.kind === 'slider' ? editor.placing : null;
+      editor.placing = null;
+      const verts = simplifyStroke(d.stroke);
+      if (placing && verts.length >= 2) this.createSlider(strokeCurve(verts), placing.time);
+      else editor.emit();
+      return;
+    }
     if (d.kind === 'move' || d.kind === 'point') {
       if (d.moved) editor.endChange();
       else editor.cancelChange();
@@ -735,18 +757,22 @@ export class StdPlayfield {
       return;
     }
     const verts = placing.vertices;
+    this.createSlider({ verts, curveType: autoCurveType(verts) }, placing.time);
+  }
+
+  private createSlider({ verts, curveType }: { verts: Vec2[]; curveType: CurveType }, time: number) {
     const sound = this.placementSound();
     const s: Slider = {
       id: newObjectId(),
       kind: 'slider',
       x: verts[0].x,
       y: verts[0].y,
-      time: placing.time,
+      time,
       newCombo: editor.placement.newCombo,
       comboSkip: 0,
       hitSound: sound,
       sample: this.placementSample(),
-      curveType: autoCurveType(verts),
+      curveType,
       points: verts.slice(1),
       slides: 1,
       length: 0,
@@ -840,6 +866,50 @@ export class StdPlayfield {
       snapSliderLength(editor.bm, s, editor.beatDivisor);
     });
   }
+}
+
+/** Freehand stroke → the few points that keep its shape (Ramer–Douglas–Peucker, in osu!pixels). */
+function simplifyStroke(stroke: Vec2[], eps = 6): Vec2[] {
+  if (stroke.length < 3) return stroke.map((q) => ({ x: Math.round(q.x), y: Math.round(q.y) }));
+  const keep = new Array<boolean>(stroke.length).fill(false);
+  keep[0] = keep[stroke.length - 1] = true;
+  const stack: [number, number][] = [[0, stroke.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    let best = -1;
+    let bestD = eps;
+    for (let i = a + 1; i < b; i++) {
+      const d = distToSegment(stroke[i], stroke[a], stroke[b]);
+      if (d > bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best < 0) continue;
+    keep[best] = true;
+    stack.push([a, best], [best, b]);
+  }
+  return stroke.filter((_, i) => keep[i]).map((q) => ({ x: Math.round(q.x), y: Math.round(q.y) }));
+}
+
+/**
+ * Simplified stroke → slider curve through every point: a line or a perfect circle for 2–3 points, otherwise
+ * Catmull-Rom segments written as bezier pieces joined by red anchors.
+ */
+function strokeCurve(pts: Vec2[]): { verts: Vec2[]; curveType: CurveType } {
+  if (pts.length <= 3) return { verts: pts, curveType: autoCurveType(pts) };
+  const r = (q: Vec2) => clampToPlayfield({ x: Math.round(q.x), y: Math.round(q.y) });
+  const verts: Vec2[] = [pts[0]];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    verts.push(
+      r({ x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 }),
+      r({ x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 }),
+      p2,
+    );
+    if (i < pts.length - 2) verts.push({ ...p2 });
+  }
+  return { verts, curveType: 'B' };
 }
 
 function distToSegment(p: Vec2, a: Vec2, b: Vec2): number {

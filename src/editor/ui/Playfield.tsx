@@ -157,7 +157,7 @@ export function Playfield() {
     // While placing, the cursor sits above the finger so the finger doesn't hide it, easing back to the finger
     // near the bottom edge so the bottom of the playfield stays reachable.
     const lift = (y: number) =>
-      editor.hasProject && ensureMode().touchPreview?.() ? y - CURSOR_LIFT * Math.min(1, Math.max(0, (h - y) / (CURSOR_LIFT * 2))) : y;
+      editor.hasProject && editor.tool !== 'select' ? y - CURSOR_LIFT * Math.min(1, Math.max(0, (h - y) / (CURSOR_LIFT * 2))) : y;
     const detachTouch = attachTouch(canvas, {
       hover: (x, y) => {
         if (!editor.hasProject) return;

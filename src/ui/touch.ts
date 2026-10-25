@@ -27,6 +27,15 @@ export function useTouch() {
   return useSyncExternalStore(subscribe, () => touchDevice);
 }
 
+/**
+ * Canvas pixel ratio: phones report 3 or more, and filling a full-screen canvas at that density every frame
+ * stalls them, so touch devices draw at 2× at most. Desktop keeps the real ratio.
+ */
+export function canvasDpr() {
+  const dpr = window.devicePixelRatio || 1;
+  return touchDevice ? Math.min(dpr, 2) : dpr;
+}
+
 export interface TouchMods {
   shift: boolean;
   ctrl: boolean;

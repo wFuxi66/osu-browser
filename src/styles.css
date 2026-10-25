@@ -126,6 +126,8 @@ kbd { background: #2a2a38; border: 1px solid var(--border); border-radius: 3px; 
 
 /* ---------------------------------------------------------------- touch screens */
 .playfield-canvas, .timeline-canvas, .progress-canvas, .ss-carousel { touch-action: none; }
+/* No double-tap-to-zoom wait on taps (iOS otherwise holds every click ~300 ms). */
+[data-touch] button, [data-touch] select, [data-touch] input, [data-touch] a { touch-action: manipulation; }
 [data-touch] body { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
 
 .rotate-hint { position: fixed; inset: 0; z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #000; color: #fff; font: 18px var(--osu-font, sans-serif); text-align: center; padding: 24px; }

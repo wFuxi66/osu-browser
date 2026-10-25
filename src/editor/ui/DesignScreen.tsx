@@ -26,6 +26,7 @@ import { editor, formatTimestamp, useEditor } from '../store';
 import { design, keyframeStyle, setKeyframe, setPositionAt, type KeyframeType } from '../storyboard/design';
 import { fitFrame, SB_H, SB_W, SB_WIDE_MARGIN, storyboard, type SbFrame, type SbRef, type SbSource } from '../storyboard/runtime';
 import { drawBackground } from './Playfield';
+import { canvasDpr } from '../../ui/touch';
 
 const IMAGE_RE = /\.(png|jpe?g|gif|bmp|webp)$/i;
 const SOUND_RE = /\.(wav|ogg|mp3)$/i;
@@ -219,7 +220,7 @@ export function DesignTimeline() {
     let w = 0;
     let h = 0;
     const ro = new ResizeObserver(() => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       w = canvas.clientWidth;
       h = canvas.clientHeight;
       canvas.width = w * dpr;
@@ -331,7 +332,7 @@ function SbPreview() {
     let frame: SbFrame = { ox: 0, oy: 0, scale: 1 };
     let hover: SbRef | null = null;
     const ro = new ResizeObserver(() => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       w = canvas.clientWidth;
       h = canvas.clientHeight;
       canvas.width = w * dpr;

@@ -9,7 +9,7 @@ import { onFrame } from '../playback';
 import { drawHitCircle, rgba, shade } from '../render/draw';
 import { editor, shiftObjectTime, snapSliderLength } from '../store';
 import { fmt } from '../../osu/info';
-import { attachTouch, touchMods, touchedRecently, undoTap } from '../../ui/touch';
+import { attachTouch, canvasDpr, touchMods, touchedRecently, undoTap } from '../../ui/touch';
 
 /** Object row geometry as fractions of the timeline height. */
 const OBJ_R = 0.32;
@@ -34,7 +34,7 @@ export function Timeline() {
     let w = 0;
     let h = 0;
     const ro = new ResizeObserver(() => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       w = canvas.clientWidth;
       h = canvas.clientHeight;
       canvas.width = w * dpr;

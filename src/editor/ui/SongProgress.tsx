@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { music } from '../../audio/music';
 import { onFrame } from '../playback';
 import { editor } from '../store';
+import { canvasDpr } from '../../ui/touch';
 
 /** The full-song overview bar: bookmarks, timing points, kiai, breaks, preview point. Click/drag to seek. */
 export function SongProgress() {
@@ -13,7 +14,7 @@ export function SongProgress() {
     let w = 0;
     let h = 0;
     const ro = new ResizeObserver(() => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       w = canvas.clientWidth;
       h = canvas.clientHeight;
       canvas.width = w * dpr;

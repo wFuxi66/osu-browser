@@ -10,7 +10,7 @@ import type { PlayfieldMode } from '../playfield/types';
 import { editor } from '../store';
 import { fitFrame, storyboard, type SbFrame } from '../storyboard/runtime';
 import { video } from '../video';
-import { attachTouch, touchMods, touchedRecently, undoTap } from '../../ui/touch';
+import { attachTouch, canvasDpr, touchMods, touchedRecently, undoTap } from '../../ui/touch';
 
 /** How far above the finger (CSS px) the placement cursor sits on touch. */
 const CURSOR_LIFT = 50;
@@ -96,7 +96,7 @@ export function Playfield() {
     };
 
     const ro = new ResizeObserver(() => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       w = canvas.clientWidth;
       h = canvas.clientHeight;
       canvas.width = w * dpr;

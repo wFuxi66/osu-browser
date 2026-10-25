@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { onFrame } from '../playback';
 import { editor } from '../store';
 import { drawBackground } from './Playfield';
+import { canvasDpr } from '../../ui/touch';
 
 /** The dimmed beatmap background (with video/storyboard) behind screens that have no playfield. */
 export function StageBackground() {
@@ -12,7 +13,7 @@ export function StageBackground() {
     let w = 0;
     let h = 0;
     const ro = new ResizeObserver(() => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       w = canvas.clientWidth;
       h = canvas.clientHeight;
       canvas.width = w * dpr;

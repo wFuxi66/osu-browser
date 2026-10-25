@@ -9,6 +9,8 @@ import { myBeatmapsets, PAGE_SIZE, searchBeatmapsets, type DirectQuery, type Dir
 import { projectFromLink } from '../project/open';
 import { starColour } from './filter';
 
+const previewVolume = () => editor.prefs.masterVolume * editor.prefs.musicVolume;
+
 const STATUSES: [DirectStatus, string][] = [
   ['ranked', 'Ranked'],
   ['loved', 'Loved'],
@@ -202,6 +204,14 @@ export function DirectPanel({ have, background, onImported, onOpen, onClose, min
     };
   }, [onClose]);
 
+  // The preview follows the volume settings while it plays (Alt+wheel), as the song select music does.
+  useEffect(() => {
+    const off = editor.subscribe(() => {
+      if (audio.current) audio.current.volume = previewVolume();
+    });
+    return () => void off();
+  }, []);
+
   // My beatmaps loads once per panel; the list is filtered here rather than searched.
   useEffect(() => {
     if (!mine || mySets) return;
@@ -237,7 +247,7 @@ export function DirectPanel({ have, background, onImported, onOpen, onClose, min
     music.pause();
     setPreviewAt(0);
     a.src = s.preview;
-    a.volume = editor.prefs.masterVolume * editor.prefs.musicVolume;
+    a.volume = previewVolume();
     a.onended = () => setPlaying(null);
     a.ontimeupdate = () => a.duration && setPreviewAt(a.currentTime / a.duration);
     a.play().then(

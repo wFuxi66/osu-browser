@@ -131,6 +131,7 @@ export function Playfield() {
       syncMods(e);
       canvas.setPointerCapture(e.pointerId);
       const p = local(e);
+      if (e.button === 0 && editor.leavePlacement(ensureMode().inPlayfield?.(p.x, p.y) === false)) return;
       ensureMode().pointerDown(p.x, p.y, e.button);
     };
     const move = (e: PointerEvent) => {

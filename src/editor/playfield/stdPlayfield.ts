@@ -266,7 +266,7 @@ export class StdPlayfield {
     if (!(editor.prefs.showHitAnimations && t > o.time + 240)) {
       const s = this.hitAnimation(o, t, o.time);
       const headAlpha = editor.prefs.showHitAnimations && t > o.time ? alpha * (1 - (t - o.time) / 240) : alpha;
-      drawHitCircle(ctx, head.x, head.y, r * s, colour, headAlpha, String(info.comboNumber), false);
+      drawHitCircle(ctx, head.x, head.y, r * s, colour, headAlpha, String(info.comboNumber), false, true);
     }
     if (selected) {
       drawSelectionRing(ctx, head.x, head.y, r);
@@ -287,7 +287,9 @@ export class StdPlayfield {
     const c = toScreen(v, { x: 256, y: 192 });
     const R = SPINNER_RADIUS * v.scale;
     const prog = t < o.time ? 1 : Math.max(0, 1 - (t - o.time) / Math.max(1, o.endTime - o.time));
-    if (drawSkinSpinner(ctx, c, v.scale, prog, alpha, SPINNER_RADIUS)) {
+    // Spun at autoplay's 477 rpm while the song is inside it.
+    const rotation = (Math.max(0, Math.min(t, o.endTime) - o.time) * 477 * Math.PI * 2) / 60000;
+    if (drawSkinSpinner(ctx, c, v.scale, prog, alpha, SPINNER_RADIUS, rotation)) {
       if (selected) {
         ctx.save();
         ctx.strokeStyle = '#ffd400';
@@ -317,6 +319,10 @@ export class StdPlayfield {
     ctx.beginPath();
     ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
     ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y);
+    ctx.lineTo(c.x + Math.sin(rotation) * R * 0.6, c.y - Math.cos(rotation) * R * 0.6);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -647,8 +653,9 @@ export class StdPlayfield {
       editor.spinnerClick();
       return;
     }
+    // With nothing half-placed, right-click leaves the placement tool for select.
     if (editor.tool !== 'select') {
-      editor.toggleNewCombo();
+      editor.setTool('select');
       return;
     }
     const sel = this.selectedSlider();

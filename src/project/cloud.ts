@@ -7,6 +7,17 @@ import { buildSyncPackage, originOf, restoreSyncPackage, setIdOf } from './syncp
 
 /** How long to wait before asking the mirrors again for a set they didn't have. */
 const MIRROR_RECHECK = 1000 * 60 * 60 * 24;
+/** Maps transferred at once by a full sync: enough to hide each request's latency, few enough for memory. */
+const SYNC_CONCURRENCY = 3;
+
+/** Runs `fn` over the items, at most `limit` at a time. */
+async function pool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await fn(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
 
 export interface OsuUser {
   id: number;
@@ -122,7 +133,29 @@ class Cloud {
     await saveOriginLocal(p.id, p.origin);
   }
 
-  async upload(p: Project): Promise<void> {
+  /** Each project's upload in flight (later saves wait for it), and the last updatedAt sent. */
+  private uploads = new Map<string, Promise<void>>();
+  private uploaded = new Map<string, number>();
+
+  /**
+   * Uploads a project. Saves made while one of its uploads is running wait for it and then send only the newest
+   * state once, rather than racing each other.
+   */
+  upload(p: Project): Promise<void> {
+    const prev = this.uploads.get(p.id) ?? Promise.resolve();
+    const next = prev
+      .catch(() => undefined)
+      .then(() => (p.updatedAt > (this.uploaded.get(p.id) ?? 0) ? this.uploadNow(p) : undefined));
+    this.uploads.set(p.id, next);
+    const done = () => {
+      if (this.uploads.get(p.id) === next) this.uploads.delete(p.id);
+    };
+    next.then(done, done);
+    return next;
+  }
+
+  private async uploadNow(p: Project): Promise<void> {
+    const at = p.updatedAt;
     await this.ensureOrigin(p);
     const { blob, lite } = await buildSyncPackage(p);
     const osz = oszFilename(p);
@@ -138,7 +171,8 @@ class Cloud {
       },
       blob,
     );
-    await markSynced(p.id, p.updatedAt);
+    await markSynced(p.id, at);
+    this.uploaded.set(p.id, at);
   }
 
   async download(meta: CloudProject): Promise<{ project: Project; warnings: string[] }> {
@@ -168,42 +202,60 @@ class Cloud {
     return drive.remove(id);
   }
 
-  /** Two-way sync, newest wins. Returns the number of projects transferred. */
-  async syncAll(): Promise<number> {
-    if (!this.syncing) return 0;
+  private running: Promise<number> | null = null;
+
+  /**
+   * Two-way sync, newest wins, a few maps at a time. `onProgress` hears how many of the transfers are done (and
+   * after each one, so the song list can show maps as they arrive). Returns the number of projects transferred.
+   * Asked again while it runs, it returns the sync already running.
+   */
+  syncAll(onProgress?: (done: number, total: number) => void): Promise<number> {
+    if (!this.syncing) return Promise.resolve(0);
+    this.running ??= this.syncAllNow(onProgress).finally(() => (this.running = null));
+    return this.running;
+  }
+
+  private async syncAllNow(onProgress?: (done: number, total: number) => void): Promise<number> {
     const [remote, local] = await Promise.all([this.list(), listProjectsLocal()]);
     const localById = new Map(local.map((l) => [l.id, l]));
     const remoteById = new Map(remote.map((r) => [r.id, r]));
-    let n = 0;
     // One map failing (e.g. its set left the mirrors) shouldn't stop the others from syncing.
     const failures: string[] = [];
+    const jobs: (() => Promise<void>)[] = [];
     for (const r of remote) {
       const l = localById.get(r.id);
       if (!l || r.updatedAt > l.updatedAt) {
-        try {
-          const { project, warnings } = await this.download(r);
-          await saveProjectLocal(project, r.updatedAt);
-          n++;
-          for (const w of warnings) failures.push(`"${r.title}": ${w}`);
-        } catch (e) {
-          failures.push(`"${r.title}": ${(e as Error).message}`);
-        }
+        jobs.push(async () => {
+          try {
+            const { project, warnings } = await this.download(r);
+            await saveProjectLocal(project, r.updatedAt);
+            for (const w of warnings) failures.push(`"${r.title}": ${w}`);
+          } catch (e) {
+            failures.push(`"${r.title}": ${(e as Error).message}`);
+          }
+        });
       }
     }
     for (const l of local) {
       const r = remoteById.get(l.id);
       if ((!r || l.updatedAt > r.updatedAt) && l.updatedAt > l.syncedAt) {
-        try {
-          const p = await loadProjectLocal(l.id);
-          if (p) {
-            await this.upload(p);
-            n++;
+        jobs.push(async () => {
+          try {
+            const p = await loadProjectLocal(l.id);
+            if (p) await this.upload(p);
+          } catch (e) {
+            failures.push((e as Error).message);
           }
-        } catch (e) {
-          failures.push((e as Error).message);
-        }
+        });
       }
     }
+    let done = 0;
+    if (jobs.length) onProgress?.(0, jobs.length);
+    await pool(jobs, SYNC_CONCURRENCY, async (job) => {
+      await job();
+      onProgress?.(++done, jobs.length);
+    });
+    const n = jobs.length - failures.length;
     if (failures.length) throw new Error((n > 0 ? `Synced ${n}, but ` : '') + failures.join(' · '));
     return n;
   }

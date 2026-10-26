@@ -10,6 +10,8 @@ export interface SkinIni {
   sliderBorder: Rgb | null;
   sliderTrackOverride: Rgb | null;
   sliderBall: Rgb | null;
+  spinnerBackground: Rgb;
+  cursorCentre: boolean;
   allowSliderBallTint: boolean;
   overlayAboveNumber: boolean;
   hitCirclePrefix: string;
@@ -67,6 +69,8 @@ const ELEMENTS: Record<string, string[]> = {
   'spinner-middle2': ['spinner-middle2'],
   'spinner-glow': ['spinner-glow'],
   'spinner-circle': ['spinner-circle'],
+  'spinner-background': ['spinner-background'],
+  'spinner-metre': ['spinner-metre'],
   cursor: ['cursor'],
   cursormiddle: ['cursormiddle'],
   hit0: ['hit0', 'hit0-0'],
@@ -94,6 +98,9 @@ const ELEMENTS: Record<string, string[]> = {
   'pause-retry': ['pause-retry'],
   'pause-back': ['pause-back'],
   ...Object.fromEntries(['X', 'XH', 'S', 'SH', 'A', 'B', 'C', 'D'].flatMap((g) => [[`ranking-${g}`, [`ranking-${g}`]], [`ranking-${g}-small`, [`ranking-${g}-small`]]])),
+  // Song select (osu!default has none: the drawn buttons show then)
+  'menu-back': ['menu-back', 'menu-back-0'],
+  ...Object.fromEntries(['mods', 'random', 'options'].flatMap((n) => [[`selection-${n}`, [`selection-${n}`]], [`selection-${n}-over`, [`selection-${n}-over`]]])),
   // Mod icons (osu!default has none: they're drawn then)
   ...Object.fromEntries(MOD_ICON_NAMES.map((n) => [`selection-mod-${n}`, [`selection-mod-${n}`]])),
 };
@@ -103,7 +110,7 @@ const SCORE_GLYPHS: Record<string, string> = { ',': 'comma', '.': 'dot', '%': 'p
 for (let d = 0; d < 10; d++) SCORE_GLYPHS[String(d)] = String(d);
 
 // What public/skins/default holds (all @2x).
-const DEFAULT_MISSING = /^(sliderstart|sliderend|spinner-circle|play-skip|pause-|fail-background|selection-mod-)/;
+const DEFAULT_MISSING = /^(sliderstart|sliderend|spinner-(circle|background|metre)|play-skip|pause-|fail-background|selection-|menu-back)/;
 const DEFAULT_FILES = [
   ...Object.keys(ELEMENTS).filter((k) => !DEFAULT_MISSING.test(k)),
   ...Array.from({ length: 10 }, (_, i) => `default-${i}`),
@@ -117,6 +124,8 @@ const DEFAULT_INI: SkinIni = {
   sliderBorder: null,
   sliderTrackOverride: null,
   sliderBall: null,
+  spinnerBackground: { r: 100, g: 100, b: 100 },
+  cursorCentre: true,
   allowSliderBallTint: false,
   overlayAboveNumber: true,
   hitCirclePrefix: 'default',
@@ -151,6 +160,7 @@ export function parseSkinIni(text: string): SkinIni {
       if (key === 'name') ini.name = value;
       else if (key === 'author') ini.author = value;
       else if (key === 'allowsliderballtint') ini.allowSliderBallTint = value === '1';
+      else if (key === 'cursorcentre') ini.cursorCentre = value !== '0';
       // stable reads it with this typo too.
       else if (key === 'hitcircleoverlayabovenumber' || key === 'hitcircleoverlayabovenumer') ini.overlayAboveNumber = value !== '0';
     } else if (section === 'colours') {
@@ -161,6 +171,7 @@ export function parseSkinIni(text: string): SkinIni {
       else if (key === 'sliderborder') ini.sliderBorder = c;
       else if (key === 'slidertrackoverride') ini.sliderTrackOverride = c;
       else if (key === 'sliderball') ini.sliderBall = c;
+      else if (key === 'spinnerbackground') ini.spinnerBackground = c;
     } else if (section === 'fonts') {
       if (key === 'hitcircleprefix') ini.hitCirclePrefix = value.replace(/\\/g, '/').toLowerCase();
       else if (key === 'hitcircleoverlap') ini.hitCircleOverlap = Number(value) || 0;
@@ -340,10 +351,21 @@ function normalise(entries: [string, Blob][]): Map<string, Blob> {
 class SkinManager {
   /** The skin being drawn with, or null for the editor's drawn style (or while the first skin loads). */
   get current(): Skin | null {
-    return this.beatmapLayer ?? this.base;
+    return this.beatmapLayer ?? this.drawnBase;
+  }
+  /** The user's chosen skin, without beatmap skins or the editor's osu!default: for the menus and other screens. */
+  get chosen(): Skin | null {
+    return this.base;
   }
   /** The user's chosen skin. */
   private base: Skin | null = null;
+  /** Whether the editor is showing and wants osu!default rather than the user's skin. */
+  private editorDefault = false;
+  private defaultLoaded: Skin | null = null;
+  /** What's drawn with under any beatmap skin: osu!default in the editor (when asked for), else the user's skin. */
+  private get drawnBase(): Skin | null {
+    return this.editorDefault && this.base && this.base.id !== DEFAULT_SKIN_ID ? this.defaultLoaded : this.base;
+  }
   /** The open beatmap's own skin elements over the user's skin, when beatmap skins are on and it has any. */
   private beatmapLayer: Skin | null = null;
   private beatmapKey: { files: Map<string, Blob> | null; base: Skin | null } = { files: null, base: null };
@@ -413,9 +435,22 @@ class SkinManager {
           if (r.ok) files.set(f, await r.blob());
         }),
       );
-      return buildSkin(DEFAULT_SKIN_ID, files, { ...DEFAULT_INI, allowSliderBallTint: true });
+      this.defaultLoaded = await buildSkin(DEFAULT_SKIN_ID, files, { ...DEFAULT_INI, allowSliderBallTint: true });
+      return this.defaultLoaded;
     })();
     return this.defaultSkin;
+  }
+
+  /**
+   * While mapping, draws the playfield and timeline with osu!default whatever skin is chosen (stable's "default skin
+   * in the editor"); the rest of the game keeps the user's skin.
+   */
+  async setEditorDefault(on: boolean): Promise<void> {
+    if (on === this.editorDefault) return;
+    this.editorDefault = on;
+    if (on) await this.loadDefault();
+    await this.setBeatmap(this.beatmapKey.files);
+    this.emit();
   }
 
   /** Imports an .osk/.zip, or the files of a picked skin folder. Returns the new skin's entry. */
@@ -450,16 +485,17 @@ class SkinManager {
    * user's skin, as stable does unless "Ignore all beatmap skins" is on. Null turns it off.
    */
   async setBeatmap(files: Map<string, Blob> | null): Promise<void> {
-    if (files === this.beatmapKey.files && this.base === this.beatmapKey.base) return;
-    this.beatmapKey = { files, base: this.base };
+    const base = this.drawnBase;
+    if (files === this.beatmapKey.files && base === this.beatmapKey.base) return;
+    this.beatmapKey = { files, base };
     let layer: Skin | null = null;
     if (files) {
       const own = new Map<string, Blob>();
       for (const [name, blob] of files) if (!/[/\\]/.test(name) && /\.(png|jpe?g)$/i.test(name)) own.set(name.toLowerCase(), blob);
       if (own.size) {
-        const ini = this.base?.ini ?? DEFAULT_INI;
-        const built = await buildSkin('beatmap', own, ini, this.base);
-        if (this.beatmapKey.files === files) layer = built.hasOwnElements ? built : null;
+        const ini = base?.ini ?? DEFAULT_INI;
+        const built = await buildSkin('beatmap', own, ini, base);
+        if (this.beatmapKey.files === files && this.beatmapKey.base === base) layer = built.hasOwnElements ? built : null;
         else return;
       }
     }

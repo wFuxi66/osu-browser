@@ -485,12 +485,9 @@ class Editor {
     this.savedSnapshot = cloneBeatmap(this.bm);
     this.emit();
     if (cloud.syncing) {
-      try {
-        await cloud.upload(this.project);
-        this.toast('Saved and synced to Google Drive.');
-      } catch (e) {
-        this.toast(`Saved locally. Cloud sync failed: ${(e as Error).message}`, 'error');
-      }
+      // Saved is saved: the upload carries on in the background (saves made meanwhile are sent once it's done).
+      this.toast('Saved. Syncing to Google Drive…');
+      cloud.upload(this.project).catch((e) => this.toast(`Saved locally. Cloud sync failed: ${(e as Error).message}`, 'error'));
     } else {
       this.toast('Saved.');
       void this.firstSaveNudge();
@@ -675,7 +672,7 @@ class Editor {
   }
 
   /**
-   * Touch: a tap outside the playfield (`outside`) or on the timeline with the circle, slider or spinner tool, and
+   * A click or tap outside the playfield (`outside`) or on the timeline with the circle, slider or spinner tool, and
    * nothing half-placed, goes back to the select tool. Returns whether it did.
    */
   leavePlacement(outside: boolean): boolean {

@@ -8,6 +8,8 @@ import { cloud } from '../project/cloud';
 import { myBeatmapsets, PAGE_SIZE, searchBeatmapsets, type DirectQuery, type DirectSet, type DirectSort, type DirectStatus, type MyKind } from '../project/direct';
 import { projectFromLink } from '../project/open';
 import { starColour } from './filter';
+import { useSkin } from '../play/ModIcon';
+import { hasSkinUi, SkinUi } from '../skin/SkinUi';
 
 const previewVolume = () => editor.prefs.masterVolume * editor.prefs.musicVolume;
 
@@ -124,6 +126,7 @@ function StatusIcon({ status }: { status: string }) {
 }
 
 export function DirectPanel({ have, background, onImported, onOpen, onClose, mine: startMine = false }: Props) {
+  useSkin();
   const [text, setText] = useState('');
   const [query, setQuery] = useState<Omit<DirectQuery, 'offset'>>({ query: '', mode: 0, status: 'ranked', sort: 'plays' });
   const [results, setResults] = useState<DirectSet[]>([]);
@@ -452,8 +455,8 @@ export function DirectPanel({ have, background, onImported, onOpen, onClose, min
         </div>
       </div>
 
-      <button className="ss-back dl-back" onClick={onClose} title="Back (Esc)">
-        <span className="ss-back-arrow">«</span> back
+      <button className={`ss-back dl-back ${hasSkinUi('menu-back') ? 'skinned' : ''}`} onClick={onClose} title="Back (Esc)">
+        {hasSkinUi('menu-back') ? <SkinUi name="menu-back" /> : <><span className="ss-back-arrow">«</span> back</>}
       </button>
     </div>
   );

@@ -41,6 +41,8 @@ class Drive {
   private folderId: string | null = null;
   /** The settings file's id ('' when there is none yet), once looked up. */
   private settingsId: string | null = null;
+  /** Project id → its file's id, from the last listing or upload: saves a search before each upload. */
+  private fileIds = new Map<string, string>();
   /** Called when the server says Drive isn't connected (any more). */
   onDisconnected: (() => void) | null = null;
 
@@ -128,6 +130,7 @@ class Drive {
       const prev = byId.get(p.id);
       if (!prev || p.updatedAt > prev.updatedAt) byId.set(p.id, p);
     }
+    this.fileIds = new Map([...byId.values()].map((p) => [p.id, p.fileId]));
     return [...byId.values()];
   }
 
@@ -138,7 +141,18 @@ class Drive {
 
   /** Creates or replaces a project's file (resumable upload, so large sets work too). */
   async upload(meta: DriveUpload, blob: Blob): Promise<void> {
-    const existing = await this.fileFor(meta.id);
+    const cached = this.fileIds.get(meta.id);
+    try {
+      await this.uploadTo(cached ?? (await this.fileFor(meta.id)), meta, blob);
+    } catch (e) {
+      // The remembered file may have been deleted from Drive since: look it up and try once more.
+      if (!cached) throw e;
+      this.fileIds.delete(meta.id);
+      await this.uploadTo(await this.fileFor(meta.id), meta, blob);
+    }
+  }
+
+  private async uploadTo(existing: string | undefined, meta: DriveUpload, blob: Blob): Promise<void> {
     const body: Record<string, unknown> = {
       name: meta.fileName,
       description: meta.description,
@@ -158,6 +172,8 @@ class Drive {
     if (!session) throw new Error('Google Drive did not start the upload.');
     const put = await fetch(session, { method: 'PUT', body: blob });
     if (!put.ok) throw new Error(await driveError(put));
+    const made = (await put.json().catch(() => null)) as { id?: string } | null;
+    if (made?.id) this.fileIds.set(meta.id, made.id);
   }
 
   /** The synced settings file: when it was saved and its contents, or null if there isn't one yet. */
@@ -202,6 +218,7 @@ class Drive {
   /** Moves a project's file to the Drive trash (recoverable there for 30 days). */
   async remove(projectId: string): Promise<void> {
     const fileId = await this.fileFor(projectId);
+    this.fileIds.delete(projectId);
     if (!fileId) return;
     await this.call(`${API}/files/${encodeURIComponent(fileId)}`, {
       method: 'PATCH',
@@ -214,6 +231,7 @@ class Drive {
     this.token = null;
     this.folderId = null;
     this.settingsId = null;
+    this.fileIds.clear();
     await fetch('/api/drive/logout', { method: 'POST', credentials: 'include' });
   }
 }

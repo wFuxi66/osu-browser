@@ -370,3 +370,13 @@
 [data-touch] .win-body { overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 [data-touch] .win-window button { min-height: 32px; }
 [data-touch] .win-window input, [data-touch] .win-window select { min-height: 28px; }
+
+/* Skinned song select buttons (src/skin/SkinUi.tsx): the skin's images at their own size, bottom-aligned. */
+.skin-ui { position: relative; display: block; line-height: 0; }
+.skin-ui img { display: block; max-width: none; }
+.skin-ui-over { position: absolute; left: 0; bottom: 0; opacity: 0; transition: opacity 0.1s; }
+button:hover:not(:disabled) .skin-ui-over { opacity: 1; }
+.ss-back.skinned, .ss-back.skinned:hover:not(:disabled) { width: auto; height: auto; align-self: flex-end; padding: 0; background: none; clip-path: none; }
+.ss-back.skinned:hover:not(:disabled) .skin-ui { filter: brightness(1.15); }
+.ss-footer-btn.skinned, .ss-footer-btn.skinned:hover:not(:disabled) { width: auto; height: auto; padding: 0; background: none; border: none; opacity: 1; }
+.ss-sync-status { position: absolute; z-index: 6; left: calc(var(--u) * 12); bottom: calc(var(--u) * 100); padding: calc(var(--u) * 6) calc(var(--u) * 12); border-radius: calc(var(--u) * 6); background: rgba(0,0,0,0.7); color: #fff; font-family: var(--osu-font); font-size: calc(var(--u) * 15); pointer-events: none; animation: ss-fade 0.2s; }

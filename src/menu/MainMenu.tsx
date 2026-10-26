@@ -75,12 +75,17 @@ export function MainMenu() {
   }, []);
 
   // ---------------------------------------------------------------- the song
+  // Only the latest song change goes on after loading, so the background shown is always the song heard.
+  const playing = useRef(0);
   const playSet = async (s: ProjectSummary, fromPreview = true) => {
+    // A set without audio would show its background over the previous song.
+    if (!s.audio) return;
+    const req = ++playing.current;
     setCurrent(s);
     nowPlaying.setId = s.id;
     nowPlaying.diffId = s.difficulties[0]?.id ?? null;
-    if (!s.audio) return;
     if (music.blob !== s.audio) await music.load(s.audio);
+    if (req !== playing.current) return;
     music.rate = 1;
     if (fromPreview) {
       const p = s.difficulties[0]?.previewTime ?? -1;
@@ -105,14 +110,15 @@ export function MainMenu() {
 
   useEffect(() => {
     if (!sets) return;
-    // Carry on with what's playing (back from song select), else the shared song, else a random one.
-    const playingSet = sets.find((s) => s.audio && s.audio === music.blob);
+    // Carry on with what's playing (back from song select: song select keeps nowPlaying on the set it plays, and its
+    // audio is another Blob read of the same file), else the shared song, else a random one.
+    const playingSet = sets.find((s) => s.audio && (s.audio === music.blob || (s.id === nowPlaying.setId && music.blob?.size === s.audio.size)));
     if (playingSet && music.playing) {
       setCurrent(playingSet);
       nowPlaying.setId = playingSet.id;
       return;
     }
-    const shared = sets.find((s) => s.id === nowPlaying.setId);
+    const shared = sets.find((s) => s.id === nowPlaying.setId && s.audio);
     const withAudio = sets.filter((s) => s.audio);
     const pick = shared ?? withAudio[Math.floor(Math.random() * withAudio.length)];
     if (pick) void playSet(pick, pick.audio !== music.blob || music.time < 1);

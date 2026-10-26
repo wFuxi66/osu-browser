@@ -245,6 +245,8 @@ export interface Prefs {
   skin: string;
   /** Draw hit circles with the beatmap's own skin files (hitcircle.png etc. in the set) over the chosen skin. */
   beatmapSkins: boolean;
+  /** Map with osu!default whatever skin is chosen, as stable's editor can. */
+  editorDefaultSkin: boolean;
   /** Show the playfield grid (whether or not grid snap is on). */
   showGrid: boolean;
   /** Draw the timeline's circles with the skin, like stable (otherwise flat discs). */
@@ -308,6 +310,7 @@ export const DEFAULT_PREFS: Prefs = {
   skin: 'default',
   showGrid: true,
   beatmapSkins: false,
+  editorDefaultSkin: true,
   skinnedTimeline: true,
   downloadVideo: true,
   touchAutoAdvance: 0,

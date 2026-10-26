@@ -5,6 +5,7 @@ import { Toasts } from './editor/ui/Toasts';
 import { editor, useEditor } from './editor/store';
 import { cloud } from './project/cloud';
 import { skins } from './skin/skin';
+import { applySkinCursor } from './skin/cursor';
 import { MainMenu } from './menu/MainMenu';
 import { Player } from './play/Player';
 import { SongSelect } from './songselect/SongSelect';
@@ -27,6 +28,20 @@ export function App() {
   const ed = useEditor();
   const scr = useScreens();
   useBackButton(ed.hasProject || scr.screen !== 'menu');
+  // Mapping (not test play) uses osu!default when that option is on.
+  const mapping = ed.hasProject && ed.session === 'edit' && ed.dialog !== 'test';
+  useEffect(() => void skins.setEditorDefault(mapping && ed.prefs.editorDefaultSkin), [mapping, ed.prefs.editorDefaultSkin]);
+  const cursorSize = ed.prefs.cursorSize;
+  useEffect(() => {
+    const apply = () => applySkinCursor(cursorSize);
+    apply();
+    window.addEventListener('resize', apply);
+    const off = skins.onChange(apply);
+    return () => {
+      window.removeEventListener('resize', apply);
+      off();
+    };
+  }, [cursorSize]);
   useEffect(() => {
     // Back from connecting Google Drive: song select shows the result and syncs.
     if (new URLSearchParams(location.search).has('drive')) screens.select('edit');

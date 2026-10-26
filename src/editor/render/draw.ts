@@ -64,15 +64,18 @@ export function drawHitCircle(
   alpha: number,
   label: string | null,
   selected: boolean,
+  sliderHead = false,
 ) {
   const skin = skins.current;
-  const circle = skin?.tinted('hitcircle', colour);
+  // A slider head is the skin's sliderstartcircle (and its overlay) when it has one, as in stable.
+  const base = sliderHead && skin?.has('sliderstartcircle') ? 'sliderstartcircle' : 'hitcircle';
+  const circle = skin?.tinted(base, colour);
   if (skin && circle) {
     const k = r / 64;
     ctx.save();
     ctx.globalAlpha = alpha;
     drawTexture(ctx, circle, x, y, k);
-    const overlay = skin.get('hitcircleoverlay');
+    const overlay = (base !== 'hitcircle' && skin.get(`${base}overlay`)) || skin.get('hitcircleoverlay');
     if (overlay && !skin.ini.overlayAboveNumber) drawTexture(ctx, overlay, x, y, k);
     // Numbers are drawn at 0.8 scale, like stable.
     if (label) drawSkinNumber(ctx, skin, label, x, y, k * 0.8);
@@ -396,20 +399,42 @@ export function drawSliderBall(ctx: CanvasRenderingContext2D, at: Vec2, angle: n
 }
 
 /**
- * A spinner from the skin's sprites (new style bottom/top/middle, or old style spinner-circle) at stable's 0.625 osu!pixel
- * per skin pixel, with spinner-approachcircle shrinking from `radius` over its duration. `scale` is screen pixels per
- * osu!pixel and `progress` runs from 1 at the start to 0 at the end. Returns false when the skin has no spinner.
+ * A spinner from the skin's sprites (old style when it has spinner-background, as in stable, else new style
+ * bottom/top/middle) at stable's 0.625 osu!pixel per skin pixel, with spinner-approachcircle shrinking from `radius`
+ * over its duration. `scale` is screen pixels per osu!pixel, `progress` runs from 1 at the start to 0 at the end and
+ * `rotation` is how far it has spun. Returns false when the skin has no spinner.
  */
-export function drawSkinSpinner(ctx: CanvasRenderingContext2D, c: Vec2, scale: number, progress: number, alpha: number, radius: number): boolean {
+export function drawSkinSpinner(ctx: CanvasRenderingContext2D, c: Vec2, scale: number, progress: number, alpha: number, radius: number, rotation = 0): boolean {
   const skin = skins.current;
   if (!skin) return false;
-  const parts = ['spinner-bottom', 'spinner-top', 'spinner-middle2', 'spinner-middle'].map((n) => skin.get(n)).filter((t): t is Texture => !!t);
-  const old = skin.get('spinner-circle');
-  if (!parts.length && !old) return false;
+  const background = skin.get('spinner-background');
+  const circle = skin.get('spinner-circle');
+  const bottom = skin.get('spinner-bottom');
+  const top = skin.get('spinner-top');
+  if (!background && !circle && !bottom && !top) return false;
   const k = 0.625 * scale;
   ctx.save();
   ctx.globalAlpha = alpha;
-  for (const t of parts.length ? parts : [old!]) drawTexture(ctx, t, c.x, c.y, k);
+  if (background || (circle && !bottom && !top)) {
+    if (background) drawTexture(ctx, skin.tinted('spinner-background', skin.ini.spinnerBackground) ?? background, c.x, c.y, k);
+    // The metre fills in ten bars as it's spun (here, as autoplay would).
+    const metre = skin.get('spinner-metre');
+    const bars = Math.floor((1 - progress) * 10) / 10;
+    if (metre && bars > 0) {
+      const src = metre.image as ImageBitmap;
+      const mw = metre.w * k;
+      const mh = metre.h * k;
+      ctx.drawImage(src, 0, src.height * (1 - bars), src.width, src.height * bars, c.x - mw / 2, c.y - mh / 2 + mh * (1 - bars), mw, mh * bars);
+    }
+    if (circle) drawTexture(ctx, circle, c.x, c.y, k, rotation);
+  } else {
+    if (bottom) drawTexture(ctx, bottom, c.x, c.y, k, rotation / 3);
+    if (top) drawTexture(ctx, top, c.x, c.y, k, rotation);
+    for (const n of ['spinner-middle2', 'spinner-middle']) {
+      const t = skin.get(n);
+      if (t) drawTexture(ctx, t, c.x, c.y, k);
+    }
+  }
   const approach = skin.get('spinner-approachcircle');
   if (approach && progress > 0) drawTexture(ctx, approach, c.x, c.y, ((2 * radius * scale) / approach.w) * progress);
   ctx.restore();

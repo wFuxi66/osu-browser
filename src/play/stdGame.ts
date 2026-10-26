@@ -705,9 +705,10 @@ export class StdGame {
     const shake = t - g.shakeAt;
     if (shake >= 0 && shake < 150) p = { x: p.x + Math.sin(shake / 12) * 6 * v.scale * (1 - shake / 150), y: p.y };
     const label = String(g.comboNumber);
+    const sliderHead = g.o.kind === 'slider';
     if (g.head === 'pending') {
       const alpha = this.appearAlpha(g, t);
-      drawHitCircle(ctx, p.x, p.y, R, g.colour, alpha, label, false);
+      drawHitCircle(ctx, p.x, p.y, R, g.colour, alpha, label, false, sliderHead);
       const approach = !this.hidden || (this.hiddenFirstApproach && g.index === this.objs.findIndex((x) => !x.skipped));
       if (t < g.start && approach) {
         const prog = (g.start - t) / this.proc.preempt;
@@ -717,9 +718,9 @@ export class StdGame {
     }
     const age = t - g.headAt;
     if (g.head === 'hit' && age < HIT_FADE) {
-      drawHitCircle(ctx, p.x, p.y, R * (1 + 0.4 * (age / HIT_FADE)), g.colour, (1 - age / HIT_FADE) * (this.hidden ? 0.5 : 1), label, false);
+      drawHitCircle(ctx, p.x, p.y, R * (1 + 0.4 * (age / HIT_FADE)), g.colour, (1 - age / HIT_FADE) * (this.hidden ? 0.5 : 1), label, false, sliderHead);
     } else if (g.head === 'miss' && age < 100) {
-      drawHitCircle(ctx, p.x, p.y, R, g.colour, (1 - age / 100) * this.appearAlpha(g, g.start), label, false);
+      drawHitCircle(ctx, p.x, p.y, R, g.colour, (1 - age / 100) * this.appearAlpha(g, g.start), label, false, sliderHead);
     }
   }
 
@@ -796,7 +797,23 @@ export class StdGame {
     const middle2 = skin?.get('spinner-middle2');
     const middle = skin?.get('spinner-middle');
     const old = skin?.get('spinner-circle');
-    if (bottom || top || old) {
+    const background = skin?.get('spinner-background');
+    if (background || (old && !bottom && !top)) {
+      // Old style (stable uses it whenever the skin has spinner-background): a tinted background, the spinning
+      // circle, and the metre filling from the bottom in ten bars.
+      if (background) drawTexture(ctx, skin!.tinted('spinner-background', skin!.ini.spinnerBackground) ?? background, c.x, c.y, k);
+      const metre = skin?.get('spinner-metre');
+      if (metre) {
+        const bars = Math.min(10, Math.floor(progress * 10)) / 10;
+        const src = metre.image as ImageBitmap;
+        const mw = metre.w * k;
+        const mh = metre.h * k;
+        if (bars > 0) ctx.drawImage(src, 0, src.height * (1 - bars), src.width, src.height * bars, c.x - mw / 2, c.y - mh / 2 + mh * (1 - bars), mw, mh * bars);
+      }
+      if (old) drawTexture(ctx, old, c.x, c.y, k, g.rotation);
+      const approach = skin?.get('spinner-approachcircle');
+      if (approach && t >= g.start && remaining > 0) drawTexture(ctx, approach, c.x, c.y, ((2 * 190 * v.scale) / approach.w) * remaining);
+    } else if (bottom || top || old) {
       if (glow) {
         ctx.globalAlpha = alpha * progress;
         drawTexture(ctx, skin!.tinted('spinner-glow', { r: 3, g: 151, b: 255 }) ?? glow, c.x, c.y, k);

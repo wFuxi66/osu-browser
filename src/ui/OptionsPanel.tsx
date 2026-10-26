@@ -360,6 +360,18 @@ export function OptionsPanel() {
                 />
               ),
             },
+            {
+              label: 'Use the default skin in the editor',
+              keywords: 'editor default skin mapping',
+              render: () => (
+                <Toggle
+                  label="Use the default skin in the editor"
+                  hint="Map with osu!default whatever skin you play with. Test play still uses your skin."
+                  value={p.editorDefaultSkin}
+                  onChange={(v) => set({ editorDefaultSkin: v })}
+                />
+              ),
+            },
             { label: 'Cursor size', keywords: 'cursor scale', render: () => <Slider label="Cursor size" value={p.cursorSize} min={0.5} max={2} step={0.05} format={(v) => `${v.toFixed(2)}x`} onChange={(v) => set({ cursorSize: v })} /> },
             { label: 'Automatic cursor size', keywords: 'cursor circle size', render: () => <Toggle label="Automatic cursor size" hint="Smaller on maps with small circles." value={p.autoCursorSize} onChange={(v) => set({ autoCursorSize: v })} /> },
             {

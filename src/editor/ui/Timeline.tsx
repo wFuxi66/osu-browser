@@ -96,6 +96,7 @@ export function Timeline() {
       if (!editor.hasProject || e.pointerType === 'touch') return;
       if (e.button === 0) canvas.setPointerCapture(e.pointerId);
       const { x, y } = local(e);
+      if (editor.screen === 'compose') editor.leavePlacement(true);
       pressAt(x, y, e.button, modsOf(e));
     };
 

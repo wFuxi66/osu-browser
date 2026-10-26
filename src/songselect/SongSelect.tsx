@@ -15,7 +15,8 @@ import { ask, confirmBox, promptOpen, type PromptButton } from '../ui/prompt';
 import { screens, type SelectMode } from '../ui/screens';
 import { nowPlaying } from '../menu/nowPlaying';
 import { osuDifficulty } from '../osu/difficulty/osu';
-import { ModIcon } from '../play/ModIcon';
+import { ModIcon, useSkin } from '../play/ModIcon';
+import { hasSkinUi, SkinUi } from '../skin/SkinUi';
 import { ModSelect } from '../play/ModSelect';
 import { changesStars, effectiveStats, moddedBeatmap, modSelection, modsLabel, rateOf, useMods, withMod, type ModId } from '../play/mods';
 import { GradeIcon, Results } from '../play/Results';
@@ -64,6 +65,7 @@ function blobUrl(b: Blob | null): string | null {
 export function SongSelect({ mode }: { mode: SelectMode }) {
   const ed = useEditor();
   const userKey = useCloud();
+  useSkin();
   const play = mode === 'play';
   const mods = useMods();
   const [modSelect, setModSelect] = useState(false);
@@ -74,6 +76,7 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
   const [sel, setSel] = useState<Selection | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -115,15 +118,25 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
     else if (result === 'cancelled') editor.toast('Google Drive wasn\x27t connected.');
     if (!cloud.syncing) return;
     void editor.syncSettings();
-    setBusy('Syncing with Google Drive…');
+    // In the background: song select stays usable, and maps appear in the list as they arrive.
+    let live = true;
+    setSyncStatus('Syncing with Google Drive…');
     cloud
-      .syncAll()
+      .syncAll((done, total) => {
+        if (!live) return;
+        setSyncStatus(`Syncing with Google Drive… ${done}/${total}`);
+        if (done > 0) void refresh();
+      })
       .then((n) => n > 0 && editor.toast(`Synced ${n} beatmap${n > 1 ? 's' : ''} with Google Drive.`))
       .catch((e) => editor.toast(`Sync failed: ${e.message}`, 'error'))
       .finally(() => {
-        setBusy(null);
+        if (!live) return;
+        setSyncStatus(null);
         void refresh();
       });
+    return () => {
+      live = false;
+    };
   }, [userKey, refresh]);
 
   const run = async (label: string, fn: () => Promise<void>) => {
@@ -533,15 +546,12 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
       )}
 
       <footer className="ss-footer">
-        <button className="ss-back" onClick={goBack} title="Back (Esc)">
-          <span className="ss-back-arrow">«</span> back
-        </button>
-        <button className="ss-footer-btn ss-settings" onClick={() => options.show()} title="Options (Ctrl+O)" aria-label="Options">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+        <button className={`ss-back ${hasSkinUi('menu-back') ? 'skinned' : ''}`} onClick={goBack} title="Back (Esc)">
+          {hasSkinUi('menu-back') ? <SkinUi name="menu-back" /> : <><span className="ss-back-arrow">«</span> back</>}
         </button>
         {play && (
-          <button className="ss-footer-btn ss-mods-btn" onClick={() => setModSelect(true)} title="Mods (F1)">
-            Mods
+          <button className={`ss-footer-btn ss-mods-btn ${hasSkinUi('selection-mods') ? 'skinned' : ''}`} onClick={() => setModSelect(true)} title="Mods (F1)">
+            {hasSkinUi('selection-mods') ? <SkinUi name="selection-mods" /> : 'Mods'}
             {mods.length > 0 && (
               <span className="ss-mods-icons">
                 {mods.map((m) => <ModIcon key={m} id={m} size={30} />)}
@@ -549,7 +559,16 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
             )}
           </button>
         )}
-        <button className="ss-footer-btn" onClick={random} title="Random (F2)">Random</button>
+        <button className={`ss-footer-btn ${hasSkinUi('selection-random') ? 'skinned' : ''}`} onClick={random} title="Random (F2)">
+          {hasSkinUi('selection-random') ? <SkinUi name="selection-random" /> : 'Random'}
+        </button>
+        <button className={`ss-footer-btn ss-settings ${hasSkinUi('selection-options') ? 'skinned' : ''}`} onClick={() => options.show()} title="Options (Ctrl+O)" aria-label="Options">
+          {hasSkinUi('selection-options') ? (
+            <SkinUi name="selection-options" />
+          ) : (
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+          )}
+        </button>
         <UserPanel onMyBeatmaps={() => setDirect('mine')} />
         <button className="ss-cookie" onClick={() => confirm()} disabled={!selDiff} title={play ? 'Play (Enter, Ctrl+Enter for autoplay)' : 'Edit (Enter)'}>
           <span>{play ? 'play' : 'edit'}</span>
@@ -595,6 +614,7 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
       )}
       {sets && sets.length > 0 && visible.length === 0 && <div className="ss-empty"><div className="ss-empty-title">No matches for “{search}”</div><div>Press Esc to clear the search.</div></div>}
       {busy && <div className="busy">{busy}</div>}
+      {syncStatus && <div className="ss-sync-status">{syncStatus}</div>}
       {leaving && <div className="ss-leave" />}
     </div>
   );

@@ -29,6 +29,8 @@ export type DialogName =
   | 'scale'
   | 'polygon'
   | 'stream'
+  | 'completionator'
+  | 'merger'
   | 'aimod'
   | 'difficulties'
   | 'shortcuts'

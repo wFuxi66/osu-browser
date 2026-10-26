@@ -4,6 +4,7 @@ import { EditorShell } from './editor/ui/EditorShell';
 import { Toasts } from './editor/ui/Toasts';
 import { editor, useEditor } from './editor/store';
 import { cloud } from './project/cloud';
+import { openMapLink, takeMapLink } from './project/deeplink';
 import { skins } from './skin/skin';
 import { applySkinCursor } from './skin/cursor';
 import { MainMenu } from './menu/MainMenu';
@@ -45,7 +46,9 @@ export function App() {
   useEffect(() => {
     // Back from connecting Google Drive: song select shows the result and syncs.
     if (new URLSearchParams(location.search).has('drive')) screens.select('edit');
-    void cloud.init();
+    // Opened from an osu.ppy.sh beatmap page (userscript or bookmarklet): straight into the editor.
+    const link = takeMapLink();
+    void cloud.init().then(() => link && openMapLink(link));
     void skins.use(editor.prefs.skin);
     // The AudioContext can only start after a user gesture.
     const unlock = () => hitsounds.unlock();

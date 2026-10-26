@@ -244,6 +244,13 @@ export function MenuBar() {
     { label: 'Remove Bookmark', shortcut: key('removeBookmark'), action: () => ed.removeBookmark() },
   ];
 
+  // Not in stable: tools mappers otherwise run from Mapping Tools, which can't reach maps in a browser.
+  const sel = ed.selectedObjects;
+  const tools: Item[] = [
+    { label: 'Slider Completionator...', action: () => ed.openDialog('completionator'), disabled: !sel.some((o) => o.kind === 'slider') },
+    { label: 'Slider Merger...', action: () => ed.openDialog('merger'), disabled: sel.filter((o) => o.kind === 'slider' || o.kind === 'circle').length < 2 },
+  ];
+
   const open = (url: string) => window.open(url, '_blank', 'noopener');
   const web: Item[] = [
     { label: "This Beatmap's Information Page", disabled: setId <= 0, action: () => open(`https://osu.ppy.sh/beatmapsets/${setId}`) },
@@ -284,6 +291,7 @@ export function MenuBar() {
       <Menu title="Compose" items={compose} />
       <Menu title="Design" items={designMenu} />
       <Menu title="Timing" items={timing} />
+      <Menu title="Tools" items={tools} />
       <Menu title="Web" items={web} />
       <Menu title="Help" items={help} />
       <div className="wm-caption" title="Unsaved changes are marked with *">

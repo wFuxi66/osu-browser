@@ -67,6 +67,13 @@ The container is stateless (no database; maps live in browsers and Google Drive)
 
 Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapsets/…` link. The official API doesn't let third-party apps download beatmapsets, so the browser downloads them directly from public mirrors that allow CORS: osu.direct first, then nerinyan. When the app runs on the Node server, it also falls back to a server-side proxy that adds catboy.best. That proxy isn't deployed on Vercel. The "Search & download beatmaps" panel uses osu.direct's search API (also CORS-enabled) and the same downloads.
 
+The app also opens osu.ppy.sh's own paths: `https://osu-browser.vercel.app/beatmapsets/123456#osu/789` opens that difficulty in the editor, using the copy in song select when there is one (so local edits are never replaced) and downloading the set otherwise. With Drive sync on, it syncs first, so a set saved on another computer isn't downloaded twice. Discussion pages (`/beatmapsets/123456/discussion/789/…`) work too. Two ways to get there from a beatmap page:
+
+- **Userscript:** with [Tampermonkey](https://www.tampermonkey.net/) or Violentmonkey installed, open <https://osu-browser.vercel.app/osu-browser.user.js> and install it. Beatmap pages then have an "Edit in osu!browser" button next to Download.
+- **Bookmarklet:** bookmark this and click it on a beatmap page: `javascript:location.href='https://osu-browser.vercel.app'+location.pathname+location.hash`
+
+Self-hosting? Change the address in `public/osu-browser.user.js` (and in the bookmarklet).
+
 ## Feature checklist (vs. stable)
 
 **Main menu & play mode**
@@ -119,6 +126,7 @@ Song select's "Open a beatmap from osu.ppy.sh" accepts an `osu.ppy.sh/beatmapset
 - [x] Cut/copy/paste (copy also puts the `00:12:345 (1,2,3) - ` timestamp on the clipboard), clone (Ctrl+D), delete
 - [x] Flip H/V (Ctrl+H/J), rotate 90° (Ctrl+,/.), rotate by…, scale by…, reverse selection (Ctrl+G)
 - [x] Polygon circles (Ctrl+Shift+D), convert slider to stream (Ctrl+Shift+F), resnap notes
+- [x] Tools menu (not in stable; these are usually run from [Mapping Tools](https://github.com/OliBomby/Mapping_Tools), which can't reach maps in a browser): **Slider Completionator** works out the SV, length or duration of the selected sliders from the other two (by default it makes a slider end on its last anchor without moving its end time), adding green lines that keep the section's volume and samples and putting back the SV of the sliders after them; **Slider Merger** joins neighbouring selected circles and sliders that touch (within a leniency) into one slider, converting perfect-circle and Catmull curves to Bézier
 - [x] New combo (Q), colour skip
 - [x] Hitsounds: whistle/finish/clap (W/E/R), sampleset and addition set (Shift/Ctrl+Q–R), per-object volume and custom index, per-edge slider hitsounds (click an edge in the timeline)
 - [x] Hitsound playback with default samples and beatmap custom samples (`soft-hitclap2.wav` etc.), slider slide/whistle loops, spinner spin sound
@@ -161,7 +169,7 @@ Issues and pull requests are welcome. The rule is that osu! stable is the refere
 
 ## Credits
 
-Default hitsound and gameplay samples (including `spinnerspin.wav`, `combobreak.mp3`, `applause.mp3`) and the osu!default skin images in `public/skins/default` are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0), unmodified. Slider maths follows osu-framework's `PathApproximator`. Star ratings are a TypeScript port of the difficulty calculators in [ppy/osu](https://github.com/ppy/osu) (lazer, MIT licence, version 2026.730.0, which is what osu.ppy.sh runs), together with lazer's `SliderPath` and osu-framework's `PathApproximator` (also MIT) in single precision. The UI font is [Ubuntu](https://design.ubuntu.com/font) (Ubuntu Font Licence), standing in for stable's Aller; icons are drawn in SVG, and no files are copied from an osu! install. This project isn't affiliated with ppy.
+Default hitsound and gameplay samples (including `spinnerspin.wav`, `combobreak.mp3`, `applause.mp3`) and the osu!default skin images in `public/skins/default` are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0), unmodified. Slider maths follows osu-framework's `PathApproximator`. Slider Completionator and Slider Merger behave like the tools of the same names in OliBomby's [Mapping Tools](https://github.com/OliBomby/Mapping_Tools) (GPL-3.0); they're written from scratch, with no code taken from it. Star ratings are a TypeScript port of the difficulty calculators in [ppy/osu](https://github.com/ppy/osu) (lazer, MIT licence, version 2026.730.0, which is what osu.ppy.sh runs), together with lazer's `SliderPath` and osu-framework's `PathApproximator` (also MIT) in single precision. The UI font is [Ubuntu](https://design.ubuntu.com/font) (Ubuntu Font Licence), standing in for stable's Aller; icons are drawn in SVG, and no files are copied from an osu! install. This project isn't affiliated with ppy.
 
 ## Licence
 

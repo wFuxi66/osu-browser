@@ -8,8 +8,10 @@ import { Player } from '../../../play/Player';
 import { SetupDialog } from './SetupDialog';
 import { TimingSetupDialog } from './TimingSetupDialog';
 import {
+  CompletionatorDialog,
   DifficultiesDialog,
   FilesDialog,
+  MergerDialog,
   NotepadDialog,
   ObjectSettingsDialog,
   PolygonDialog,
@@ -27,6 +29,8 @@ export function Dialogs() {
     case 'scale': return <ScaleDialog />;
     case 'polygon': return <PolygonDialog />;
     case 'stream': return <StreamDialog />;
+    case 'completionator': return <CompletionatorDialog />;
+    case 'merger': return <MergerDialog />;
     case 'aimod': return <AiModDialog />;
     case 'difficulties': return <DifficultiesDialog />;
     case 'shortcuts': return <ShortcutsDialog />;

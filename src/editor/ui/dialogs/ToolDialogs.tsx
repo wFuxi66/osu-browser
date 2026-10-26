@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { hitsounds } from '../../../audio/hitsounds';
 import { music } from '../../../audio/music';
 import { sliderPositionAtSpan } from '../../../osu/curves';
 import { parseOsu } from '../../../osu/parser';
 import { serializeBeatmap } from '../../../osu/serializer';
 import { beatLengthAt, sliderSpanDuration } from '../../../osu/timing';
-import { defaultSample, newObjectId, type HitObject } from '../../../osu/types';
+import { defaultSample, newObjectId, type HitObject, type Slider } from '../../../osu/types';
 import { pickFiles } from '../../../project/open';
 import { confirmBox } from '../../../ui/prompt';
 import { Check, GroupBox, NumberBox, OkCancel, Radio, Row, TrackRow, WinDialog } from '../../../ui/win';
@@ -13,7 +13,8 @@ import { expectedDistance } from '../../playfield/snapping';
 import { DIVISORS } from '../../shortcuts';
 import { storyboard } from '../../storyboard/runtime';
 import { design } from '../../storyboard/design';
-import { editor, useEditor } from '../../store';
+import { applyCompletion, applyMerge, planCompletion, planMerge, type CompletionOptions, type FreeVariable, type MergeOptions } from '../../sliderTools';
+import { editor, formatTimestamp, useEditor } from '../../store';
 
 /**
  * Live preview for transform dialogs: the selection is restored and re-transformed on every change, applied
@@ -215,6 +216,148 @@ export function StreamDialog() {
           </div>
         </GroupBox>
         <Check label="Keep the hitsounds of slider edges" checked={keepSounds} onChange={setKeepSounds} />
+      </div>
+    </WinDialog>
+  );
+}
+
+interface CompletionState {
+  free: FreeVariable;
+  duration: 'keep' | 'beats' | 'now';
+  beats: number;
+  keepLength: boolean;
+  completion: number;
+  keepSv: boolean;
+  sv: number;
+  moveAnchors: boolean;
+}
+
+// Both tools remember their settings for the session, like Mapping Tools does.
+let lastCompletion: CompletionState = { free: 'velocity', duration: 'keep', beats: 1, keepLength: false, completion: 100, keepSv: true, sv: 1, moveAnchors: false };
+let lastMerge: MergeOptions = { leniency: 256, connection: 'move', linearOnLinear: false };
+
+/** Tools → Slider Completionator: works out a slider's SV, length or duration from the other two. */
+export function CompletionatorDialog() {
+  const ed = useEditor();
+  const [st, setSt] = useState(lastCompletion);
+  const set = (p: Partial<CompletionState>) => setSt((s) => (lastCompletion = { ...s, ...p }));
+  const sliders = ed.selectedObjects.filter((o): o is Slider => o.kind === 'slider');
+  const now = music.time;
+  const opts: CompletionOptions = {
+    free: st.free,
+    beats: st.free !== 'duration' && st.duration === 'beats' ? st.beats : null,
+    endTime: st.free !== 'duration' && st.duration === 'now' ? now : null,
+    completion: st.free !== 'length' && !st.keepLength ? st.completion / 100 : null,
+    sv: st.free !== 'velocity' && !st.keepSv ? st.sv : null,
+    moveAnchors: st.moveAnchors,
+  };
+  const plans = planCompletion(ed.bm, sliders, opts);
+  const good = plans.filter((p) => !p.error);
+  const bad = plans.filter((p) => p.error);
+  const svs = good.map((p) => p.sv);
+  const x = (v: number) => `${v.toFixed(2)}×`;
+
+  const apply = () => {
+    ed.commit((b) => applyCompletion(b, plans, opts));
+    for (const p of bad) ed.toast(`Skipped the slider at ${formatTimestamp(p.slider.time)}: ${p.error}.`, 'error');
+    ed.openDialog(null);
+  };
+  const calculated = (v: FreeVariable) => (st.free === v ? <span className="win-muted">worked out from the other two</span> : null);
+
+  return (
+    <WinDialog title="Slider Completionator" width={420} onClose={() => ed.openDialog(null)} footer={<OkCancel onOk={apply} onCancel={() => ed.openDialog(null)} okDisabled={!good.length} />}>
+      <div className="win-pad">
+        {!sliders.length && <p className="win-note">Select one or more sliders first.</p>}
+        <GroupBox title="Work out">
+          <Radio name="cfree" label="Slider velocity" checked={st.free === 'velocity'} onChange={() => set({ free: 'velocity' })} />{' '}
+          <Radio name="cfree" label="Length" checked={st.free === 'length'} onChange={() => set({ free: 'length' })} />{' '}
+          <Radio name="cfree" label="Duration" checked={st.free === 'duration'} onChange={() => set({ free: 'duration' })} />
+        </GroupBox>
+        <GroupBox title="Duration">
+          {calculated('duration') ?? (
+            <>
+              <Radio name="cdur" label="Keep" checked={st.duration === 'keep'} onChange={() => set({ duration: 'keep' })} />
+              <div className="tsd-custom">
+                <Radio name="cdur" label="Beats (all repeats)" checked={st.duration === 'beats'} onChange={() => set({ duration: 'beats' })} />
+                <NumberBox value={st.beats} min={0.01} max={64} step={0.25} digits={3} width={56} disabled={st.duration !== 'beats'} onChange={(v) => set({ beats: v })} />
+              </div>
+              <Radio name="cdur" label={`End at the current time (${formatTimestamp(now)})`} checked={st.duration === 'now'} onChange={() => set({ duration: 'now' })} />
+            </>
+          )}
+        </GroupBox>
+        <GroupBox title="Length">
+          {calculated('length') ?? (
+            <>
+              <Radio name="clen" label="Keep" checked={st.keepLength} onChange={() => set({ keepLength: true })} />
+              <div className="tsd-custom">
+                <Radio name="clen" label="Percent of the path to the last anchor" checked={!st.keepLength} onChange={() => set({ keepLength: false })} />
+                <NumberBox value={st.completion} min={1} max={1000} step={5} width={56} disabled={st.keepLength} onChange={(v) => set({ completion: v })} /> %
+              </div>
+            </>
+          )}
+          <Check label="Move the anchors so the slider ends on the last one" checked={st.moveAnchors} onChange={(v) => set({ moveAnchors: v })} />
+        </GroupBox>
+        <GroupBox title="Slider velocity">
+          {calculated('velocity') ?? (
+            <>
+              <Radio name="csv" label="Keep" checked={st.keepSv} onChange={() => set({ keepSv: true })} />
+              <div className="tsd-custom">
+                <Radio name="csv" label="Set to" checked={!st.keepSv} onChange={() => set({ keepSv: false })} />
+                <NumberBox value={st.sv} min={0.1} max={10} step={0.05} digits={3} width={56} disabled={st.keepSv} onChange={(v) => set({ sv: v })} /> ×
+              </div>
+            </>
+          )}
+        </GroupBox>
+        {good.length === 1 && (
+          <p className="win-muted">
+            Length {good[0].slider.length.toFixed(1)} → {good[0].length.toFixed(1)} px, SV {x(good[0].oldSv)} → {x(good[0].sv)}
+          </p>
+        )}
+        {good.length > 1 && (
+          <p className="win-muted">
+            {good.length} sliders, SV {x(Math.min(...svs))}{Math.max(...svs) - Math.min(...svs) > 0.005 ? ` to ${x(Math.max(...svs))}` : ''}. Green lines are added where the SV changes, and the sliders after them keep theirs.
+          </p>
+        )}
+        {bad.length > 0 && <p className="win-note">{bad.length} slider{bad.length > 1 ? 's are' : ' is'} skipped: {bad[0].error}.</p>}
+      </div>
+    </WinDialog>
+  );
+}
+
+/** Tools → Slider Merger: joins neighbouring circles and sliders of the selection into sliders. */
+export function MergerDialog() {
+  const ed = useEditor();
+  const [o, setO] = useState(lastMerge);
+  const set = (p: Partial<MergeOptions>) => setO((s) => (lastMerge = { ...s, ...p }));
+  const selected = ed.selectedObjects;
+  const plan = useMemo(() => planMerge(selected, o), [ed.contentRev, ed.rev, o]); // eslint-disable-line react-hooks/exhaustive-deps
+  const merge = () => {
+    ed.commit((b) => applyMerge(b, plan));
+    ed.select(plan.merged.map((s) => s.id));
+    ed.openDialog(null);
+  };
+  return (
+    <WinDialog title="Slider Merger" width={420} onClose={() => ed.openDialog(null)} footer={<OkCancel onOk={merge} onCancel={() => ed.openDialog(null)} okDisabled={!plan.merged.length} />}>
+      <div className="win-pad">
+        <p className="win-muted">
+          Joins the selected circles and sliders, in time order, wherever one ends near where the next starts. Each merged slider keeps the
+          first object's time; Slider Completionator can then make it end on the beat you want.
+        </p>
+        <Row label="Leniency" hint="The largest gap between one object's end and the next one's start that still merges">
+          <NumberBox value={o.leniency} min={0} max={1000} step={8} width={56} onChange={(v) => set({ leniency: v })} /> px
+        </Row>
+        <GroupBox title="Connect sliders by">
+          <Radio name="mconn" label="Moving the next slider to where the previous one ends" checked={o.connection === 'move'} onChange={() => set({ connection: 'move' })} /><br />
+          <Radio name="mconn" label="Joining them with a straight line" checked={o.connection === 'linear'} onChange={() => set({ connection: 'linear' })} />
+        </GroupBox>
+        <Check label="Keep straight results linear (no red anchors)" checked={o.linearOnLinear} onChange={(v) => set({ linearOnLinear: v })} />
+        <p className={plan.merged.length ? 'win-muted' : 'win-note'}>
+          {plan.merged.length
+            ? `${plan.merged.length + plan.removed.size} objects merge into ${plan.merged.length} slider${plan.merged.length > 1 ? 's' : ''}.`
+            : selected.length < 2
+              ? 'Select two or more circles or sliders first.'
+              : 'Nothing in the selection is close enough to merge.'}
+        </p>
       </div>
     </WinDialog>
   );

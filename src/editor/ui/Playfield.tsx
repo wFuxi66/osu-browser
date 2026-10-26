@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { music } from '../../audio/music';
 import { findFile } from '../../project/project';
-import { onFrame } from '../playback';
+import { onFrame, redrawNext } from '../playback';
 import { CatchMode } from '../playfield/catchMode';
 import { ManiaMode } from '../playfield/maniaMode';
 import { StdMode } from '../playfield/stdMode';
@@ -102,6 +102,7 @@ export function Playfield() {
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      redrawNext();
       mode?.layout(w, h);
     });
     ro.observe(canvas);

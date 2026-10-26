@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { onFrame } from '../playback';
+import { onFrame, redrawNext } from '../playback';
 import { editor } from '../store';
 import { drawBackground } from './Playfield';
 import { canvasDpr } from '../../ui/touch';
@@ -19,6 +19,7 @@ export function StageBackground() {
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      redrawNext();
     });
     ro.observe(canvas);
     const off = onFrame((t) => {

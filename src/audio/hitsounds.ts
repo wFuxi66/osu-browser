@@ -245,16 +245,18 @@ class HitsoundEngine {
     this.playBuffer(this.custom.get(key) ?? this.custom.get(key.replace(/\.(wav|ogg|mp3)$/, '')), volume, delay);
   }
 
-  playMetronome(accent: boolean) {
+  /** A metronome click `delay` seconds from now, on the audio clock like the hitsounds. */
+  playMetronome(accent: boolean, delay = 0) {
     const ctx = this.ensureCtx();
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
+    const at = ctx.currentTime + delay;
     osc.frequency.value = accent ? 1760 : 1320;
-    g.gain.setValueAtTime(0.35, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+    g.gain.setValueAtTime(0.35, at);
+    g.gain.exponentialRampToValueAtTime(0.001, at + 0.06);
     osc.connect(g).connect(this.master!);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.07);
+    osc.start(at);
+    osc.stop(at + 0.07);
   }
 }
 

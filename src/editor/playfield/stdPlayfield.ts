@@ -228,7 +228,7 @@ export class StdPlayfield {
       snaked = snake >= 1;
     }
     const bodyAlpha = t > info.endTime ? alpha : alpha;
-    drawSliderBody(ctx, pts.map(toS), r, track, border, bodyAlpha * 0.9, selected);
+    drawSliderBody(ctx, pts.map(toS), r, track, border, bodyAlpha * 0.9, selected, path);
 
     // Ticks
     const span = sliderSpanDuration(bm, o);

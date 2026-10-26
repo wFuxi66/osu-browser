@@ -7,10 +7,43 @@ import { storyboard } from './storyboard/runtime';
 
 type FrameCallback = (time: number) => void;
 const callbacks = new Set<FrameCallback>();
+const everyFrame = new Set<FrameCallback>();
 
-export function onFrame(cb: FrameCallback): () => void {
-  callbacks.add(cb);
-  return () => callbacks.delete(cb);
+/**
+ * Calls `cb` with the song time on animation frames. The editor's views draw only what time, the store and input
+ * decide, so while nothing changes their frames are skipped (see `stillFrame`); `always` callbacks (gameplay, which
+ * animates on its own) run every frame.
+ */
+export function onFrame(cb: FrameCallback, opts: { always?: boolean } = {}): () => void {
+  const set = opts.always ? everyFrame : callbacks;
+  set.add(cb);
+  return () => set.delete(cb);
+}
+
+/** Even when nothing seems to change, redraw this often: images, videos and skins finish loading on their own. */
+const IDLE_REDRAW_MS = 250;
+let inputRev = 0;
+const bumpInput = () => void inputRev++;
+// Input moves cursors, previews and hovers that the store doesn't track.
+for (const type of ['pointermove', 'pointerdown', 'pointerup', 'pointercancel', 'wheel', 'keydown', 'keyup', 'resize', 'blur'] as const) {
+  window.addEventListener(type, bumpInput, { capture: true, passive: true });
+}
+music.onChange(bumpInput);
+
+/** Draws the next frame even if nothing seems to have changed: a resized canvas comes back blank. */
+export const redrawNext = bumpInput;
+
+const drawn = { time: NaN, rev: -1, input: -1, at: -Infinity };
+
+/** Whether the editor's views would draw the same frame as last time. */
+function stillFrame(shown: number): boolean {
+  const now = performance.now();
+  if (!music.playing && shown === drawn.time && editor.rev === drawn.rev && inputRev === drawn.input && now - drawn.at < IDLE_REDRAW_MS) return true;
+  drawn.time = shown;
+  drawn.rev = editor.rev;
+  drawn.input = inputRev;
+  drawn.at = now;
+  return false;
 }
 
 /**
@@ -111,7 +144,7 @@ function scheduleMetronome(from: number, to: number, now: number, rate: number) 
     const t = red.time + k * red.beatLength;
     const delay = Math.max(0, (t - now) / rate / 1000);
     const accent = ((k % red.meter) + red.meter) % red.meter === 0;
-    setTimeout(() => hitsounds.playMetronome(accent), delay * 1000);
+    hitsounds.playMetronome(accent, delay);
   }
 }
 
@@ -127,13 +160,15 @@ function frame() {
     report(e);
   }
   const shown = music.displayTime;
-  for (const cb of callbacks) {
+  const run = (cb: FrameCallback) => {
     try {
       cb(shown);
     } catch (e) {
       report(e);
     }
-  }
+  };
+  everyFrame.forEach(run);
+  if (!stillFrame(shown)) callbacks.forEach(run);
 }
 
 function report(e: unknown) {

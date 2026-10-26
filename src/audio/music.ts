@@ -24,9 +24,16 @@ function exactCopy(blob: Blob): Promise<Blob> {
       const n = buf.length;
       const channels = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
       const header = new DataView(new ArrayBuffer(44));
-      const pcm = new Int16Array(n * channels.length);
-      for (let i = 0, o = 0; i < n; i++)
-        for (const ch of channels) pcm[o++] = Math.max(-1, Math.min(1, ch[i])) * 32767;
+      const nc = channels.length;
+      const pcm = new Int16Array(n * nc);
+      // One channel at a time with plain indexing: this runs over every sample of the song on the main thread.
+      for (let c = 0; c < nc; c++) {
+        const ch = channels[c];
+        for (let i = 0, o = c; i < n; i++, o += nc) {
+          const s = ch[i];
+          pcm[o] = (s > 1 ? 1 : s < -1 ? -1 : s) * 32767;
+        }
+      }
       const text = (at: number, s: string) => [...s].forEach((c, k) => header.setUint8(at + k, c.charCodeAt(0)));
       text(0, 'RIFF');
       header.setUint32(4, 36 + pcm.byteLength, true);

@@ -170,7 +170,10 @@ export function strokePolyline(ctx: CanvasRenderingContext2D, pts: Vec2[]) {
   ctx.stroke();
 }
 
-/** Slider body: stable's skinned look with a skin, else a white border and darker track. */
+/**
+ * Slider body: stable's skinned look with a skin, else a white border and darker track. `owner` (the slider's path)
+ * lets a skinned body be kept and reused while it's drawn the same way.
+ */
 export function drawSliderBody(
   ctx: CanvasRenderingContext2D,
   pts: Vec2[],
@@ -179,6 +182,7 @@ export function drawSliderBody(
   border: Rgb,
   alpha: number,
   selected: boolean,
+  owner?: object,
 ) {
   if (pts.length < 2) return;
   ctx.save();
@@ -192,7 +196,7 @@ export function drawSliderBody(
   }
   if (skins.current) {
     ctx.restore();
-    drawLegacySliderBody(ctx, pts, r, track, border, alpha);
+    drawLegacySliderBody(ctx, pts, r, track, border, alpha, owner);
     return;
   }
   ctx.strokeStyle = rgba(border);
@@ -220,16 +224,65 @@ function sized(c: HTMLCanvasElement | null, w: number, h: number): HTMLCanvasEle
   return c;
 }
 
+/** Finished skinned bodies, cropped to their bounding box: a slider looks the same frame after frame unless it snakes. */
+interface CachedBody {
+  sig: string;
+  image: HTMLCanvasElement;
+  bx: number;
+  by: number;
+}
+const bodyCache = new Map<object, CachedBody>();
+/** Only the sliders on screen need keeping; older ones go first. */
+const BODY_CACHE_SIZE = 32;
+
 /**
  * Slider body as stable draws it with skins (lazer's LegacySliderBody): a faint shadow at the edge, the border, then a
  * track running from the darkened colour at the edge to a lightened one in the middle, at 70% opacity.
  */
-function drawLegacySliderBody(ctx: CanvasRenderingContext2D, pts: Vec2[], r: number, track: Rgb, border: Rgb, alpha: number) {
-  const SHADOW = 1 - 59 / 64;
-  const BORDER = 0.128;
+function drawLegacySliderBody(ctx: CanvasRenderingContext2D, pts: Vec2[], r: number, track: Rgb, border: Rgb, alpha: number, owner?: object) {
   const m = ctx.getTransform();
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
+  const blit = (image: CanvasImageSource, sx: number, sy: number, bx: number, by: number, bw: number, bh: number) => {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(image, sx, sy, bw, bh, bx, by, bw, bh);
+    ctx.restore();
+  };
+  const last = pts[pts.length - 1];
+  // Everything the picture depends on: the same path drawn at the same place, size and colours.
+  const sig = owner
+    ? `${pts.length},${pts[0].x},${pts[0].y},${last.x},${last.y},${r},${track.r},${track.g},${track.b},${border.r},${border.g},${border.b},${m.a},${m.d},${m.e},${m.f},${W},${H}`
+    : '';
+  const hit = owner && bodyCache.get(owner);
+  if (owner && hit && hit.sig === sig) {
+    bodyCache.delete(owner);
+    bodyCache.set(owner, hit);
+    blit(hit.image, 0, 0, hit.bx, hit.by, hit.image.width, hit.image.height);
+    return;
+  }
+  const box = paintLegacySliderBody(m, W, H, pts, r, track, border);
+  if (!box) return;
+  const { bx, by, bw, bh } = box;
+  if (!owner) {
+    blit(bodyLayer!, bx, by, bx, by, bw, bh);
+    return;
+  }
+  const image = hit ? hit.image : document.createElement('canvas');
+  image.width = bw;
+  image.height = bh;
+  image.getContext('2d')!.drawImage(bodyLayer!, bx, by, bw, bh, 0, 0, bw, bh);
+  bodyCache.delete(owner);
+  bodyCache.set(owner, { sig, image, bx, by });
+  if (bodyCache.size > BODY_CACHE_SIZE) bodyCache.delete(bodyCache.keys().next().value!);
+  blit(image, 0, 0, bx, by, bw, bh);
+}
+
+/** Paints a skinned body into the body layer, within its bounding box (device pixels), which it returns. */
+function paintLegacySliderBody(m: DOMMatrix, W: number, H: number, pts: Vec2[], r: number, track: Rgb, border: Rgb) {
+  const SHADOW = 1 - 59 / 64;
+  const BORDER = 0.128;
   bodyLayer = sized(bodyLayer, W, H);
   trackLayer = sized(trackLayer, W, H);
   // Work only in the path's bounding box (device pixels).
@@ -287,11 +340,7 @@ function drawLegacySliderBody(ctx: CanvasRenderingContext2D, pts: Vec2[], r: num
   a.globalAlpha = 0.7;
   a.drawImage(trackLayer, bx, by, bw, bh, bx, by, bw, bh);
   a.globalAlpha = 1;
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalAlpha = alpha;
-  ctx.drawImage(bodyLayer, bx, by, bw, bh, bx, by, bw, bh);
-  ctx.restore();
+  return { bx, by, bw, bh };
 }
 
 export function drawSliderTick(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, alpha: number) {

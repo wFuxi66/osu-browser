@@ -5,7 +5,7 @@ import { comboColourIndex } from '../../osu/processing';
 import { objectEndTime, sliderSpanDuration, snapTime, tickColour, tickDivisorOf } from '../../osu/timing';
 import type { HitObject, Rgb, TimingPoint } from '../../osu/types';
 import { comboColours, skins } from '../../skin/skin';
-import { onFrame } from '../playback';
+import { onFrame, redrawNext } from '../playback';
 import { drawHitCircle, rgba, shade } from '../render/draw';
 import { editor, shiftObjectTime, snapSliderLength } from '../store';
 import { fmt } from '../../osu/info';
@@ -40,6 +40,7 @@ export function Timeline() {
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      redrawNext();
     });
     ro.observe(canvas);
 

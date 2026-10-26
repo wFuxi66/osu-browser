@@ -1,4 +1,3 @@
-import JSZip from 'jszip';
 import { parseOsu } from '../osu/parser';
 import { serializeBeatmap } from '../osu/serializer';
 import { createEmptyBeatmap, type Beatmap } from '../osu/types';
@@ -100,6 +99,8 @@ export function uniqueVersionName(p: Project, base: string): string {
 
 /** Import an .osz (or any zip of a beatmap folder). */
 export async function importOsz(data: Blob | ArrayBuffer): Promise<Project> {
+  // Loaded on demand: zips are only read and written on import and export.
+  const { default: JSZip } = await import('jszip');
   const zip = await JSZip.loadAsync(data);
   const files = new Map<string, Blob>();
   const difficulties: Difficulty[] = [];
@@ -177,6 +178,7 @@ export async function createProjectFromAudio(audio: File, creator: string): Prom
 }
 
 export async function exportOsz(p: Project): Promise<Blob> {
+  const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   for (const [name, blob] of p.files) zip.file(name, blob);
   const used = new Set<string>();

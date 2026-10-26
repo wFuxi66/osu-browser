@@ -15,6 +15,7 @@ import { accountDialog } from '../songselect/SongSelect';
 import { options, optionsOpen } from '../ui/options';
 import { promptOpen } from '../ui/prompt';
 import { screens } from '../ui/screens';
+import { canvasDpr } from '../ui/touch';
 import { layoutCode } from '../editor/shortcuts';
 import { nowPlaying } from './nowPlaying';
 
@@ -174,7 +175,7 @@ export function MainMenu() {
       }
       const c = viz.current;
       if (!c) return;
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       const w = c.clientWidth;
       const h = c.clientHeight;
       if (c.width !== Math.round(w * dpr)) {
@@ -371,12 +372,14 @@ export function MainMenu() {
 }
 
 function NpProgress() {
-  const [v, setV] = useState(0);
+  const bar = useRef<HTMLDivElement>(null);
+  // Straight to the DOM: re-rendering on every frame would be wasted work.
   useEffect(() => {
     let raf = 0;
     const step = () => {
       raf = requestAnimationFrame(step);
-      setV(music.duration ? Math.max(0, Math.min(1, music.time / music.duration)) : 0);
+      const v = music.duration ? Math.max(0, Math.min(1, music.time / music.duration)) : 0;
+      if (bar.current) bar.current.style.width = `${v * 100}%`;
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
@@ -389,7 +392,7 @@ function NpProgress() {
         if (music.duration) music.seek(((e.clientX - r.left) / r.width) * music.duration);
       }}
     >
-      <div style={{ width: `${v * 100}%` }} />
+      <div ref={bar} style={{ width: 0 }} />
     </div>
   );
 }

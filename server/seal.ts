@@ -14,7 +14,8 @@ export function sealer(secret: string, purpose: string) {
     open(sealed: string): string | null {
       try {
         const b = Buffer.from(sealed, 'base64url');
-        const d = createDecipheriv('aes-256-gcm', key, b.subarray(0, 12));
+        // A pinned tag length: GCM would otherwise accept a truncated tag.
+        const d = createDecipheriv('aes-256-gcm', key, b.subarray(0, 12), { authTagLength: 16 });
         d.setAuthTag(b.subarray(12, 28));
         return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8');
       } catch {

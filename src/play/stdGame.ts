@@ -743,7 +743,7 @@ export class StdGame {
       const snake = this.snaking && t < g.start ? Math.min(1, Math.max(0, (t - appear) / (preempt / 3))) : 1;
       const pts = (snake < 1 ? path.pathBetween(0, snake) : path.points).map(toS);
       const { track, border } = sliderColours(this.bm, g.colour);
-      drawSliderBody(ctx, pts, R, track, border, alpha * 0.9, false);
+      drawSliderBody(ctx, pts, R, track, border, alpha * 0.9, false, path);
 
       const spanNow = t < g.start ? 0 : Math.min(o.slides - 1, Math.floor((t - g.start) / Math.max(1, g.span)));
       // End circles where a span still to come finishes (even spans end at the far end), the last one fading with the body.

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { music } from '../../audio/music';
-import { onFrame } from '../playback';
+import { onFrame, redrawNext } from '../playback';
 import { editor } from '../store';
 import { canvasDpr } from '../../ui/touch';
 
@@ -20,44 +20,61 @@ export function SongProgress() {
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      redrawNext();
     });
     ro.observe(canvas);
 
-    const off = onFrame((t) => {
-      if (!editor.hasProject || !w) return;
+    // The marks only change with the map, and a map can have a thousand timing points: they're drawn once into this
+    // layer, and each frame copies it under the playhead.
+    const marks = document.createElement('canvas');
+    let marksKey = '';
+    const drawMarks = (dur: number) => {
       const bm = editor.bm;
-      const dur = music.duration || 1;
+      const m = marks.getContext('2d')!;
+      marks.width = canvas.width;
+      marks.height = canvas.height;
+      m.setTransform(canvas.width / w, 0, 0, canvas.height / h, 0, 0);
       const X = (time: number) => (time / dur) * w;
-      ctx.clearRect(0, 0, w, h);
       // Stable's colours: grey breaks, orange kiai, red/green timing points, blue bookmarks, yellow preview point.
       const mid = h * 0.5;
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillRect(0, mid - 0.5, w, 1);
+      m.fillStyle = 'rgba(255,255,255,0.35)';
+      m.fillRect(0, mid - 0.5, w, 1);
       const tps = bm.timingPoints;
+      m.fillStyle = 'rgba(255,150,30,0.55)';
       for (let i = 0; i < tps.length; i++) {
-        if (!tps[i].kiai || (i > 0 && tps[i - 1].kiai)) continue;
-        const next = tps.slice(i + 1).find((p) => !p.kiai);
-        ctx.fillStyle = 'rgba(255,150,30,0.55)';
-        ctx.fillRect(X(tps[i].time), mid - h * 0.12, X(next ? next.time : dur) - X(tps[i].time), h * 0.24);
+        if (!tps[i].kiai) continue;
+        let j = i + 1;
+        while (j < tps.length && tps[j].kiai) j++;
+        m.fillRect(X(tps[i].time), mid - h * 0.12, X(j < tps.length ? tps[j].time : dur) - X(tps[i].time), h * 0.24);
+        i = j;
       }
-      for (const br of bm.events.breaks) {
-        ctx.fillStyle = 'rgba(200,200,200,0.45)';
-        ctx.fillRect(X(br.start), mid - h * 0.12, X(br.end) - X(br.start), h * 0.24);
-      }
+      m.fillStyle = 'rgba(200,200,200,0.45)';
+      for (const br of bm.events.breaks) m.fillRect(X(br.start), mid - h * 0.12, X(br.end) - X(br.start), h * 0.24);
       for (const tp of tps) {
-        ctx.fillStyle = tp.uninherited ? 'rgba(255,60,60,0.9)' : 'rgba(110,190,60,0.75)';
-        ctx.fillRect(X(tp.time), tp.uninherited ? h * 0.1 : h * 0.25, 1, tp.uninherited ? h * 0.8 : h * 0.5);
+        m.fillStyle = tp.uninherited ? 'rgba(255,60,60,0.9)' : 'rgba(110,190,60,0.75)';
+        m.fillRect(X(tp.time), tp.uninherited ? h * 0.1 : h * 0.25, 1, tp.uninherited ? h * 0.8 : h * 0.5);
       }
-      for (const b of bm.editor.bookmarks) {
-        ctx.fillStyle = '#3d9bff';
-        ctx.fillRect(X(b) - 0.5, h * 0.15, 2, h * 0.7);
-      }
+      m.fillStyle = '#3d9bff';
+      for (const b of bm.editor.bookmarks) m.fillRect(X(b) - 0.5, h * 0.15, 2, h * 0.7);
       if (bm.general.previewTime >= 0) {
-        ctx.fillStyle = '#ffd400';
-        ctx.fillRect(X(bm.general.previewTime) - 0.5, h * 0.1, 2, h * 0.8);
+        m.fillStyle = '#ffd400';
+        m.fillRect(X(bm.general.previewTime) - 0.5, h * 0.1, 2, h * 0.8);
       }
+    };
+
+    const off = onFrame((t) => {
+      if (!editor.hasProject || !w) return;
+      const dur = music.duration || 1;
+      // contentRev changes with every edit to the map (and with another map or difficulty).
+      const key = `${editor.contentRev}|${dur}|${canvas.width}|${canvas.height}`;
+      if (key !== marksKey) {
+        marksKey = key;
+        drawMarks(dur);
+      }
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(marks, 0, 0, w, h);
       ctx.fillStyle = '#fff';
-      ctx.fillRect(X(t) - 1.5, 0, 3, h);
+      ctx.fillRect((t / dur) * w - 1.5, 0, 3, h);
     });
 
     let dragging = false;

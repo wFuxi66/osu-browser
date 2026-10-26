@@ -293,6 +293,8 @@ function Tip() {
 
 // ------------------------------------------------------------------ bottom bar
 
+const PERCENT = new Intl.NumberFormat(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
 function TimeDisplay() {
   const ref = useRef<HTMLSpanElement>(null);
   const pctRef = useRef<HTMLSpanElement>(null);
@@ -303,7 +305,8 @@ function TimeDisplay() {
         if (ref.current) ref.current.textContent = formatTimestamp(t);
         if (pctRef.current) {
           const d = music.duration;
-          pctRef.current.textContent = !d ? '' : t < 0 ? 'intro' : t > d ? 'outro' : `${((t / d) * 100).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+          const pct = !d ? '' : t < 0 ? 'intro' : t > d ? 'outro' : `${PERCENT.format((t / d) * 100)}%`;
+          if (pctRef.current.textContent !== pct) pctRef.current.textContent = pct;
         }
       }),
     [],

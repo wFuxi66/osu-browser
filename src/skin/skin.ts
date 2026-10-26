@@ -1,6 +1,5 @@
 // Skins: osu!default (ppy's legacy default skin from osu-resources), the editor's own drawn style, and skins the user
 // imports (.osk or a skin folder). Imported skins stay in this browser (IndexedDB) and are never uploaded.
-import JSZip from 'jszip';
 import { hitsounds } from '../audio/hitsounds';
 import { DEFAULT_COMBO_COLOURS, type Beatmap, type Rgb } from '../osu/types';
 
@@ -424,6 +423,8 @@ class SkinManager {
     let entries: [string, Blob][] = [];
     let fallbackName = 'Imported skin';
     if (picked.length === 1 && /\.(osk|zip)$/i.test(picked[0].name)) {
+      // Loaded on demand: zips are only read and written on import and export.
+      const { default: JSZip } = await import('jszip');
       const zip = await JSZip.loadAsync(picked[0]);
       for (const f of Object.values(zip.files)) if (!f.dir) entries.push([f.name, await f.async('blob')]);
       fallbackName = picked[0].name.replace(/\.(osk|zip)$/i, '');

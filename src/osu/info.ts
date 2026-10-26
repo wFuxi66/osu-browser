@@ -81,7 +81,12 @@ export function formatBpm(i: BeatmapInfo): string {
   return `${r(i.bpmMin)}-${r(i.bpmMax)} (${r(i.bpmMain)})`;
 }
 
+// Readouts call fmt on every frame, and toLocaleString with options builds a new formatter each time.
+const formats = new Map<number, Intl.NumberFormat>();
+
 /** Numbers in the viewer's locale, like stable ("7,85" on a French system). */
 export function fmt(v: number, digits = 1): string {
-  return v.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+  let f = formats.get(digits);
+  if (!f) formats.set(digits, (f = new Intl.NumberFormat(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 })));
+  return f.format(v);
 }

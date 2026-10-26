@@ -67,7 +67,7 @@
 /* ------------------------------------------------------------------ gameplay */
 .player { position: fixed; inset: 0; z-index: 60; background: #000; cursor: none; font-family: var(--osu-font); color: #fff; }
 .player.done, .player:has(.pause-menu) { cursor: default; }
-.player canvas { width: 100%; height: 100%; display: block; }
+.player canvas { width: 100%; height: 100%; display: block; touch-action: none; }
 .player-note { position: absolute; top: calc(var(--u) * 90); left: 50%; transform: translateX(-50%); padding: calc(var(--u) * 6) calc(var(--u) * 14); background: rgba(0,0,0,0.6); border-radius: calc(var(--u) * 6); font-size: calc(var(--u) * 15); pointer-events: none; }
 .player-skip { position: absolute; right: 0; bottom: calc(var(--u) * 40); padding: 0; border: none; background: none; cursor: pointer; }
 .player-skip img { height: calc(var(--u) * 96); display: block; }

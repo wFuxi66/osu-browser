@@ -891,6 +891,8 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
+    // What the panels were last placed for: once the scroll settles, frames that would place them the same are skipped.
+    let placed = '';
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -900,7 +902,14 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
       const max = L.total - L.h / 2 - (L.heights[L.heights.length - 1] ?? 0) / 2;
       s.target = Math.max(min, Math.min(Math.max(min, max), s.target));
       s.pos += (s.target - s.pos) * Math.min(1, dt * 9);
+      if (Math.abs(s.target - s.pos) < 0.05) s.pos = s.target;
       const w = wrap.current?.clientWidth ?? window.innerWidth;
+      const key = `${s.pos}|${w}|${L.h}|${L.total}|${hovered.current}`;
+      if (key === placed) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      placed = key;
       rows.forEach((r, i) => {
         const el = els.current.get(r.key);
         if (!el) return;

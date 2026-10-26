@@ -19,7 +19,7 @@ import {
   type SbSprite,
 } from '../../osu/storyboard';
 import { redLineAt } from '../../osu/timing';
-import { onFrame } from '../playback';
+import { onFrame, redrawNext } from '../playback';
 import { StdPlayfield } from '../playfield/stdPlayfield';
 import { layoutCode } from '../shortcuts';
 import { editor, formatTimestamp, useEditor } from '../store';
@@ -226,6 +226,7 @@ export function DesignTimeline() {
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      redrawNext();
     });
     ro.observe(canvas);
     const ppm = () => (w / 5000) * (editor.hasProject ? editor.bm.editor.timelineZoom : 1);
@@ -338,6 +339,7 @@ function SbPreview() {
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      redrawNext();
     });
     ro.observe(canvas);
 

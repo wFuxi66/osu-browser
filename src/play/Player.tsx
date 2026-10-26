@@ -19,6 +19,7 @@ import { layoutCode } from '../editor/shortcuts';
 import { editor, PLAYFIELD_H, PLAYFIELD_W, useEditor } from '../editor/store';
 import { drawBackground } from '../editor/ui/Playfield';
 import { skins, textureUrl } from '../skin/skin';
+import { canvasDpr } from '../ui/touch';
 import { Hud, type BoardEntry } from './hud';
 import { ModIcon } from './ModIcon';
 import { isAuto, modSelection, modsLabel, rateOf, useMods, withMod, type ModId } from './mods';
@@ -113,7 +114,7 @@ export function Player({ mode }: { mode: 'play' | 'test' }) {
     let h = 0;
     let view: View = { scale: 1, ox: 0, oy: 0 };
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       w = canvas.clientWidth;
       h = canvas.clientHeight;
       canvas.width = w * dpr;
@@ -289,7 +290,7 @@ export function Player({ mode }: { mode: 'play' | 'test' }) {
       if (ph !== 'playing') return;
       const songOver = !lead && leadPaused === null && !music.playing && music.duration > 0 && t >= music.duration - music.offset - 50;
       if ((game.finished && t > game.lastTime + (test ? 1500 : 800)) || songOver) finish();
-    });
+    }, { always: true });
 
     // ---------------------------------------------------------------- input
     const binds = prefs.keybinds;
@@ -335,16 +336,38 @@ export function Player({ mode }: { mode: 'play' | 'test' }) {
       const slot = slotOf(layoutCode(e));
       if (slot >= 0) game?.release(slot);
     };
+    // Touch: each finger holds M1 or M2 (whichever is free), so one can stay on a slider while another taps, and the
+    // cursor follows the finger that touched last.
+    const fingers = new Map<number, number>();
+    let aimFinger = -1;
     const onMove = (e: PointerEvent) => {
+      if (e.pointerType === 'touch' && e.pointerId !== aimFinger) return;
       const r = canvas.getBoundingClientRect();
       game?.move(toOsu(view, { x: e.clientX - r.left, y: e.clientY - r.top }));
     };
     const onDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') {
+        aimFinger = e.pointerId;
+        // A tap has no move before it: aim where the finger landed before judging the press.
+        onMove(e);
+      }
       if (phaseRef.current === 'resuming') return tryResume();
       if (prefs.disableMouseButtons || (e.button !== 0 && e.button !== 2)) return;
-      press(e.button === 0 ? 2 : 3);
+      if (e.pointerType !== 'touch') return press(e.button === 0 ? 2 : 3);
+      const held = new Set(fingers.values());
+      const slot = !held.has(2) ? 2 : !held.has(3) ? 3 : -1;
+      if (slot < 0) return;
+      fingers.set(e.pointerId, slot);
+      press(slot);
     };
     const onUp = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') {
+        const slot = fingers.get(e.pointerId);
+        fingers.delete(e.pointerId);
+        if (slot !== undefined) game?.release(slot);
+        if (e.pointerId === aimFinger) aimFinger = [...fingers.keys()].pop() ?? -1;
+        return;
+      }
       if (e.button === 0 || e.button === 2) game?.release(e.button === 0 ? 2 : 3);
     };
     const onBlur = () => {
@@ -354,6 +377,7 @@ export function Player({ mode }: { mode: 'play' | 'test' }) {
     canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('pointerdown', onDown);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     canvas.addEventListener('contextmenu', noMenu);
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('keyup', onKeyUp, true);
@@ -365,6 +389,7 @@ export function Player({ mode }: { mode: 'play' | 'test' }) {
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
       canvas.removeEventListener('contextmenu', noMenu);
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);

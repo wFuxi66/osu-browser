@@ -165,7 +165,7 @@ export function TimingSetupDialog() {
                     </div>
                     <div className="tsd-custom">
                       <Radio name="sv" label="Custom:" checked={preset === undefined} onChange={() => undefined} />
-                      <NumberBox value={sv} min={0.1} max={10} step={0.01} width={70} digits={2} onChange={(v) => edit((t) => !t.uninherited && (t.beatLength = -100 / v))} />
+                      <NumberBox value={sv} min={0.1} max={10} step={0.1} width={70} digits={2} onChange={(v) => edit((t) => !t.uninherited && (t.beatLength = -100 / v))} />
                     </div>
                   </GroupBox>
                 )}

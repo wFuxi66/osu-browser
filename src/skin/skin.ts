@@ -204,6 +204,14 @@ export class Skin {
     return this.textures.get(name) ?? this.fallback?.get(name);
   }
 
+  /** The element name of frame `i` (wrapping) of the slider ball animation: plain "sliderb" when it doesn't animate. */
+  sliderBallName(i: number): string {
+    if (!this.textures.has('sliderb')) return this.fallback?.sliderBallName(i) ?? 'sliderb';
+    let n = 0;
+    while (this.textures.has(`sliderb:${n}`)) n++;
+    return n ? `sliderb:${((i % n) + n) % n}` : 'sliderb';
+  }
+
   /** Whether the skin itself (not its fallback) has this element. */
   has(name: string): boolean {
     return this.textures.has(name);
@@ -301,6 +309,18 @@ async function buildSkin(id: string, files: Map<string, Blob>, ini: SkinIni, fal
       })(),
     );
   }
+  // The slider ball's rolling animation, sliderb0, sliderb1, ... (kept only when there's more than one frame).
+  jobs.push(
+    (async () => {
+      const frames: Texture[] = [];
+      for (let i = 0; i < 60; i++) {
+        const t = await find(`sliderb${i}`);
+        if (!t) break;
+        frames.push(t);
+      }
+      if (frames.length > 1) frames.forEach((t, i) => textures.set(`sliderb:${i}`, t));
+    })(),
+  );
   await Promise.all(jobs);
   return new Skin(id, ini, textures, fallback);
 }

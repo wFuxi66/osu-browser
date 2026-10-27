@@ -3,6 +3,7 @@
 // In the editor, Alt+wheel only reaches it in the bottom-right corner; elsewhere it stays the editor's.
 import { useEffect, useRef, useState } from 'react';
 import { editor, useEditor } from '../editor/store';
+import { activePlayfield } from '../editor/ui/Playfield';
 import { gameplay } from '../play/session';
 import type { Prefs } from '../project/storage';
 
@@ -38,6 +39,15 @@ function inCorner(x: number, y: number): boolean {
   return Math.hypot((x - window.innerWidth) / unit - BACKDROP.cx, (y - window.innerHeight) / unit - BACKDROP.cy) <= BACKDROP.r;
 }
 
+/** Whether the wheel is over an editor area that uses Alt+wheel itself. */
+function editorWheelAt(e: WheelEvent): boolean {
+  const area = (e.target as HTMLElement).closest?.<HTMLElement>('[data-wheel]');
+  if (!area) return false;
+  if (!area.classList.contains('playfield-canvas')) return true;
+  const r = area.getBoundingClientRect();
+  return activePlayfield.current?.inPlayfield?.(e.clientX - r.left, e.clientY - r.top) ?? true;
+}
+
 export function VolumeControl() {
   const ed = useEditor();
   const [visible, setVisible] = useState(false);
@@ -61,8 +71,8 @@ export function VolumeControl() {
       if (!over && !playing) {
         if (!e.altKey || e.ctrlKey || e.metaKey) return;
         // Alt+wheel over the playfield or timeline stays the editor's (distance spacing, zoom) outside the
-        // bottom-right corner, as in stable.
-        if (editor.hasProject && (e.target as HTMLElement).closest?.('[data-wheel]') && !inCorner(e.clientX, e.clientY)) return;
+        // bottom-right corner, as in stable. Around the playfield (the canvas covers the whole stage) it's the volume.
+        if (editor.hasProject && editorWheelAt(e) && !inCorner(e.clientX, e.clientY)) return;
       }
       e.preventDefault();
       e.stopImmediatePropagation();

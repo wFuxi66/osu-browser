@@ -24,6 +24,7 @@ import { TimingScreen, TimingTopRight } from './TimingScreen';
 import { StageBackground } from './StageBackground';
 import { shortcutOf } from '../keybinds';
 import { useTouch } from '../../ui/touch';
+import { inputBox } from '../../ui/prompt';
 
 /** The stable editor layout: menu strip, then a full-window stage with the panels laid over the playfield. */
 export function EditorShell() {
@@ -187,7 +188,16 @@ function PositionReadout() {
       }),
     [],
   );
-  return <div className="ed-position" ref={ref} />;
+  // Like stable, clicking the selected object's position lets you type exact coordinates.
+  const edit = async () => {
+    const sel = editor.selectedObjects;
+    if (sel.length !== 1 || sel[0].kind === 'spinner' || editor.bm.general.mode !== 0) return;
+    const o = sel[0];
+    const r = await inputBox('Position', 'X and Y (playfield is 512 × 384):', `${Math.round(o.x)} ${Math.round(o.y)}`);
+    const [x, y] = (r ?? '').split(/[\s,;]+/).filter(Boolean).map(Number);
+    if (Number.isFinite(x) && Number.isFinite(y)) editor.nudgePosition(Math.round(x) - o.x, Math.round(y) - o.y);
+  };
+  return <div className="ed-position" ref={ref} onClick={() => void edit()} />;
 }
 
 // ------------------------------------------------------------------ compose side panels

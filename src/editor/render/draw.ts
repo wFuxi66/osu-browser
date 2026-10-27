@@ -361,9 +361,11 @@ export function drawSliderTick(ctx: CanvasRenderingContext2D, x: number, y: numb
 }
 
 /** The slider ball and its follow circle; angle is the ball's direction of travel. */
-export function drawSliderBall(ctx: CanvasRenderingContext2D, at: Vec2, angle: number, r: number, colour: Rgb, alpha: number, follow = 1) {
+/** `frame`: which frame of an animated skin ball to show (it rolls with the distance travelled). */
+export function drawSliderBall(ctx: CanvasRenderingContext2D, at: Vec2, angle: number, r: number, colour: Rgb, alpha: number, follow = 1, frame = 0) {
   const skin = skins.current;
-  const ball = skin?.get('sliderb');
+  const name = skin?.sliderBallName(frame) ?? 'sliderb';
+  const ball = skin?.get(name);
   ctx.save();
   ctx.globalAlpha = alpha;
   if (skin && ball) {
@@ -371,7 +373,7 @@ export function drawSliderBall(ctx: CanvasRenderingContext2D, at: Vec2, angle: n
     const nd = skin.get('sliderb-nd');
     if (nd) drawTexture(ctx, nd, at.x, at.y, k);
     const tint = skin.ini.allowSliderBallTint ? colour : skin.ini.sliderBall;
-    drawTexture(ctx, (tint && skin.tinted('sliderb', tint)) || ball, at.x, at.y, k, angle);
+    drawTexture(ctx, (tint && skin.tinted(name, tint)) || ball, at.x, at.y, k, angle);
     const spec = skin.get('sliderb-spec');
     if (spec) {
       ctx.globalCompositeOperation = 'lighter';

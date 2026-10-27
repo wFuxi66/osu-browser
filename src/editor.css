@@ -52,7 +52,7 @@
 .ed-insert-break { position: absolute; left: calc(var(--u) * 19); top: calc(var(--u) * 66); width: calc(var(--u) * 200); height: calc(var(--u) * 31); padding: 0; border: none; border-radius: 0; background: #5574e6; color: #fff; font-size: calc(var(--u) * 21); font-weight: 400; }
 .ed-insert-break:hover:not(:disabled) { background: #6a87f0; border: none; }
 .ed-position { position: absolute; right: calc(var(--u) * 6); top: calc(var(--u) * 66); font-size: calc(var(--u) * 12); line-height: 1.32; white-space: pre; text-align: left; }
-.ed-position.selected { color: #ffd51e; }
+.ed-position.selected { color: #ffd51e; cursor: pointer; }
 
 .ed-tip { position: absolute; z-index: 4; left: 0; right: 0; top: calc(var(--top-h) + var(--u) * 9); text-align: center; font-size: calc(var(--u) * 10); color: #fff; text-shadow: 0 0 3px #000, 0 1px 2px #000; pointer-events: none; animation: ss-fade 0.6s; padding: 0 calc(var(--u) * 200); }
 

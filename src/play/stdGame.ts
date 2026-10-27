@@ -773,7 +773,8 @@ export class StdGame {
         const b = sliderPositionAtSpan(o, at);
         const n = sliderPositionAtSpan(o, Math.min(o.slides, at + 0.02));
         const follow = g.tracking ? Math.min(1, 0.5 + (t - g.trackingAt) / 360) : 0;
-        drawSliderBall(ctx, toS(b), Math.atan2(n.y - b.y, n.x - b.x), R, g.colour, 1, follow);
+        const frame = Math.floor((at * o.length) / (2 * Math.PI * this.radius) * 10);
+        drawSliderBall(ctx, toS(b), Math.atan2(n.y - b.y, n.x - b.x), R, g.colour, 1, follow, frame);
       }
     }
     this.drawHead(ctx, v, g, t);

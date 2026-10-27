@@ -10,11 +10,14 @@ import { actionFor, comboOf } from './keybinds';
 
 export const DIVISORS = [1, 2, 3, 4, 6, 8, 12, 16];
 
-function isTyping(e: Event): boolean {
-  const el = e.target as HTMLElement | null;
+function isFormField(el: HTMLElement | null): boolean {
   if (!el) return false;
   const tag = el.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+function isTyping(e: Event): boolean {
+  return isFormField(e.target as HTMLElement | null);
 }
 
 export function stepDivisor(dir: 1 | -1) {
@@ -93,8 +96,14 @@ const RUN: Record<string, () => void> = {
     else if (isMania()) editor.nudgeTime(-1);
     else editor.nudgePosition(0, 1);
   },
-  fasterFine: () => editor.setPlaybackRate(music.rate + 0.05),
-  slowerFine: () => editor.setPlaybackRate(music.rate - 0.05),
+  fasterFine: () => {
+    if (hasSel() && !isMania()) editor.nudgePosition(0, -editor.gridSize);
+    else editor.setPlaybackRate(music.rate + 0.05);
+  },
+  slowerFine: () => {
+    if (hasSel() && !isMania()) editor.nudgePosition(0, editor.gridSize);
+    else editor.setPlaybackRate(music.rate - 0.05);
+  },
 
   undo: () => editor.undo(),
   redo: () => editor.redo(),
@@ -114,6 +123,8 @@ const RUN: Record<string, () => void> = {
     else if (isMania()) maniaShiftColumns(1);
     else editor.nudgePosition(1, 0);
   },
+  nudgeLeftGrid: () => { if (hasSel() && !isMania()) editor.nudgePosition(-editor.gridSize, 0); },
+  nudgeRightGrid: () => { if (hasSel() && !isMania()) editor.nudgePosition(editor.gridSize, 0); },
   nudgeBack: () => editor.nudgeTime(-1),
   nudgeForward: () => editor.nudgeTime(1),
   flipH: () => editor.flip(true),
@@ -279,7 +290,20 @@ function wheelStep(e: WheelEvent): 1 | -1 | 0 {
   return d > 0 ? 1 : -1;
 }
 
+/**
+ * A side-panel control (sampleset dropdown, a number field) keeps keyboard focus after use, which would swallow every
+ * editor shortcut (Ctrl+A, Delete, 1–4...) until it's clicked away. Clicking anywhere else, or picking a dropdown value,
+ * gives the keyboard back to the editor. Dialogs keep their focus.
+ */
+function releaseFormFocus(e: Event) {
+  const a = document.activeElement as HTMLElement | null;
+  if (!a || !isFormField(a) || a.closest('.win-window')) return;
+  if (e.type === 'change' ? e.target === a && a.tagName === 'SELECT' : !(e.target as HTMLElement).closest?.('input, select, textarea, [contenteditable="true"]')) a.blur();
+}
+
 export function installShortcuts() {
+  window.addEventListener('pointerdown', releaseFormFocus, true);
+  window.addEventListener('change', releaseFormFocus);
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('wheel', handleWheel, { passive: false });
   // Nothing autosaves, so closing the tab with unsaved changes asks first.

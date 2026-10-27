@@ -27,6 +27,14 @@ export function WinDialog({
         e.stopImmediatePropagation();
         onClose();
       }
+      // Enter presses OK, like stable's default button. It waits a tick so a number box being typed in commits first.
+      const el = e.target as HTMLElement;
+      if (e.key === 'Enter' && !e.repeat && !el.closest('textarea, select, button:not(.win-ok)')) {
+        const ok = ref.current?.querySelector<HTMLButtonElement>('.win-ok');
+        if (!ok) return;
+        e.preventDefault();
+        setTimeout(() => !ok.disabled && ok.click());
+      }
     };
     window.addEventListener('keydown', onKey, { capture: true });
     return () => window.removeEventListener('keydown', onKey, { capture: true });

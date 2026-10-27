@@ -54,8 +54,9 @@ export function runAiMod(project: Project, bm: Beatmap): AiModIssue[] {
       else if (next.time < objectEndTime(bm, o) - 1) add({ severity: 'error', category: 'Compose', message: 'Object starts before the previous one ends.', time: next.time, objectIds: [o.id, next.id] });
     }
     if (mode === 0 && o.kind !== 'spinner') {
-      if (o.x - r < -64 || o.x + r > 576 || o.y - r < -48 + 16 || o.y + r > 432) add({ severity: 'warning', category: 'Compose', message: 'Object is partially off-screen.', time: o.time, objectIds: [o.id] });
-      else if (o.x < 0 || o.x > 512 || o.y < 0 || o.y > 384) add({ severity: 'info', category: 'Compose', message: 'Object is outside the playfield area.', time: o.time, objectIds: [o.id] });
+      const pts = o.kind === 'slider' ? [{ x: o.x, y: o.y }, getSliderPath(o).positionAt(1)] : [{ x: o.x, y: o.y }];
+      if (pts.some((p) => p.x - r < -64 || p.x + r > 576 || p.y - r < -48 + 16 || p.y + r > 432)) add({ severity: 'warning', category: 'Compose', message: 'Object is partially off-screen.', time: o.time, objectIds: [o.id] });
+      else if (pts.some((p) => p.x < 0 || p.x > 512 || p.y < 0 || p.y > 384)) add({ severity: 'info', category: 'Compose', message: 'Object is outside the playfield area.', time: o.time, objectIds: [o.id] });
     }
     if (o.kind === 'slider') {
       const path = getSliderPath(o);

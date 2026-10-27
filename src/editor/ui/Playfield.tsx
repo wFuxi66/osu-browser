@@ -154,6 +154,9 @@ export function Playfield() {
       mode?.doubleClick(p.x, p.y);
     };
     const keys = (e: KeyboardEvent) => {
+      // Alt is the distance snap key; without this the browser takes it to open its own menu.
+      if (e.key === 'Alt') e.preventDefault();
+      if (e.altKey !== keyMods.altKey) redrawNext();
       keyMods = e;
       syncMods(e);
     };

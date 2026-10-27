@@ -983,7 +983,9 @@ class Editor {
   nudgePosition(dx: number, dy: number) {
     const sel = this.selectedObjects;
     if (!sel.length) return;
-    this.commit(() => sel.forEach((o) => translateObject(o, dx, dy)));
+    const d = clampMoveToPlayfield(sel, dx, dy);
+    if (!d.x && !d.y) return;
+    this.commit(() => sel.forEach((o) => translateObject(o, d.x, d.y)));
   }
 
   transformSelection(fn: (p: Vec2) => Vec2) {
@@ -997,6 +999,7 @@ class Editor {
         o.x = h.x;
         o.y = h.y;
       }
+      fitInPlayfield(sel);
     });
   }
 
@@ -1014,13 +1017,23 @@ class Editor {
     return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
   }
 
+  /**
+   * The pivot for rotating around the selection: the average of its object positions (slider heads and tails). Unlike
+   * the bounding box centre, that is a regular polygon's true centre, so a triangle turned 60° lands as a perfect star.
+   */
+  rotationCentre(): Vec2 {
+    const pts = this.selectedObjects.filter((o) => o.kind !== 'spinner').flatMap((o) => (o.kind === 'slider' ? [{ x: o.x, y: o.y }, getSliderPath(o).positionAt(1)] : [{ x: o.x, y: o.y }]));
+    if (!pts.length) return { x: PLAYFIELD_W / 2, y: PLAYFIELD_H / 2 };
+    return { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length };
+  }
+
   flip(horizontal: boolean, aroundSelection = false) {
     const c = aroundSelection ? this.selectionCentre() : { x: PLAYFIELD_W / 2, y: PLAYFIELD_H / 2 };
     this.transformSelection((p) => (horizontal ? { x: 2 * c.x - p.x, y: p.y } : { x: p.x, y: 2 * c.y - p.y }));
   }
 
   rotate(degrees: number, pivot: 'playfield' | 'selection') {
-    const c = pivot === 'selection' ? this.selectionCentre() : { x: PLAYFIELD_W / 2, y: PLAYFIELD_H / 2 };
+    const c = pivot === 'selection' ? this.rotationCentre() : { x: PLAYFIELD_W / 2, y: PLAYFIELD_H / 2 };
     const r = (degrees * Math.PI) / 180;
     const cos = Math.cos(r);
     const sin = Math.sin(r);
@@ -1032,6 +1045,13 @@ class Editor {
 
   scale(factor: number, pivot: 'playfield' | 'selection', axes: { x: boolean; y: boolean }) {
     const c = pivot === 'selection' ? this.selectionCentre() : { x: PLAYFIELD_W / 2, y: PLAYFIELD_H / 2 };
+    // Scaling up stops where the selection would no longer fit in the playfield.
+    if (factor > 1) {
+      const b = playfieldBounds(this.selectedObjects);
+      const w = b.maxX - b.minX, h = b.maxY - b.minY;
+      const cap = Math.min(axes.x && w > 0 ? PLAYFIELD_W / w : Infinity, axes.y && h > 0 ? PLAYFIELD_H / h : Infinity);
+      factor = Math.min(factor, Math.max(1, cap));
+    }
     // Slider lengths are kept so rhythm doesn't change; the path is clipped/extended to fit.
     this.transformSelection((p) => ({
       x: axes.x ? Math.round(c.x + (p.x - c.x) * factor) : p.x,
@@ -1227,6 +1247,40 @@ export function translateObject(o: HitObject, dx: number, dy: number) {
   o.x += dx;
   o.y += dy;
   if (o.kind === 'slider') o.points = o.points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+}
+
+/** Box around what has to stay in the playfield: every head, plus slider tails (osu!lazer's selection bounds). */
+function playfieldBounds(objs: Iterable<HitObject>) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const o of objs) {
+    if (o.kind === 'spinner') continue;
+    const pts = o.kind === 'slider' ? [{ x: o.x, y: o.y }, getSliderPath(o).positionAt(1)] : [{ x: o.x, y: o.y }];
+    for (const p of pts) {
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+    }
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/** Limit a move so it can't push any of `objs` out of the playfield. Objects already outside may still move back in. */
+export function clampMoveToPlayfield(objs: Iterable<HitObject>, dx: number, dy: number): Vec2 {
+  const b = playfieldBounds(objs);
+  if (b.minX > b.maxX) return { x: dx, y: dy };
+  const lim = (d: number, lo: number, hi: number) => Math.trunc(Math.max(Math.min(lo, 0), Math.min(Math.max(hi, 0), d)));
+  return { x: lim(dx, -b.minX, PLAYFIELD_W - b.maxX), y: lim(dy, -b.minY, PLAYFIELD_H - b.maxY) };
+}
+
+/** Push `objs` back inside the playfield after a flip/rotate/scale; if the group is too big to fit, each object goes in on its own. */
+function fitInPlayfield(objs: HitObject[]) {
+  const shiftIn = (group: HitObject[]) => {
+    const b = playfieldBounds(group);
+    const dx = b.minX < 0 ? Math.ceil(-b.minX) : b.maxX > PLAYFIELD_W ? Math.floor(PLAYFIELD_W - b.maxX) : 0;
+    const dy = b.minY < 0 ? Math.ceil(-b.minY) : b.maxY > PLAYFIELD_H ? Math.floor(PLAYFIELD_H - b.maxY) : 0;
+    if (dx || dy) group.forEach((o) => translateObject(o, dx, dy));
+  };
+  shiftIn(objs);
+  for (const o of objs) shiftIn([o]);
 }
 
 export function reverseSliderPath(s: Slider) {

@@ -374,14 +374,21 @@ function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: nu
       ctx.stroke();
     }
   }
+  // Bookmarks stand taller than any beat tick, with a flag, so they don't read as a blue 1/4 tick.
   for (const b of bm.editor.bookmarks) {
     const x = X(b);
     ctx.strokeStyle = '#4aa8ff';
+    ctx.fillStyle = '#4aa8ff';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x, h * 0.86);
+    ctx.moveTo(x, h * 0.45);
     ctx.lineTo(x, h);
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 5, h * 0.45);
+    ctx.lineTo(x + 5, h * 0.45);
+    ctx.lineTo(x, h * 0.45 + 6);
+    ctx.fill();
   }
 
   if (!timingView) drawObjects(ctx, h, t, tStart, tEnd, X);
@@ -397,6 +404,9 @@ function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: nu
   ctx.fillStyle = '#fff';
   ctx.fillRect(w / 2 - 1, 0, 2, h);
 }
+
+/** The slider edge that hitsound changes go to: a different colour from the orange selection. */
+const EDGE_SEL = '#3de8ff';
 
 function drawObjects(ctx: CanvasRenderingContext2D, h: number, t: number, tStart: number, tEnd: number, X: (time: number) => number) {
   const bm = editor.bm;
@@ -474,16 +484,16 @@ function drawObjects(ctx: CanvasRenderingContext2D, h: number, t: number, tStart
           const xe = X(o.time + span * s);
           const edgeSel = editor.selectedEdge?.id === o.id && editor.selectedEdge.edge === s;
           const rad = s === o.slides ? r * 0.92 : r * 0.6;
-          circle(xe, rad, colour, null, edgeSel ? '#ffa500' : null);
+          circle(xe, rad, colour, null, edgeSel ? EDGE_SEL : null);
         }
       } else {
         circle(x1, r * 0.92, colour, null, sel ? '#ffa500' : null);
       }
     }
-    // Head
-    const headSel = editor.selectedEdge?.id === o.id && editor.selectedEdge.edge === 0;
+    // Head. While one edge of this slider is targeted for hitsounding, only that edge is ringed.
+    const edge = editor.selectedEdge?.id === o.id ? editor.selectedEdge.edge : null;
     const number = o.kind !== 'spinner' ? proc.info.get(o.id)?.comboNumber : undefined;
-    circle(x0, r * big * 0.92, colour, skinned && number ? String(number) : null, sel || headSel ? '#ffa500' : null);
+    circle(x0, r * big * 0.92, colour, skinned && number ? String(number) : null, edge === 0 ? EDGE_SEL : sel && edge === null ? '#ffa500' : null);
     if (!skinned && (bm.general.mode === 0 || bm.general.mode === 2)) {
       const n = proc.info.get(o.id)?.comboNumber;
       if (n && o.kind !== 'spinner') {

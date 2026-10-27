@@ -1,6 +1,7 @@
 // Music playback with a smooth, high-resolution clock on top of HTMLAudioElement.
 // HTMLAudioElement is used (instead of an AudioBufferSourceNode) so that playback rate changes keep pitch,
 // matching the stable editor's 25/50/75% playback.
+import { exactSong } from './songData';
 
 type Listener = () => void;
 
@@ -13,47 +14,8 @@ const MAX_STEP_BACK_MS = 8;
 // Browsers seek compressed audio only approximately: in VBR mp3s a seek can land a few hundred ms away from
 // the requested time (measured in Edge), which leaves the objects out of sync with the music until the next
 // seek. A WAV copy of the decoded song seeks to the exact sample, and playing it back matches the mp3 played
-// from the start to within a few ms. The editor uses one; the original file is what gets saved and exported.
-const exactCopies = new WeakMap<Blob, Promise<Blob>>();
-
-function exactCopy(blob: Blob): Promise<Blob> {
-  let p = exactCopies.get(blob);
-  if (!p) {
-    p = blob.arrayBuffer().then(async (data) => {
-      const buf = await new OfflineAudioContext(2, 1, 44100).decodeAudioData(data);
-      const n = buf.length;
-      const channels = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
-      const header = new DataView(new ArrayBuffer(44));
-      const nc = channels.length;
-      const pcm = new Int16Array(n * nc);
-      // One channel at a time with plain indexing: this runs over every sample of the song on the main thread.
-      for (let c = 0; c < nc; c++) {
-        const ch = channels[c];
-        for (let i = 0, o = c; i < n; i++, o += nc) {
-          const s = ch[i];
-          pcm[o] = (s > 1 ? 1 : s < -1 ? -1 : s) * 32767;
-        }
-      }
-      const text = (at: number, s: string) => [...s].forEach((c, k) => header.setUint8(at + k, c.charCodeAt(0)));
-      text(0, 'RIFF');
-      header.setUint32(4, 36 + pcm.byteLength, true);
-      text(8, 'WAVEfmt ');
-      header.setUint32(16, 16, true);
-      header.setUint16(20, 1, true);
-      header.setUint16(22, channels.length, true);
-      header.setUint32(24, buf.sampleRate, true);
-      header.setUint32(28, buf.sampleRate * channels.length * 2, true);
-      header.setUint16(32, channels.length * 2, true);
-      header.setUint16(34, 16, true);
-      text(36, 'data');
-      header.setUint32(40, pcm.byteLength, true);
-      return new Blob([header, pcm], { type: 'audio/wav' });
-    });
-    exactCopies.set(blob, p);
-  }
-  return p;
-}
-
+// from the start to within a few ms. The editor uses one (see songData.ts); the original file is what gets
+// saved and exported.
 class MusicClock {
   readonly el: HTMLAudioElement;
   private url: string | null = null;
@@ -117,8 +79,10 @@ class MusicClock {
     }
     this.url = URL.createObjectURL(blob);
     this.el.src = this.url;
+    // Started right away, so the timeline's waveform shares this decode instead of starting its own.
+    const copy = exact && !blob.type.includes('wav') ? exactSong(blob) : null;
     await this.metadata();
-    if (exact && !blob.type.includes('wav')) void this.switchToExactCopy(blob);
+    if (copy) void this.switchToExactCopy(blob, copy);
   }
 
   private metadata(): Promise<void> {
@@ -133,13 +97,14 @@ class MusicClock {
     });
   }
 
-  private async switchToExactCopy(blob: Blob) {
-    let wav: Blob;
+  private async switchToExactCopy(blob: Blob, copy: Promise<{ wav: Blob | null }>) {
+    let wav: Blob | null;
     try {
-      wav = await exactCopy(blob);
+      wav = (await copy).wav;
     } catch {
       return; // undecodable here: keep playing the original
     }
+    if (!wav) return;
     if (this.blob !== blob) return;
     const wasPlaying = this.playing;
     if (wasPlaying) this.pause();

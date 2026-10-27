@@ -64,9 +64,11 @@ let lastRate = 1;
 const LOOKAHEAD = 60;
 
 function rebuildEvents() {
-  const samples = editor.prefs.showStoryboard ? storyboard.samples() : [];
-  const sbRev = editor.prefs.showStoryboard ? storyboard.rev : -2;
+  const showSb = editor.prefs.showStoryboard;
+  if (showSb) storyboard.sync();
+  const sbRev = showSb ? storyboard.rev : -2;
   if (eventsRev === editor.contentRev && eventsDiff === editor.diffIndex && eventsSbRev === sbRev) return;
+  const samples = showSb ? storyboard.samples() : [];
   eventsRev = editor.contentRev;
   eventsDiff = editor.diffIndex;
   eventsSbRev = sbRev;
@@ -101,13 +103,14 @@ function firstSustainAfter(t: number): number {
 
 function schedule(now: number) {
   if (!editor.hasProject) return;
-  rebuildEvents();
   const playing = music.playing;
   if (!playing) {
     if (wasPlaying) hitsounds.stopLoops();
     wasPlaying = false;
     return;
   }
+  // Only while playing: on a long map rebuilding takes tens of ms, which opening and every paused edit paid.
+  rebuildEvents();
   const rate = music.rate;
   // Reset scheduling on start, seek or rate change; loops already running are restarted from here.
   if (!wasPlaying || now < lastTime - 5 || now > lastTime + 500 || rate !== lastRate) {

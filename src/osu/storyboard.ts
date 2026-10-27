@@ -139,7 +139,10 @@ function num(s: string | undefined, fallback = 0): number {
 
 /** Parse one command line (without indentation) into one or more commands (chained values expand). */
 export function parseCommand(body: string): SbCommand[] {
-  const p = body.split(',');
+  return commandFromParts(body.split(','));
+}
+
+function commandFromParts(p: string[]): SbCommand[] {
   const type = p[0].trim() as SbCommandType;
   if (!(type in SB_COMMAND_ARITY)) return [];
   const easing = num(p[1]);
@@ -177,7 +180,7 @@ export function parseStoryboardLines(lines: string[], variables?: Map<string, st
   let sprite: SbSprite | null = null;
   let group: SbLoop | SbTrigger | null = null;
   for (const raw0 of lines) {
-    const raw = substitute(raw0.replace(/\r$/, ''), variables);
+    const raw = substitute(raw0.endsWith('\r') ? raw0.slice(0, -1) : raw0, variables);
     if (!raw.trim()) continue;
     if (raw.startsWith('//')) {
       if (!/^\/\/(Background and Video events|Break Periods|Storyboard Layer \d|Storyboard Sound Samples)/.test(raw)) extra.push(raw);
@@ -239,7 +242,7 @@ export function parseStoryboardLines(lines: string[], variables?: Map<string, st
       group = { type: 'T', trigger: (p[1] ?? '').trim(), start: num(p[2]), end: num(p[3]), group: num(p[4]), commands: [] };
       sprite.commands.push(group);
     } else {
-      const cmds = parseCommand(body);
+      const cmds = commandFromParts(p);
       if (depth >= 2 && group) group.commands.push(...cmds);
       else sprite.commands.push(...cmds);
     }
@@ -253,7 +256,7 @@ export function parseOsb(text: string): ParsedStoryboard {
   const events: string[] = [];
   let section = '';
   for (const line of text.split(/\r?\n/)) {
-    const m = /^\[(\w+)\]\s*$/.exec(line.trim());
+    const m = line.startsWith('[') ? /^\[(\w+)\]\s*$/.exec(line.trim()) : null;
     if (m) {
       section = m[1];
       continue;

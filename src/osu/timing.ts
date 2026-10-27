@@ -21,25 +21,32 @@ export function uninheritedPoints(bm: Beatmap): TimingPoint[] {
   return bm.timingPoints.filter((t) => t.uninherited);
 }
 
+/**
+ * Index of the last timing point at or before `time` (half a ms of slack), or -1. Timing points are kept
+ * sorted; a binary search matters as these lookups run per object, and long maps have a thousand points.
+ */
+function lastPointAt(tps: TimingPoint[], time: number): number {
+  let lo = 0;
+  let hi = tps.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (tps[mid].time <= time + 0.5) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo - 1;
+}
+
 /** The red line in effect at `time` (the first one if `time` is before all of them). */
 export function redLineAt(bm: Beatmap, time: number): TimingPoint {
-  let found: TimingPoint | null = null;
-  for (const tp of bm.timingPoints) {
-    if (!tp.uninherited) continue;
-    if (tp.time <= time + 0.5 || !found) found = tp;
-    else break;
-  }
-  return found ?? DEFAULT_TIMING;
+  const tps = bm.timingPoints;
+  for (let i = lastPointAt(tps, time); i >= 0; i--) if (tps[i].uninherited) return tps[i];
+  return tps.find((tp) => tp.uninherited) ?? DEFAULT_TIMING;
 }
 
 /** The last timing point of any kind at or before `time`; drives volume, sample set and kiai. */
 export function controlPointAt(bm: Beatmap, time: number): TimingPoint {
-  let found: TimingPoint | null = null;
-  for (const tp of bm.timingPoints) {
-    if (tp.time <= time + 0.5 || !found) found = tp;
-    else break;
-  }
-  return found ?? DEFAULT_TIMING;
+  const tps = bm.timingPoints;
+  return tps[Math.max(0, lastPointAt(tps, time))] ?? DEFAULT_TIMING;
 }
 
 export function beatLengthAt(bm: Beatmap, time: number): number {
@@ -48,14 +55,9 @@ export function beatLengthAt(bm: Beatmap, time: number): number {
 
 /** Slider velocity multiplier from green lines. */
 export function svAt(bm: Beatmap, time: number): number {
-  let sv = 1;
-  for (const tp of bm.timingPoints) {
-    if (tp.time > time + 0.5) break;
-    if (tp.uninherited) sv = 1;
-    else if (tp.beatLength < 0) sv = Math.min(10, Math.max(0.1, -100 / tp.beatLength));
-    else sv = 1;
-  }
-  return sv;
+  const tp = bm.timingPoints[lastPointAt(bm.timingPoints, time)];
+  if (!tp || tp.uninherited || !(tp.beatLength < 0)) return 1;
+  return Math.min(10, Math.max(0.1, -100 / tp.beatLength));
 }
 
 export function bpmOf(tp: TimingPoint): number {

@@ -3,6 +3,7 @@ import { serializeBeatmap } from '../osu/serializer';
 import { createEmptyBeatmap, type Beatmap } from '../osu/types';
 import { md5, md5Text } from '../osu/md5';
 import { readId3 } from './id3';
+import { readZip } from './unzip';
 
 export interface Difficulty {
   id: string;
@@ -99,27 +100,36 @@ export function uniqueVersionName(p: Project, base: string): string {
 
 /** Import an .osz (or any zip of a beatmap folder). */
 export async function importOsz(data: Blob | ArrayBuffer): Promise<Project> {
-  // Loaded on demand: zips are only read and written on import and export.
-  const { default: JSZip } = await import('jszip');
-  const zip = await JSZip.loadAsync(data);
+  const entries = await unpack(data);
   const files = new Map<string, Blob>();
   const difficulties: Difficulty[] = [];
-  const entries = Object.values(zip.files).filter((f) => !f.dir);
   // Strip a common top-level folder if the zip was made from a folder.
   const prefix = commonPrefix(entries.map((e) => e.name));
   for (const entry of entries) {
     const name = entry.name.slice(prefix.length);
     if (!name) continue;
-    if (name.toLowerCase().endsWith('.osu')) {
-      difficulties.push(imported(await entry.async('uint8array')));
-    } else {
-      files.set(name, new Blob([await entry.async('arraybuffer')], { type: mimeFor(name) }));
-    }
+    if (name.toLowerCase().endsWith('.osu')) difficulties.push(imported(new Uint8Array(await entry.data.arrayBuffer())));
+    else files.set(name, entry.data);
   }
   if (difficulties.length === 0) throw new Error('No .osu difficulty found in this package.');
   sortDifficulties(difficulties);
   const now = Date.now();
   return { id: uid(), createdAt: now, updatedAt: now, files, difficulties };
+}
+
+/** A package's files, in zip order: read natively when possible (see unzip.ts), else with JSZip. */
+async function unpack(data: Blob | ArrayBuffer): Promise<{ name: string; data: Blob }[]> {
+  try {
+    const entries = await readZip(data instanceof Blob ? data : new Blob([data]));
+    if (entries) return await Promise.all(entries.map(async (e) => ({ name: e.name, data: await e.blob(mimeFor(e.name)) })));
+  } catch {
+    // JSZip may still read it, or says what's wrong with it.
+  }
+  // Loaded on demand: zips are only read and written on import and export.
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(data);
+  const entries = Object.values(zip.files).filter((f) => !f.dir);
+  return Promise.all(entries.map(async (f) => ({ name: f.name, data: new Blob([await f.async('arraybuffer')], { type: mimeFor(f.name) }) })));
 }
 
 /** Import loose files (a dropped beatmap folder or individual .osu + assets). */

@@ -52,11 +52,16 @@ function fillSetId(p: Project, setId: number) {
   }
 }
 
+/** The set id in an osu.ppy.sh beatmapset link (or a bare id), or null. */
+export function linkSetId(link: string): number | null {
+  const m = /(?:beatmapsets\/|^)(\d+)/.exec(link.trim());
+  return m ? Number(m[1]) : null;
+}
+
 /** Download a published set by link or id and store it. */
 export async function projectFromLink(link: string, onProgress?: (fraction: number) => void, video = true): Promise<Project> {
-  const m = /(?:beatmapsets\/|^)(\d+)/.exec(link.trim());
-  if (!m) throw new Error('Paste a beatmapset link like https://osu.ppy.sh/beatmapsets/123456 or just the set id.');
-  const setId = Number(m[1]);
+  const setId = linkSetId(link);
+  if (setId === null) throw new Error('Paste a beatmapset link like https://osu.ppy.sh/beatmapsets/123456 or just the set id.');
   const data = await cloud.fetchBeatmapset(setId, onProgress, video);
   const p = await importOsz(data);
   fillSetId(p, setId);
@@ -70,16 +75,18 @@ export async function projectFromLink(link: string, onProgress?: (fraction: numb
  * Song select's "Update to latest version": replaces a stored set with the version on osu! (downloaded from the
  * mirrors), dropping all local changes like stable does. Nothing changes if the mirrors don't have that version yet.
  */
-export async function updateToLatest(projectId: string, setId: number): Promise<Project> {
+export async function updateToLatest(projectId: string, setId: number, onProgress?: (fraction: number) => void): Promise<Project> {
   const online = await onlineSet(setId, true);
   if (!online) throw new Error('This beatmap set is no longer on osu!.');
-  const latest = await importOsz(await cloud.fetchBeatmapset(setId));
+  const latest = await importOsz(await cloud.fetchBeatmapset(setId, onProgress));
   const current = new Set(online.beatmaps.map((b) => b.checksum));
   if (!latest.difficulties.every((d) => d.source && current.has(d.source.md5))) {
     throw new Error("The download mirrors don't have the latest version of this set yet, so nothing was changed. Try again in a while.");
   }
   const p = await loadProjectLocal(projectId);
   if (!p) throw new Error('This beatmap is no longer in song select.');
+  // The download runs in the background: saving a set opened meanwhile would undo the update.
+  if (editor.project?.id === projectId) throw new Error('It was opened in the editor while downloading, so nothing was changed. Close it and update again.');
   fillSetId(latest, setId);
   p.files = latest.files;
   p.difficulties = latest.difficulties;

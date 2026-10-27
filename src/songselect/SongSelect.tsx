@@ -6,7 +6,8 @@ import { fmt, formatBpm, formatLength } from '../osu/info';
 import { cloud } from '../project/cloud';
 import { DRIVE_FOLDER } from '../project/drive';
 import { mapStatus, onlineSet, statusLabel, type MapStatus } from '../project/online';
-import { filesFromDrop, openNewBeatmap, pickFiles, projectFromFiles, projectFromLink, updateToLatest } from '../project/open';
+import { filesFromDrop, linkSetId, openNewBeatmap, pickFiles, projectFromFiles, projectFromLink, updateToLatest } from '../project/open';
+import { downloadInBackground } from '../project/background';
 import { downloadBlob, exportOsz, oszFilename } from '../project/project';
 import { deleteDifficultyLocal, deleteProjectLocal, listProjectsLocal, loadProjectLocal, type DifficultySummary, type ProjectSummary } from '../project/storage';
 import { layoutCode } from '../editor/shortcuts';
@@ -90,6 +91,12 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
   const closeDirect = useCallback(() => setDirect(null), []);
   const haveSets = useMemo(() => new Map((sets ?? []).filter((s) => s.beatmapSetId > 0).map((s) => [s.beatmapSetId, s.id])), [sets]);
   const randomHistory = useRef<Selection[]>([]);
+  // Background downloads finish after song select may have closed.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => void (alive.current = false);
+  }, []);
 
   const refresh = useCallback(async () => {
     const list = await listProjectsLocal().catch(() => [] as ProjectSummary[]);
@@ -162,17 +169,19 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
       cancelValue: 'no',
     });
     if (r !== 'yes') return;
-    await run('Downloading the latest version…', async () => {
-      const p = await updateToLatest(set.id, set.beatmapSetId);
-      if (cloud.syncing) await cloud.upload(p).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
-      await refresh();
-      const same =
-        p.difficulties.find((d) => diff.beatmapId > 0 && d.beatmap.metadata.beatmapId === diff.beatmapId) ??
-        p.difficulties.find((d) => d.beatmap.metadata.version === diff.version) ??
-        p.difficulties[0];
-      setSel({ setId: p.id, diffId: same.id });
-      editor.toast('Updated to the latest version.');
-    });
+    // In the background, like stable: the game stays usable while it downloads.
+    const p = await downloadInBackground(`set:${set.beatmapSetId}`, set.title, (progress) => updateToLatest(set.id, set.beatmapSetId, progress));
+    if (!p) return;
+    if (cloud.syncing) await cloud.upload(p).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
+    editor.toast(`Updated ${set.title} to the latest version.`);
+    if (!alive.current) return;
+    await refresh();
+    // The difficulties got new ids: stay on the same one if the set is still selected.
+    const same =
+      p.difficulties.find((d) => diff.beatmapId > 0 && d.beatmap.metadata.beatmapId === diff.beatmapId) ??
+      p.difficulties.find((d) => d.beatmap.metadata.version === diff.version) ??
+      p.difficulties[0];
+    setSel((cur) => (cur?.setId === p.id ? { setId: p.id, diffId: same.id } : cur));
   };
 
   // ------------------------------------------------------------------ rows
@@ -333,12 +342,18 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
       }
     });
 
-  const openLink = (link: string) =>
-    run('Downloading beatmap…', async () => {
-      const p = await projectFromLink(link, undefined, editor.prefs.downloadVideo);
-      setLinkOpen(false);
-      await selectImported(p.id);
-    });
+  const openLink = async (link: string) => {
+    const setId = linkSetId(link);
+    if (setId === null) {
+      editor.toast('Paste a beatmapset link like https://osu.ppy.sh/beatmapsets/123456 or just the set id.', 'error');
+      return;
+    }
+    setLinkOpen(false);
+    const p = await downloadInBackground(`set:${setId}`, `beatmap set ${setId}`, (progress) => projectFromLink(link, progress, editor.prefs.downloadVideo));
+    if (!p) return;
+    editor.toast(`Downloaded ${p.difficulties[0]?.beatmap.metadata.artist} - ${p.difficulties[0]?.beatmap.metadata.title}.`);
+    if (alive.current) await selectImported(p.id);
+  };
 
   const deleteDialog = async () => {
     if (!selSet || !selDiff) return;

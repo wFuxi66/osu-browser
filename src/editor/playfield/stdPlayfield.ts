@@ -364,7 +364,7 @@ export class StdPlayfield {
     const time = editor.snap(t);
     const placing = editor.placing?.kind === 'slider' ? editor.placing : null;
     const firstPoint = !placing;
-    const pos = firstPoint ? snapPosition(this.hover, this.mods, time) : this.snapNonHead(this.hover);
+    const pos = firstPoint ? this.snapHead(this.hover, time) : this.snapNonHead(this.hover);
 
     if (firstPoint && distanceSnapActive(this.mods) && (tool === 'circle' || tool === 'slider')) {
       const ds = distanceSnapCentre(time);
@@ -426,6 +426,13 @@ export class StdPlayfield {
       ctx.stroke();
       ctx.restore();
     }
+  }
+
+  /** Where an object's head goes: stacked onto a shown object under the point, else distance or grid snapped. */
+  private snapHead(p: Vec2, time: number, exclude?: Set<number>): Vec2 {
+    const t = music.time;
+    const shown = this.visibleObjects(t).filter((o) => !exclude?.has(o.id) && this.objectAlpha(o, t) > 0.05);
+    return snapPosition(p, this.mods, time, exclude, shown);
   }
 
   private snapNonHead(p: Vec2): Vec2 {
@@ -572,7 +579,7 @@ export class StdPlayfield {
     } else if (d.kind === 'move') {
       const target = { x: d.anchorStart.x + (p.x - d.start.x), y: d.anchorStart.y + (p.y - d.start.y) };
       const exclude = new Set(d.originals.keys());
-      const snapped = snapPosition(target, this.mods, d.anchor.time, exclude);
+      const snapped = this.snapHead(target, d.anchor.time, exclude);
       const dx = snapped.x - d.anchorStart.x;
       const dy = snapped.y - d.anchorStart.y;
       if (dx !== 0 || dy !== 0) d.moved = true;
@@ -701,7 +708,7 @@ export class StdPlayfield {
 
   private placeCircle(p: Vec2) {
     const time = this.placementTime();
-    const pos = clampToPlayfield(snapPosition(p, this.mods, time));
+    const pos = clampToPlayfield(this.snapHead(p, time));
     editor.addObject({
       id: newObjectId(),
       kind: 'circle',
@@ -719,7 +726,7 @@ export class StdPlayfield {
     const time = this.placementTime();
     const placing = editor.placing?.kind === 'slider' ? editor.placing : null;
     if (!placing) {
-      const pos = clampToPlayfield(snapPosition(p, this.mods, time));
+      const pos = clampToPlayfield(this.snapHead(p, time));
       editor.placing = { kind: 'slider', vertices: [pos], time };
       editor.emit();
       return;

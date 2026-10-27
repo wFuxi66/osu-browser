@@ -404,7 +404,7 @@ export function OptionsPanel() {
           title: 'Timeline',
           items: [
             { label: 'Timeline waveform', keywords: 'waveform', render: () => <Toggle label="Song waveform in the timeline" value={p.showWaveform} onChange={(v) => set({ showWaveform: v })} /> },
-            { label: 'Invert mouse wheel seeking', keywords: 'scroll wheel', render: () => <Toggle label="Invert mouse wheel seeking" hint="Off: wheel down seeks forward." value={p.invertScroll} onChange={(v) => set({ invertScroll: v })} /> },
+            { label: 'Invert mouse wheel seeking', keywords: 'scroll wheel', render: () => <Toggle label="Invert mouse wheel seeking" hint="Off: wheel down (or dragging the touch jog strip down) seeks forward." value={p.invertScroll} onChange={(v) => set({ invertScroll: v })} /> },
           ],
         },
       ],

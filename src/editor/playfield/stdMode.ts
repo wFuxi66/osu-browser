@@ -19,11 +19,18 @@ export class StdMode implements PlayfieldMode {
     return this.pf.hover;
   }
 
-  layout(w: number, h: number) {
+  layout(w: number, h: number, bars?: { top: number; bottom: number }) {
     // Same framing as the stable editor: a 640x480 virtual screen over the whole stage, with the 512x384
     // playfield centred and pushed down 24 osu!pixels so it clears the top panel.
-    const scale = Math.min(w / 640, h / 480);
-    this.view = { scale, ox: (w - PLAYFIELD_W * scale) / 2, oy: (h - PLAYFIELD_H * scale) / 2 + 24 * scale };
+    let scale = Math.min(w / 640, h / 480);
+    let oy = (h - PLAYFIELD_H * scale) / 2 + 24 * scale;
+    // Touch screens give the bars finger-sized minimums, taller than stable's: the playfield shrinks to fit between.
+    if (bars && (oy < bars.top || oy + PLAYFIELD_H * scale > h - bars.bottom)) {
+      const room = h - bars.top - bars.bottom - 8;
+      scale = Math.min(scale, room / PLAYFIELD_H);
+      oy = bars.top + 4 + (room - PLAYFIELD_H * scale) / 2;
+    }
+    this.view = { scale, ox: (w - PLAYFIELD_W * scale) / 2, oy };
   }
 
   draw(ctx: CanvasRenderingContext2D, t: number) {

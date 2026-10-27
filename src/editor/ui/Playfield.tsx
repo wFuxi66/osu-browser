@@ -81,6 +81,7 @@ export function Playfield() {
     const ctx = canvas.getContext('2d')!;
     let w = 0;
     let h = 0;
+    let bars = { top: 0, bottom: 0 };
     let mode: PlayfieldMode | null = null;
     let modeKey = -1;
 
@@ -89,7 +90,7 @@ export function Playfield() {
       if (m !== modeKey) {
         modeKey = m;
         mode = m === 3 ? new ManiaMode() : m === 1 ? new TaikoMode() : m === 2 ? new CatchMode() : new StdMode();
-        mode.layout(w, h);
+        mode.layout(w, h, bars);
         activePlayfield.current = mode;
       }
       return mode!;
@@ -102,15 +103,20 @@ export function Playfield() {
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // The bars scale with the stage, so they only change size when the canvas does.
+      const r = canvas.getBoundingClientRect();
+      const top = canvas.parentElement?.querySelector('.ed-top')?.getBoundingClientRect();
+      const bottom = canvas.parentElement?.querySelector('.ed-bottom')?.getBoundingClientRect();
+      bars = { top: top ? top.bottom - r.top : 0, bottom: bottom ? r.bottom - bottom.top : 0 };
       redrawNext();
-      mode?.layout(w, h);
+      mode?.layout(w, h, bars);
     });
     ro.observe(canvas);
 
     const off = onFrame((t) => {
       if (!editor.hasProject || !w) return;
       const m = ensureMode();
-      m.layout(w, h);
+      m.layout(w, h, bars);
       drawBackground(ctx, w, h, editor.prefs.backgroundDim, t);
       m.draw(ctx, t);
     });

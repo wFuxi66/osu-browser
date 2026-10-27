@@ -56,32 +56,41 @@ export function Timeline() {
       return { x: e.clientX - r.left, y: e.clientY - r.top };
     };
 
-    const hitTest = (x: number, y: number): { obj: HitObject; part: 'body' | 'end' | 'edge'; edge?: number } | null => {
+    type Hit = { obj: HitObject; part: 'body' | 'end' | 'edge'; edge?: number };
+    const hitTest = (x: number, y: number): Hit | null => {
       const bm = editor.bm;
       const t = music.time;
       const ppm = pxPerMs();
-      const r = h * OBJ_R * (touchedRecently() ? 1.5 : 1);
+      // A fingertip gets a wider target, and any height on the strip: it is too short to aim at the objects' row.
+      const touch = touchedRecently();
+      const r = touch ? Math.max(h * OBJ_R * 2, 20) : h * OBJ_R;
       const cy = h * OBJ_Y;
-      if (Math.abs(y - cy) > r * 1.3) return null;
-      let best: { obj: HitObject; part: 'body' | 'end' | 'edge'; edge?: number } | null = null;
+      if (!touch && Math.abs(y - cy) > r * 1.3) return null;
+      // The closest head, tail or repeat wins: with the wider target, neighbours in a stream overlap.
+      let best: Hit | null = null;
+      let bestD = Infinity;
+      const consider = (d: number, hit: Hit) => {
+        if (d > bestD) return;
+        bestD = d;
+        best = hit;
+      };
       for (const o of bm.hitObjects) {
         const x0 = w / 2 + (o.time - t) * ppm;
         const end = objectEndTime(bm, o);
         const x1 = w / 2 + (end - t) * ppm;
         if (x1 < x - r || x0 > x + r) continue;
-        if (o.kind !== 'circle' && Math.abs(x - x1) <= r) {
-          best = { obj: o, part: 'end' };
-          if (o.kind === 'slider') best.edge = o.slides;
-        } else if (Math.abs(x - x0) <= r) best = { obj: o, part: 'body', edge: 0 };
+        if (o.kind !== 'circle' && Math.abs(x - x1) <= r) consider(Math.abs(x - x1), { obj: o, part: 'end', edge: o.kind === 'slider' ? o.slides : undefined });
+        else if (Math.abs(x - x0) <= r) consider(Math.abs(x - x0), { obj: o, part: 'body', edge: 0 });
         else if (x >= x0 && x <= x1) {
-          best = { obj: o, part: 'body' };
+          let hit: Hit = { obj: o, part: 'body' };
           if (o.kind === 'slider') {
             const span = sliderSpanDuration(bm, o);
             for (let i = 1; i < o.slides; i++) {
               const xe = w / 2 + (o.time + span * i - t) * ppm;
-              if (Math.abs(x - xe) <= r * 0.6) best = { obj: o, part: 'edge', edge: i };
+              if (Math.abs(x - xe) <= r * 0.6) hit = { obj: o, part: 'edge', edge: i };
             }
           }
+          consider(r, hit);
         }
       }
       return best;

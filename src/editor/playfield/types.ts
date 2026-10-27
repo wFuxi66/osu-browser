@@ -6,7 +6,8 @@ export interface PlayfieldMode {
   mods: Modifiers;
   /** Cursor position in osu!pixels, for the position readout (modes with a 512x384 playfield). */
   readonly cursor?: Vec2 | null;
-  layout(width: number, height: number): void;
+  /** `bars`: how far the editor's top and bottom bars reach into the stage (CSS px). */
+  layout(width: number, height: number, bars?: { top: number; bottom: number }): void;
   draw(ctx: CanvasRenderingContext2D, time: number): void;
   /** `touchDrag`: a finger started dragging here (on touch, dragging empty space moves the selection). */
   pointerDown(x: number, y: number, button: number, touchDrag?: boolean): void;

@@ -1,7 +1,9 @@
 // Grid and distance snapping for placement and dragging.
 import { music } from '../../audio/music';
+import { stackedPosition } from '../../osu/processing';
 import { objectEndTime, beatLengthAt, svAt } from '../../osu/timing';
 import type { HitObject, Vec2 } from '../../osu/types';
+import { touchedRecently } from '../../ui/touch';
 import { editor, PLAYFIELD_H, PLAYFIELD_W } from '../store';
 
 export interface Modifiers {
@@ -48,7 +50,34 @@ export function distanceSnapCentre(time: number, exclude?: Set<number>): { centr
   return { centre: pos, radius };
 }
 
-export function snapPosition(p: Vec2, m: Modifiers, time = editor.snap(music.time), exclude?: Set<number>): Vec2 {
+/**
+ * Like stable, a point over a shown object (its head, or a slider's tail) lands exactly on that object's position, so
+ * the two stack: this goes before distance snap, which could never put an object on top of the previous one.
+ */
+export function stackSnap(p: Vec2, shown: HitObject[]): Vec2 | null {
+  const proc = editor.processed;
+  const tol = proc.radius * (touchedRecently() ? 0.7 : 0.5);
+  let best: Vec2 | null = null;
+  let bestD = tol;
+  for (const o of shown) {
+    if (o.kind === 'spinner') continue;
+    const sh = proc.info.get(o.id)!.stackHeight * proc.stackOffset;
+    const d = dist(p, stackedPosition(o, proc));
+    if (d < bestD) [best, bestD] = [{ x: o.x, y: o.y }, d];
+    if (o.kind !== 'slider') continue;
+    const end = proc.info.get(o.id)!.endPos;
+    const de = dist(p, { x: end.x + sh, y: end.y + sh });
+    if (de < bestD) [best, bestD] = [end, de];
+  }
+  return best && { x: Math.round(best.x), y: Math.round(best.y) };
+}
+
+const dist = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/** `shown`: the objects on screen, which a point over one of them stacks onto (see stackSnap). */
+export function snapPosition(p: Vec2, m: Modifiers, time = editor.snap(music.time), exclude?: Set<number>, shown?: HitObject[]): Vec2 {
+  const stacked = shown && stackSnap(p, shown);
+  if (stacked) return stacked;
   let out = { ...p };
   if (distanceSnapActive(m)) {
     const ds = distanceSnapCentre(time, exclude);

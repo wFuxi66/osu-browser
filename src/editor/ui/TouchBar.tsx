@@ -14,9 +14,6 @@ import { activePlayfield } from './Playfield';
 
 /** Strip pixels per beat-snap tick: one tick per notch of the strip. */
 const TICK_PX = 16;
-/** Fling momentum decay per millisecond, and the speed (px/ms) below which it stops. */
-const FRICTION = 0.995;
-const MIN_FLING = 0.05;
 
 export function TouchBar() {
   const touch = useTouch();
@@ -98,13 +95,14 @@ function buzz(t: number) {
 }
 
 /**
- * Vertical jog strip: dragging up moves forward in time one beat-snap tick per notch (like the arrow keys), a fling
- * keeps going and slows down, and a tap on the top or bottom half steps one tick.
+ * Vertical jog strip: dragging down moves forward in time one beat-snap tick per notch, like the mouse wheel (and
+ * follows its invert preference). It stops when the finger lifts, and a tap on the top or bottom half steps one tick.
  */
 function JogStrip() {
+  // 1 when dragging down moves forward.
+  const forward = (): 1 | -1 => (editor.prefs.invertScroll ? -1 : 1);
   const ref = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ id: number; y: number; acc: number; moved: boolean; v: number; lastT: number } | null>(null);
-  const fling = useRef(0);
+  const drag = useRef<{ id: number; y: number; acc: number; moved: boolean } | null>(null);
 
   // The notches scroll with the song, so the strip shows where time is going.
   useEffect(
@@ -113,11 +111,10 @@ function JogStrip() {
         const el = ref.current;
         if (!el || !editor.hasProject) return;
         const tick = beatLengthAt(editor.bm, t) / editor.beatDivisor;
-        el.style.backgroundPositionY = `${((t / tick) * TICK_PX) % TICK_PX}px`;
+        el.style.backgroundPositionY = `${(((t / tick) * TICK_PX) % TICK_PX) * forward()}px`;
       }),
     [],
   );
-  useEffect(() => () => cancelAnimationFrame(fling.current), []);
 
   const step = (d: { acc: number }) => {
     while (Math.abs(d.acc) >= TICK_PX) {
@@ -130,20 +127,13 @@ function JogStrip() {
 
   const down = (e: ReactPointerEvent) => {
     if (!editor.hasProject) return;
-    cancelAnimationFrame(fling.current);
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { id: e.pointerId, y: e.clientY, acc: 0, moved: false, v: 0, lastT: performance.now() };
+    drag.current = { id: e.pointerId, y: e.clientY, acc: 0, moved: false };
   };
   const move = (e: ReactPointerEvent) => {
     const d = drag.current;
     if (!d || d.id !== e.pointerId) return;
-    const dy = d.y - e.clientY; // up = forward
-    const now = performance.now();
-    if (Math.abs(dy) > 0) {
-      const dt = Math.max(1, now - d.lastT);
-      d.v = d.v * 0.6 + (dy / dt) * 0.4;
-      d.lastT = now;
-    }
+    const dy = (e.clientY - d.y) * forward();
     d.y = e.clientY;
     d.acc += dy;
     if (Math.abs(d.acc) > 6) d.moved = true;
@@ -153,24 +143,11 @@ function JogStrip() {
     const d = drag.current;
     if (!d || d.id !== e.pointerId) return;
     drag.current = null;
-    if (!d.moved) {
-      const r = e.currentTarget.getBoundingClientRect();
-      editor.seekTick(e.clientY < r.top + r.height / 2 ? 1 : -1);
-      buzz(music.time);
-      return;
-    }
-    // Lifted while still moving: keep stepping with decaying speed.
-    if (performance.now() - d.lastT > 80 || Math.abs(d.v) < MIN_FLING * 4) return;
-    const f = { acc: d.acc, v: d.v, t: performance.now() };
-    const tick = (now: number) => {
-      const dt = now - f.t;
-      f.t = now;
-      f.acc += f.v * dt;
-      f.v *= FRICTION ** dt;
-      step(f);
-      if (Math.abs(f.v) >= MIN_FLING) fling.current = requestAnimationFrame(tick);
-    };
-    fling.current = requestAnimationFrame(tick);
+    if (d.moved) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const lower = e.clientY > r.top + r.height / 2;
+    editor.seekTick(lower === (forward() === 1) ? 1 : -1);
+    buzz(music.time);
   };
 
   return (

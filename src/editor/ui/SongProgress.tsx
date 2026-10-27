@@ -77,6 +77,8 @@ export function SongProgress() {
       ctx.fillRect((t / dur) * w - 1.5, 0, 3, h);
     });
 
+    // Input goes to the .ed-progress wrapper, whose hit area reaches a little above the bar on touch screens.
+    const area = canvas.parentElement!;
     let dragging = false;
     const seekTo = (e: PointerEvent) => {
       const r = canvas.getBoundingClientRect();
@@ -84,20 +86,22 @@ export function SongProgress() {
     };
     const down = (e: PointerEvent) => {
       dragging = true;
-      canvas.setPointerCapture(e.pointerId);
+      area.setPointerCapture(e.pointerId);
       seekTo(e);
     };
     const move = (e: PointerEvent) => dragging && seekTo(e);
     const up = () => (dragging = false);
-    canvas.addEventListener('pointerdown', down);
-    canvas.addEventListener('pointermove', move);
-    canvas.addEventListener('pointerup', up);
+    area.addEventListener('pointerdown', down);
+    area.addEventListener('pointermove', move);
+    area.addEventListener('pointerup', up);
+    area.addEventListener('pointercancel', up);
     return () => {
       off();
       ro.disconnect();
-      canvas.removeEventListener('pointerdown', down);
-      canvas.removeEventListener('pointermove', move);
-      canvas.removeEventListener('pointerup', up);
+      area.removeEventListener('pointerdown', down);
+      area.removeEventListener('pointermove', move);
+      area.removeEventListener('pointerup', up);
+      area.removeEventListener('pointercancel', up);
     };
   }, []);
 

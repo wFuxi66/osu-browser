@@ -33,8 +33,9 @@ export function App() {
   const mapping = ed.hasProject && ed.session === 'edit' && ed.dialog !== 'test';
   useEffect(() => void skins.setEditorDefault(mapping && ed.prefs.editorDefaultSkin), [mapping, ed.prefs.editorDefaultSkin]);
   const cursorSize = ed.prefs.cursorSize;
+  // The skin's cursor everywhere but while mapping, which keeps the system one.
   useEffect(() => {
-    const apply = () => applySkinCursor(cursorSize);
+    const apply = () => applySkinCursor(cursorSize, !mapping);
     apply();
     window.addEventListener('resize', apply);
     const off = skins.onChange(apply);
@@ -42,7 +43,7 @@ export function App() {
       window.removeEventListener('resize', apply);
       off();
     };
-  }, [cursorSize]);
+  }, [cursorSize, mapping]);
   useEffect(() => {
     // Back from connecting Google Drive: song select shows the result and syncs.
     if (new URLSearchParams(location.search).has('drive')) screens.select('edit');

@@ -215,16 +215,20 @@ class Drive {
     return (await this.call(`${API}/files/${encodeURIComponent(fileId)}?alt=media`)).arrayBuffer();
   }
 
-  /** Moves a project's file to the Drive trash (recoverable there for 30 days). */
+  /**
+   * Moves a project's files to the Drive trash (recoverable there for 30 days). All of them: two computers uploading
+   * the same new project at once can each create one, and a copy left behind would sync the deleted set back.
+   */
   async remove(projectId: string): Promise<void> {
-    const fileId = await this.fileFor(projectId);
+    const files = await this.search<{ id: string }>(`trashed=false and appProperties has { key='projectId' and value=${quote(projectId)} }`, 'id');
     this.fileIds.delete(projectId);
-    if (!fileId) return;
-    await this.call(`${API}/files/${encodeURIComponent(fileId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json; charset=UTF-8' },
-      body: JSON.stringify({ trashed: true }),
-    });
+    for (const f of files) {
+      await this.call(`${API}/files/${encodeURIComponent(f.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify({ trashed: true }),
+      });
+    }
   }
 
   async disconnect(): Promise<void> {

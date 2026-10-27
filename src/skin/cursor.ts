@@ -1,16 +1,16 @@
 // The skin's cursor (with cursormiddle) as the page's mouse cursor, as stable shows it on every screen. Sized like
 // gameplay's (one SD skin pixel = height / 768 screen pixels, times the cursor size option), but browsers ignore
-// cursor images over 128px, so bigger ones are scaled down to that. It is always the chosen skin's: the editor's
-// osu!default option only changes what the playfield is drawn with.
+// cursor images over 128px, so bigger ones are scaled down to that. It is always the chosen skin's (the editor's
+// osu!default option only changes what the playfield is drawn with), and mapping keeps the system cursor.
 import { skins } from './skin';
 
 const MAX = 128;
 
-export function applySkinCursor(cursorSize: number) {
+export function applySkinCursor(cursorSize: number, on = true) {
   const root = document.documentElement;
   const skin = skins.chosen;
   const cursor = skin?.get('cursor');
-  if (!skin || !cursor) {
+  if (!on || !skin || !cursor) {
     root.classList.remove('skin-cursor');
     return;
   }

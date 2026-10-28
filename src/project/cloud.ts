@@ -402,7 +402,8 @@ class Cloud {
     for (const url of [...BROWSER_MIRRORS.map((m) => m(setId, video)), `/api/mirror/${setId}`]) {
       try {
         // no-cache: the mirrors let browsers keep a download for hours, which would hand back the old version.
-        const r = await fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(120_000) });
+        // no-referrer: catboy.best 403s requests referred by osu-browser.vercel.app.
+        const r = await fetch(url, { cache: 'no-cache', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(120_000) });
         if (!r.ok) continue;
         const data = await readWithProgress(r, onProgress);
         if (data.byteLength < 4 || new DataView(data).getUint32(0, true) !== 0x04034b50) continue;
@@ -419,10 +420,11 @@ class Cloud {
 
 // Mirrors that send Access-Control-Allow-Origin (checked 2026-10-27; catboy.best 403s requests without a browser
 // user agent, so test it with one). On 2026-10-27 osu.direct still served a set's 2026-10-08 version 16 days after
-// its 2026-10-11 update, while catboy.best and sayobot had the new one.
+// its 2026-10-11 update, while catboy.best and sayobot had the new one (again on 2026-10-28 for set 2594150), so
+// catboy.best goes first.
 const BROWSER_MIRRORS = [
-  (id: number, video: boolean) => `https://osu.direct/api/d/${id}${video ? '' : '?noVideo=1'}`,
   (id: number, video: boolean) => `https://catboy.best/d/${id}${video ? '' : 'n'}`,
+  (id: number, video: boolean) => `https://osu.direct/api/d/${id}${video ? '' : '?noVideo=1'}`,
   (id: number, video: boolean) => `https://dl.sayobot.cn/beatmaps/download/${video ? 'full' : 'novideo'}/${id}`,
   (id: number) => `https://api.nerinyan.moe/d/${id}`,
 ];

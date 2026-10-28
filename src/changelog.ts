@@ -2,6 +2,7 @@
 // has that the running one doesn't, so add a line with each change worth telling players about (the build puts
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
+  'Fixed a blank screen on reload after an update was downloaded while it was being published.',
   'Editor: 150% playback rate, to preview a map at DT speed.',
   'Editor: Song Folder looks and works like Explorer, with folders, drop to add, multi-select, previews and downloads. Notepad gets Ctrl+S and a status bar.',
   'The new version notice shows what changed before you reload.',

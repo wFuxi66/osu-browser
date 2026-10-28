@@ -18,23 +18,44 @@ async function install() {
   // Files unchanged since the installed version are copied from its cache rather than downloaded again.
   const prev = await previousCache();
   const prevRevs = prev ? await prev.match(MANIFEST).then((r) => (r ? r.json() : {})) : {};
+  // A version that stored a page in place of a built file can't start, so its tabs are blank and never offer the
+  // reload: this one takes over at once instead of waiting for them.
+  if (prev && (await isBroken(prev))) void self.skipWaiting();
   const urls = Object.keys(PRECACHE);
   let next = 0;
   const worker = async () => {
     while (next < urls.length) {
       const url = urls[next++];
       const old = prev && prevRevs[url] === PRECACHE[url] ? await prev.match(url) : undefined;
-      if (old) {
+      if (old && (await revision(old)) === PRECACHE[url]) {
         await cache.put(url, old);
         continue;
       }
       const r = await fetch(url, { cache: 'no-cache' });
       if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+      // While a deploy switches over, the host can answer with the other version's file, or index.html for one it
+      // doesn't have (with a 200): the install fails and is retried rather than storing that as this version's file.
+      if ((await revision(r)) !== PRECACHE[url]) throw new Error(`${url}: not this version's file`);
       await cache.put(url, r);
     }
   };
   await Promise.all(Array.from({ length: 6 }, worker));
   await cache.put(MANIFEST, new Response(JSON.stringify(PRECACHE)));
+}
+
+/** The hash the build gives a file (vite-pwa.ts): the first 16 hex digits of its SHA-256. */
+async function revision(r) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await r.clone().arrayBuffer()));
+  return Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+/** Whether a cache holds a page where a built file should be (stored by versions before the revision check). */
+async function isBroken(cache) {
+  for (const req of await cache.keys()) {
+    const path = new URL(req.url).pathname;
+    if (path !== MANIFEST && !path.endsWith('.html') && (await cache.match(req))?.headers.get('content-type')?.includes('text/html')) return true;
+  }
+  return false;
 }
 
 /** The newest other version's cache, if one is installed. */

@@ -3,7 +3,10 @@
 import { useSyncExternalStore } from 'react';
 
 const coarse = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
+// A phone held sideways: too short for stable's stacked bars, so the editor moves them to the sides.
+const short = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse) and (max-height: 560px)') : null;
 let touchDevice = coarse?.matches ?? false;
+let phone = short?.matches ?? false;
 const listeners = new Set<() => void>();
 const subscribe = (l: () => void) => {
   listeners.add(l);
@@ -11,9 +14,11 @@ const subscribe = (l: () => void) => {
 };
 const emit = () => listeners.forEach((l) => l());
 
-/** `[data-touch]` on <html> lets the stylesheets enlarge tap targets on touch screens only. */
+/** `[data-touch]` on <html> lets the stylesheets enlarge tap targets on touch screens only; `[data-phone]` is the phone layout. */
 function applyFlag() {
-  if (typeof document !== 'undefined') document.documentElement.toggleAttribute('data-touch', touchDevice);
+  if (typeof document === 'undefined') return;
+  document.documentElement.toggleAttribute('data-touch', touchDevice);
+  document.documentElement.toggleAttribute('data-phone', phone);
 }
 applyFlag();
 coarse?.addEventListener('change', (e) => {
@@ -21,10 +26,20 @@ coarse?.addEventListener('change', (e) => {
   applyFlag();
   emit();
 });
+short?.addEventListener('change', (e) => {
+  phone = e.matches;
+  applyFlag();
+  emit();
+});
 
 /** True when the primary pointer is a finger: the touch toolbar and enlarged controls are shown. */
 export function useTouch() {
   return useSyncExternalStore(subscribe, () => touchDevice);
+}
+
+/** True on a touch screen too short for stable's layout (a phone in landscape): the editor uses its phone layout. */
+export function usePhone() {
+  return useSyncExternalStore(subscribe, () => phone);
 }
 
 /**

@@ -19,18 +19,28 @@ export class StdMode implements PlayfieldMode {
     return this.pf.hover;
   }
 
-  layout(w: number, h: number, bars?: { top: number; bottom: number }) {
+  layout(w: number, h: number, bars?: { top: number; bottom: number; left?: number; right?: number }) {
     // Same framing as the stable editor: a 640x480 virtual screen over the whole stage, with the 512x384
     // playfield centred and pushed down 24 osu!pixels so it clears the top panel.
     let scale = Math.min(w / 640, h / 480);
     let oy = (h - PLAYFIELD_H * scale) / 2 + 24 * scale;
+    const ox = (w - PLAYFIELD_W * scale) / 2;
+    // Phone layout: the controls live in columns at the sides, and the playfield takes all the room between them.
+    if (bars?.left || bars?.right) {
+      const left = bars.left ?? 0;
+      const roomW = w - left - (bars.right ?? 0) - 8;
+      const roomH = h - bars.top - bars.bottom - 8;
+      scale = Math.min(roomW / PLAYFIELD_W, roomH / PLAYFIELD_H);
+      this.view = { scale, ox: left + 4 + (roomW - PLAYFIELD_W * scale) / 2, oy: bars.top + 4 + (roomH - PLAYFIELD_H * scale) / 2 };
+      return;
+    }
     // Touch screens give the bars finger-sized minimums, taller than stable's: the playfield shrinks to fit between.
     if (bars && (oy < bars.top || oy + PLAYFIELD_H * scale > h - bars.bottom)) {
       const room = h - bars.top - bars.bottom - 8;
       scale = Math.min(scale, room / PLAYFIELD_H);
       oy = bars.top + 4 + (room - PLAYFIELD_H * scale) / 2;
     }
-    this.view = { scale, ox: (w - PLAYFIELD_W * scale) / 2, oy };
+    this.view = { scale, ox, oy };
   }
 
   draw(ctx: CanvasRenderingContext2D, t: number) {

@@ -24,6 +24,15 @@ export function RotateHint() {
 }
 
 /** Fullscreen hides the browser bars (Android); also locks landscape where the browser allows it. */
+export async function enterFullscreen() {
+  try {
+    await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+    await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape');
+  } catch {
+    // Refused or unsupported: the page still works in the browser window.
+  }
+}
+
 export function FullscreenButton() {
   const touch = useTouch();
   const [full, setFull] = useState(() => !!document.fullscreenElement);
@@ -33,16 +42,8 @@ export function FullscreenButton() {
     return () => document.removeEventListener('fullscreenchange', on);
   }, []);
   if (!touch || full || !document.fullscreenEnabled) return null;
-  const go = async () => {
-    try {
-      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-      await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape');
-    } catch {
-      // Refused or unsupported: the page still works in the browser window.
-    }
-  };
   return (
-    <button className="fullscreen-btn" onClick={() => void go()} title="Fullscreen">
+    <button className="fullscreen-btn" onClick={() => void enterFullscreen()} title="Fullscreen">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" strokeWidth="2" />
       </svg>

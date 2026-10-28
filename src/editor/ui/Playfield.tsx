@@ -81,7 +81,7 @@ export function Playfield() {
     const ctx = canvas.getContext('2d')!;
     let w = 0;
     let h = 0;
-    let bars = { top: 0, bottom: 0 };
+    let bars = { top: 0, bottom: 0, left: 0, right: 0 };
     let mode: PlayfieldMode | null = null;
     let modeKey = -1;
 
@@ -107,7 +107,9 @@ export function Playfield() {
       const r = canvas.getBoundingClientRect();
       const top = canvas.parentElement?.querySelector('.ed-top')?.getBoundingClientRect();
       const bottom = canvas.parentElement?.querySelector('.ed-bottom')?.getBoundingClientRect();
-      bars = { top: top ? top.bottom - r.top : 0, bottom: bottom ? r.bottom - bottom.top : 0 };
+      // Phone layout: the side columns are wide, and the stylesheet says how much of each side they take.
+      const side = (name: string) => parseFloat(getComputedStyle(canvas).getPropertyValue(name)) || 0;
+      bars = { top: top ? top.bottom - r.top : 0, bottom: bottom ? r.bottom - bottom.top : 0, left: side('--side-l'), right: side('--side-r') };
       redrawNext();
       mode?.layout(w, h, bars);
     });

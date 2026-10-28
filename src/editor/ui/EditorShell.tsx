@@ -15,7 +15,7 @@ import {
   CircleIcon, ClapIcon, DistanceSnapIcon, FinishIcon, GridSnapIcon, LockIcon, MinusIcon, NewComboIcon, PauseIcon,
   PlayIcon, PlusIcon, SelectIcon, SliderIcon, SpinnerIcon, StopIcon, TestIcon, WhistleIcon,
 } from './icons';
-import { MenuBar } from './MenuBar';
+import { MenuBar, PhoneMenu } from './MenuBar';
 import { activePlayfield, Playfield } from './Playfield';
 import { SongProgress } from './SongProgress';
 import { Timeline } from './Timeline';
@@ -23,15 +23,16 @@ import { TouchBar } from './TouchBar';
 import { TimingScreen, TimingTopRight } from './TimingScreen';
 import { StageBackground } from './StageBackground';
 import { shortcutOf } from '../keybinds';
-import { useTouch } from '../../ui/touch';
+import { usePhone, useTouch } from '../../ui/touch';
 import { inputBox } from '../../ui/prompt';
 
 /** The stable editor layout: menu strip, then a full-window stage with the panels laid over the playfield. */
 export function EditorShell() {
   const ed = useEditor();
+  const phone = usePhone();
   return (
     <div className="ed">
-      <MenuBar />
+      {!phone && <MenuBar />}
       <div className={`ed-stage screen-${ed.screen}`}>
         {ed.screen === 'compose' && <Playfield />}
         {ed.screen === 'timing' && <StageBackground />}
@@ -43,9 +44,10 @@ export function EditorShell() {
             <ComposeLeft />
             <ComposeRight />
             <TouchBar />
+            {phone && <PositionReadout />}
           </>
         )}
-        {ed.screen !== 'design' && <Tip />}
+        {ed.screen !== 'design' && !phone && <Tip />}
         <BottomBar />
       </div>
       <Dialogs />
@@ -57,10 +59,12 @@ export function EditorShell() {
 
 function TopPanel() {
   const ed = useEditor();
+  // Phone: the tabs and the menu strip fold into one corner button; the timeline zooms with a pinch.
+  const phone = usePhone();
   return (
     <div className="ed-top">
-      <ScreenTabs />
-      <ZoomButtons />
+      {!phone && <ScreenTabs />}
+      {phone ? <PhoneMenu /> : <ZoomButtons />}
       <div className="ed-timeline">{ed.screen === 'design' ? <DesignTimeline /> : <Timeline />}</div>
       <div className="ed-top-right">
         {ed.screen === 'compose' && <ComposeTopRight />}
@@ -109,11 +113,12 @@ function ComposeTopRight() {
       b.events.breaks.sort((x, y) => x.start - y.start);
     });
   };
+  const phone = usePhone();
   return (
     <>
       <BeatSnapDivisor />
-      <button className="ed-insert-break" onClick={insertBreak}>Insert Break Time</button>
-      <PositionReadout />
+      <button className="ed-insert-break" onClick={insertBreak}>{phone ? 'Insert Break' : 'Insert Break Time'}</button>
+      {!phone && <PositionReadout />}
     </>
   );
 }
@@ -262,15 +267,18 @@ function ComposeRight() {
   const mode = ed.bm.general.mode;
   // No hover tooltips on a phone: the distance snap button shows its spacing instead of "Snap".
   const touch = useTouch();
+  // Phone: one short label each, so all of them fit the column without scrolling.
+  const phone = usePhone();
+  const ds = `${fmt(ed.bm.editor.distanceSpacing, 2)}x`;
   return (
     <div className="ed-right">
-      {mode !== 3 && <Toggle on={s.newCombo} onClick={() => ed.toggleNewCombo()} top="New" bottom="Combo" icon={<NewComboIcon />} title="New Combo (Q)" />}
+      {mode !== 3 && <Toggle on={s.newCombo} onClick={() => ed.toggleNewCombo()} top={phone ? 'Combo' : 'New'} bottom={phone ? undefined : 'Combo'} icon={<NewComboIcon />} title="New Combo (Q)" />}
       <Toggle on={s.whistle} onClick={() => ed.toggleAddition(2)} top="Whistle" icon={<WhistleIcon />} title="Whistle (W)" />
       <Toggle on={s.finish} onClick={() => ed.toggleAddition(4)} top="Finish" icon={<FinishIcon />} title="Finish (E)" />
       <Toggle on={s.clap} onClick={() => ed.toggleAddition(8)} top="Clap" icon={<ClapIcon />} title="Clap (R)" />
-      {mode === 0 && <Toggle on={ed.gridSnap} onClick={() => { ed.gridSnap = !ed.gridSnap; ed.emit(); }} top="Grid" bottom="Snap" icon={<GridSnapIcon />} title="Grid Snap (T, hold Shift to toggle)" />}
-      {(mode === 0 || mode === 2) && <Toggle on={ed.distanceSnap} onClick={() => { ed.distanceSnap = !ed.distanceSnap; ed.emit(); }} top="Distance" bottom={touch ? `${fmt(ed.bm.editor.distanceSpacing, 2)}x` : 'Snap'} icon={<DistanceSnapIcon />} title={`Distance Snap (Y, hold Alt to toggle) · ${fmt(ed.bm.editor.distanceSpacing, 2)}x (Alt + wheel)`} />}
-      <Toggle on={ed.locked} onClick={() => { ed.locked = !ed.locked; ed.emit(); }} top="Lock" bottom="Notes" icon={<LockIcon />} title="Lock Notes (L)" />
+      {mode === 0 && <Toggle on={ed.gridSnap} onClick={() => { ed.gridSnap = !ed.gridSnap; ed.emit(); }} top="Grid" bottom={phone ? undefined : 'Snap'} icon={<GridSnapIcon />} title="Grid Snap (T, hold Shift to toggle)" />}
+      {(mode === 0 || mode === 2) && <Toggle on={ed.distanceSnap} onClick={() => { ed.distanceSnap = !ed.distanceSnap; ed.emit(); }} top={phone ? ds : 'Distance'} bottom={phone ? undefined : touch ? ds : 'Snap'} icon={<DistanceSnapIcon />} title={`Distance Snap (Y, hold Alt to toggle) · ${fmt(ed.bm.editor.distanceSpacing, 2)}x (Alt + wheel)`} />}
+      <Toggle on={ed.locked} onClick={() => { ed.locked = !ed.locked; ed.emit(); }} top="Lock" bottom={phone ? undefined : 'Notes'} icon={<LockIcon />} title="Lock Notes (L)" />
     </div>
   );
 }
@@ -386,6 +394,26 @@ function BottomBar() {
   const [, force] = useState(0);
   useEffect(() => music.onChange(() => force((n) => n + 1)), []);
   const rates = [0.25, 0.5, 0.75, 1];
+  const phone = usePhone();
+  if (phone) {
+    // Phone: one play/pause button and one speed button that steps 100 → 75 → 50 → 25%.
+    const i = rates.findIndex((r) => Math.abs(music.rate - r) < 0.001);
+    return (
+      <div className="ed-bottom">
+        <TimeDisplay />
+        <div className="ed-progress">
+          <SongProgress />
+        </div>
+        <div className="ed-transport">
+          <button onClick={() => music.toggle()} title={music.playing ? 'Pause' : 'Play'}>{music.playing ? <PauseIcon /> : <PlayIcon />}</button>
+          <button className="ed-test" onClick={() => { music.pause(); ed.openDialog('test'); }} title="Test"><TestIcon /> Test</button>
+          <button className={`ed-speed ${i === 3 ? '' : 'lit'}`} onClick={() => ed.setPlaybackRate(rates[(i + 3) % 4])} title="Playback rate">
+            {Math.round(music.rate * 100)}%
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ed-bottom">
       <TimeDisplay />

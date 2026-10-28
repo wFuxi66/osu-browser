@@ -5,6 +5,7 @@ import { serializeBeatmap } from '../../osu/serializer';
 import { cloud } from '../../project/cloud';
 import { downloadBlob, downloadText, exportOsz, osuFilename, oszFilename } from '../../project/project';
 import { options } from '../../ui/options';
+import { enterFullscreen } from '../../ui/TouchChrome';
 import { confirmBox, inputBox } from '../../ui/prompt';
 import { autoBreaks } from '../breaks';
 import { DIVISORS } from '../shortcuts';
@@ -85,21 +86,80 @@ function Menu({ title, items }: { title: string; items: Item[] }) {
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 export function MenuBar() {
-  const ed = useEditor();
-  useCloud();
+  const { menus, caption } = useMenus();
   const ref = useRef<HTMLDivElement>(null);
-  const bm = ed.bm;
-  const p = ed.prefs;
-  const hasSel = ed.selection.size > 0;
-  const key = (id: string) => shortcutOf(id, p.keybinds);
-  const mode = bm.general.mode;
-  const setId = bm.metadata.beatmapSetId;
 
   useEffect(() => {
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpenMenu(null);
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
   }, []);
+
+  return (
+    <div className="wm-bar" ref={ref}>
+      {menus.map(([title, items]) => <Menu key={title} title={title} items={items} />)}
+      <div className="wm-caption" title="Unsaved changes are marked with *">{caption}</div>
+    </div>
+  );
+}
+
+const PHONE_MENU = '☰';
+
+/**
+ * Phone layout: the menu strip and the screen tabs fold into one button in the top bar's corner, so their rows
+ * go to the playfield. It names the screen you're on, and a dot marks unsaved changes.
+ */
+export function PhoneMenu() {
+  const ed = useEditor();
+  const { menus, caption } = useMenus();
+  const open = useOpenMenu() === PHONE_MENU;
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // pointerdown: the playfield's touch handling swallows the mouse events a tap would send.
+    const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && openMenu() === PHONE_MENU && setOpenMenu(null);
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, []);
+
+  const done = () => setOpenMenu(null);
+  const screen = ed.dialog === 'setup' ? 'setup' : ed.screen;
+  const tab = (label: string, active: boolean, go: () => void) => (
+    <button className={active ? 'active' : ''} onClick={() => { done(); go(); }}>{label}</button>
+  );
+  const items: Item[] = menus.map(([label, submenu]) => ({ label, submenu }));
+  if (document.fullscreenEnabled && !document.fullscreenElement) items.unshift({ label: 'Fullscreen (more room)', action: () => void enterFullscreen() }, sep);
+  return (
+    <div className="ed-phone-menu" ref={ref}>
+      <button className={`ed-phone-menu-btn ${open ? 'open' : ''}`} onClick={() => setOpenMenu(open ? null : PHONE_MENU)} title="Menu">
+        <span className="ed-phone-menu-icon">☰{ed.dirty && <i />}</span>
+        <small>{screen}</small>
+      </button>
+      {open && (
+        <div className="ed-phone-sheet">
+          <div className="ed-phone-caption">{caption}</div>
+          <div className="ed-phone-tabs">
+            {tab('compose', screen === 'compose', () => ed.setScreen('compose'))}
+            {tab('design', screen === 'design', () => ed.setScreen('design'))}
+            {tab('timing', screen === 'timing', () => ed.setScreen('timing'))}
+            {tab('song setup', screen === 'setup', () => ed.openDialog('setup'))}
+          </div>
+          <MenuList items={items} onDone={done} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function useMenus(): { menus: [string, Item[]][]; caption: string } {
+  const ed = useEditor();
+  useCloud();
+  const bm = ed.bm;
+  const p = ed.prefs;
+  const hasSel = ed.selection.size > 0;
+  const key = (id: string) => shortcutOf(id, p.keybinds);
+  const mode = bm.general.mode;
+  const setId = bm.metadata.beatmapSetId;
 
   const exportPackage = async () => downloadBlob(await exportOsz(ed.project!), oszFilename(ed.project!));
 
@@ -285,22 +345,20 @@ export function MenuBar() {
     { label: 'View FAQ...', action: () => open('https://osu.ppy.sh/wiki/Client/Beatmap_editor') },
   ];
 
-  return (
-    <div className="wm-bar" ref={ref}>
-      <Menu title="File" items={file} />
-      <Menu title="Edit" items={edit} />
-      <Menu title="View" items={view} />
-      <Menu title="Compose" items={compose} />
-      <Menu title="Design" items={designMenu} />
-      <Menu title="Timing" items={timing} />
-      <Menu title="Tools" items={tools} />
-      <Menu title="Web" items={web} />
-      <Menu title="Help" items={help} />
-      <div className="wm-caption" title="Unsaved changes are marked with *">
-        {bm.metadata.artist} - {bm.metadata.title} ({bm.metadata.creator}) [{bm.metadata.version}]{ed.dirty ? ' *' : ''}
-      </div>
-    </div>
-  );
+  return {
+    menus: [
+      ['File', file],
+      ['Edit', edit],
+      ['View', view],
+      ['Compose', compose],
+      ['Design', designMenu],
+      ['Timing', timing],
+      ['Tools', tools],
+      ['Web', web],
+      ['Help', help],
+    ],
+    caption: `${bm.metadata.artist} - ${bm.metadata.title} (${bm.metadata.creator}) [${bm.metadata.version}]${ed.dirty ? ' *' : ''}`,
+  };
 }
 
 function currentMeter(): number {

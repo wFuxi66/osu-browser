@@ -192,8 +192,6 @@ const MODS: [keyof TouchMods, string][] = [
   ['shift', 'Shift'],
 ];
 
-const RATES = [1, 0.75, 0.5, 0.25];
-
 type Btn = { label: string; run: () => void; disabled?: boolean; accent?: boolean; danger?: boolean };
 
 /** A few large buttons for what makes sense right now, plus "…" for the rest. */
@@ -208,10 +206,6 @@ function ContextBar() {
   const mode = ed.placing ? 'placing' : hasSel ? 'selection' : 'idle';
   useEffect(() => setMore(false), [mode]);
 
-  const speed: Btn = {
-    label: `Speed ${Math.round(music.rate * 100)}%`,
-    run: () => ed.setPlaybackRate(RATES[(RATES.findIndex((r) => Math.abs(r - music.rate) < 0.001) + 1) % RATES.length]),
-  };
   let buttons: Btn[];
   let extra: [string, string][] = [];
   if (ed.placing) {
@@ -249,7 +243,6 @@ function ContextBar() {
       { label: 'Redo', run: act('redo'), disabled: !ed.canRedo },
       { label: 'DS −0.1', run: ds(-0.1) },
       { label: 'DS +0.1', run: ds(0.1) },
-      speed,
     ];
     extra = IDLE_MORE;
   } else {
@@ -258,7 +251,6 @@ function ContextBar() {
       { label: 'Redo', run: act('redo'), disabled: !ed.canRedo },
       { label: 'Paste', run: act('paste'), disabled: !ed.canPaste },
       { label: 'Select all', run: act('selectAll') },
-      speed,
     ];
     extra = IDLE_MORE;
   }

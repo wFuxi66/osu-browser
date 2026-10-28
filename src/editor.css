@@ -221,3 +221,62 @@
 [data-touch] .ed-rate button { min-height: 30px; font-size: 12px; padding-bottom: 4px; }
 /* Touch: the song progress bar also takes a finger landing just above it (SongProgress listens on .ed-progress). */
 [data-touch] .ed-progress::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 10px; }
+
+/* ------------------------------------------------------------------ phone layout
+   A phone held sideways is wide but short, and stable's stacked bars would leave the playfield a strip. The menu
+   strip and the tabs fold into the ☰ corner button, the bottom bar keeps only time, progress, play, test and speed,
+   and the tools, the hitsound toggles and the touch controls stand in columns at the sides. The playfield takes all
+   the room between them: Playfield reads --side-l / --side-r, so keep them equal to the columns' widths. */
+[data-phone] .ed-stage { --u: calc(100dvh / 768); --tabs-h: 0px; --top-h: 58px; --bottom-h: 34px; --side-l: 130px; --side-r: 216px; }
+[data-phone] .ed-top { z-index: 7; grid-template-columns: 48px minmax(0, 1fr) 200px; grid-template-rows: 0 minmax(0, 1fr); }
+[data-phone] .ed-divisor-label { left: 8px; top: 6px; font-size: 11px; }
+[data-phone] .ed-divisor-value { right: 62px; top: 5px; font-size: 12px; }
+[data-phone] .ed-divisor-track { left: 12px; width: 120px; top: 22px; height: 30px; margin-top: 0; }
+[data-phone] .ed-divisor-track::before, [data-phone] .ed-divisor-fill { height: 2px; }
+[data-phone] .ed-divisor-knob { width: 14px; height: 14px; border-width: 2px; }
+[data-phone] .ed-insert-break { left: auto; right: 6px; top: 6px; width: 50px; height: 46px; font-size: 12px; line-height: 1.1; border-radius: 6px; }
+
+.ed-phone-menu { grid-column: 1; grid-row: 2; position: relative; display: flex; }
+.ed-phone-menu-btn { flex: 1; margin: 4px 2px 4px 4px; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(38,38,38,0.9); color: #fff; }
+.ed-phone-menu-btn.open { background: #1b8ff0; border-color: #1b8ff0; }
+.ed-phone-menu-icon { position: relative; font-size: 18px; line-height: 1; }
+/* Unsaved changes. */
+.ed-phone-menu-icon i { position: absolute; right: -7px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #ffd51e; }
+.ed-phone-menu-btn small { font-size: 9px; opacity: 0.8; }
+.ed-phone-sheet { position: absolute; left: 4px; top: calc(100% - 2px); width: min(340px, 80vw); max-height: calc(100dvh - 64px); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; background: #f2f2f2; border: 1px solid #ccc; box-shadow: 2px 3px 10px rgba(0,0,0,0.6); color: #000; font: 13px var(--win-font); }
+.ed-phone-caption { padding: 6px 10px; color: #6d6d6d; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-phone-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 0 6px 6px; }
+.ed-phone-tabs button { height: 34px; padding: 0; border: none; border-radius: 6px; background: #262626; color: #fff; font: 300 14px var(--osu-font); }
+.ed-phone-tabs button.active { background: #1b8ff0; }
+[data-phone] .ed-phone-sheet .wm-list { position: static; max-height: none; overflow: visible; min-width: 0; border: none; border-top: 1px solid #d7d7d7; box-shadow: none; }
+[data-phone] .ed-phone-sheet .wm-list.sub { border-top: none; }
+[data-phone] .wm-shortcut { display: none; }
+
+/* Left: samplesets and tools, then the thumb column (auto-advance, loop, jog, play). */
+[data-phone] .ed-left { top: calc(var(--top-h) + 4px); bottom: calc(var(--bottom-h) + 4px); width: 60px; display: flex; flex-direction: column; }
+[data-phone] .ed-sample { margin-bottom: 3px; }
+[data-phone] .ed-sample-label { font-size: 10px; padding-left: 4px; }
+[data-phone] .ed-sample select { width: 60px; height: 26px; font-size: 12px; padding-left: 4px; background-position: right 4px center; background-size: 9px auto; border-radius: 0 6px 6px 0; }
+[data-phone] .ed-tools { flex: 1; min-height: 0; margin-top: 6px; gap: 4px; }
+[data-phone] .ed-tool { flex: 1 1 0; width: 60px; height: auto; min-height: 34px; max-height: 64px; padding: 0; gap: 2px; font-size: 11px; border-radius: 0 8px 8px 0; }
+[data-phone] .ed-tool .ico { width: 24px; height: 24px; }
+[data-phone] .ed-thumb-left { left: 66px; top: calc(var(--top-h) + 4px); bottom: calc(var(--bottom-h) + 4px); width: 58px; gap: 6px; }
+[data-phone] .ed-thumb-advance { height: 40px; }
+[data-phone] .ed-thumb-play { width: 52px; height: 52px; align-self: center; }
+
+/* Right: hitsound and snap toggles at the edge, the context buttons beside them, the position readout above. */
+[data-phone] .ed-right { top: calc(var(--top-h) + 4px); bottom: calc(var(--bottom-h) + 4px); width: 58px; gap: 3px; }
+[data-phone] .ed-toggle { flex: 1 1 0; height: auto; min-height: 30px; max-height: 60px; gap: 2px; font-size: 10px; border-radius: 8px 0 0 8px; }
+[data-phone] .ed-toggle .ico, [data-phone] .ed-toggle.one .ico { width: 20px; height: 20px; }
+[data-phone] .ed-ctx { right: 64px; bottom: calc(var(--bottom-h) + 4px); }
+[data-phone] .ed-ctx-bar, [data-phone] .ed-ctx-bar.two { display: grid; grid-template-columns: repeat(2, 70px); gap: 5px; }
+[data-phone] .ed-ctx button { min-width: 0; height: 40px; padding: 0 4px; font-size: 12px; }
+[data-phone] .ed-stage > .ed-position { top: calc(var(--top-h) + 6px); right: 70px; z-index: 4; font-size: 11px; text-align: right; text-shadow: 0 1px 2px #000; }
+
+[data-phone] .ed-time { width: auto; padding: 0 10px 0 8px; gap: 6px; }
+[data-phone] .ed-time-value { font-size: 13px; }
+[data-phone] .ed-time-pct { font-size: 11px; opacity: 0.8; }
+[data-phone] .ed-progress { margin-right: 8px; }
+[data-phone] .ed-transport { gap: 2px; padding-right: 6px; }
+[data-phone] .ed-transport button { min-width: 38px; height: 32px; }
+[data-phone] .ed-speed { font-size: 12px; }

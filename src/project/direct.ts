@@ -137,7 +137,8 @@ function toDirectSet(s: ApiSet): DirectSet {
       .sort((a, b) => a.mode - b.mode || a.stars - b.stars),
     ranked: s.ranked_date ? Date.parse(s.ranked_date) : undefined,
     updated: s.last_updated ? Date.parse(s.last_updated) : undefined,
-    thread: s.legacy_thread_url ?? undefined,
+    // From a third-party API: only ever an https link.
+    thread: s.legacy_thread_url?.startsWith('https://') ? s.legacy_thread_url : undefined,
     kind: s.kind,
   };
 }

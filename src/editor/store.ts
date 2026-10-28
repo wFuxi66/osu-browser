@@ -452,9 +452,16 @@ class Editor {
   }
 
   setFile(name: string, blob: Blob | null) {
+    this.setFiles([[name, blob]]);
+  }
+
+  /** Many files at once, so a dropped storyboard folder rebuilds the beatmap skin once, not per file. */
+  setFiles(changes: [string, Blob | null][]) {
     if (!this.project) return;
-    if (blob) this.project.files.set(name, blob);
-    else this.project.files.delete(name);
+    for (const [name, blob] of changes) {
+      if (blob) this.project.files.set(name, blob);
+      else this.project.files.delete(name);
+    }
     // Skin images added to the folder show up right away; the files map is the same object, so rebuild by hand.
     if (this.prefs.beatmapSkins) void skins.setBeatmap(null).then(() => this.project && skins.setBeatmap(this.project.files));
     this.markDirty();

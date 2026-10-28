@@ -32,6 +32,8 @@ A static single-page app with a small, optional API beside it. Maps, scores, ski
 
 **No database**: the osu! login session and the Google refresh token are AES-GCM encrypted httpOnly cookies (`server/seal.ts`), keyed from the OAuth client secrets, so the server is stateless.
 
+**Security headers**: every response carries a Content-Security-Policy (scripts only from the app's own files), `frame-ancestors 'none'` and `nosniff`. The list is in `server/headers.ts` for the Node server and repeated in `vercel.json` for Vercel; `server/headers.test.ts` fails if they drift apart. A new script, worker or wasm source needs adding there, or the browser blocks it.
+
 **Storage**: beatmaps are never stored on the server. Ctrl+S keeps them in the browser (IndexedDB) and, with Google Drive connected, syncs them straight from the browser to the user's own Drive, one file per set in an "osu-browser" folder. Only the `drive.file` scope is used, so the app sees nothing but its own files; the server (`server/drive.ts`) only does the OAuth code exchange and hands out short-lived access tokens. Sets published on osu! (BeatmapSetID > 0) sync as a few KB: the `.osu` files, any file that differs from what the mirrors serve (checked by SHA-256), and a manifest of the rest, which another device downloads again from the mirrors (`src/project/syncpack.ts`). Original maps, and sets the mirrors don't have, sync as a full `.osz` that also opens in osu!.
 
 ## Running locally

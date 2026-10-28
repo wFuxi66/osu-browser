@@ -410,32 +410,61 @@ export function DifficultiesDialog() {
 /** File → Open Song Folder: the files in the beatmap set. */
 export function FilesDialog() {
   const ed = useEditor();
-  const files = [...ed.project!.files.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const [sel, setSel] = useState<string | null>(null);
-  const add = async () => {
-    const picked = await pickFiles('*', { multiple: true });
-    for (const f of picked) ed.setFile(f.name, f);
-    if (picked.length) {
-      ed.toast(`Added ${picked.length} file${picked.length > 1 ? 's' : ''}. Custom hitsounds are picked up by name (e.g. soft-hitclap2.wav).`);
-      await hitsounds.setCustomSamples(ed.project!.files, ed.bm.general.audioFilename);
-    }
+  const folder = ed.project!.files;
+  const files = [...folder.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const [sel, setSel] = useState<string[]>([]);
+  const [over, setOver] = useState(false);
+  const anchor = useRef<string | null>(null);
+  const close = () => ed.openDialog(null);
+  const refreshSamples = () => hitsounds.setCustomSamples(folder, ed.bm.general.audioFilename);
+  // Folder picks and drops keep their path, so a dropped sb folder lands in sb/ like in Explorer.
+  const add = async (picked: File[]) => {
+    if (!picked.length) return;
+    ed.setFiles(picked.map((f) => [f.webkitRelativePath || f.name, f]));
+    ed.toast(`Added ${picked.length} file${picked.length > 1 ? 's' : ''}. Custom hitsounds are picked up by name (e.g. soft-hitclap2.wav).`);
+    await refreshSamples();
   };
   const remove = async () => {
-    if (!sel) return;
-    if (sel === ed.bm.general.audioFilename) return ed.toast('This is the audio file; replace it from Song Setup → Audio instead.', 'error');
-    if (await confirmBox('osu!', `Remove ${sel} from the beatmap folder?`)) {
-      ed.setFile(sel, null);
-      setSel(null);
+    if (sel.includes(ed.bm.general.audioFilename)) return ed.toast('This is the audio file; replace it from Song Setup → Audio instead.', 'error');
+    if (await confirmBox('osu!', sel.length === 1 ? `Remove ${sel[0]} from the beatmap folder?` : `Remove ${sel.length} files from the beatmap folder?`)) {
+      ed.setFiles(sel.map((n) => [n, null]));
+      setSel([]);
+      await refreshSamples();
     }
   };
+  // Click picks one, Ctrl+click toggles, Shift+click picks a range, like an Explorer list.
+  const pick = (e: React.MouseEvent, name: string) => {
+    const at = anchor.current ? files.findIndex(([n]) => n === anchor.current) : -1;
+    if (e.shiftKey && at >= 0) {
+      const i = files.findIndex(([n]) => n === name);
+      return setSel(files.slice(Math.min(at, i), Math.max(at, i) + 1).map(([n]) => n));
+    }
+    anchor.current = name;
+    if (e.ctrlKey || e.metaKey) setSel(sel.includes(name) ? sel.filter((n) => n !== name) : [...sel, name]);
+    else setSel([name]);
+  };
+  const shown = sel.length === 1 ? folder.get(sel[0]) : undefined;
   return (
-    <WinDialog title="Song Folder" width={520} onClose={() => ed.openDialog(null)} footer={<OkCancel onOk={() => ed.openDialog(null)} onCancel={() => ed.openDialog(null)} />}>
-      <div className="win-list" style={{ height: 300 }}>
+    <WinDialog title="Song Folder" width={520} onClose={close} footer={<div className="win-okcancel"><button className="win-ok" onClick={close}>Close</button></div>}>
+      <div
+        className="win-list"
+        style={{ height: 300, outline: over ? '2px dashed #0078d7' : undefined }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={async (e) => {
+          e.preventDefault();
+          setOver(false);
+          await add(await filesFromDrop(e.dataTransfer));
+        }}
+      >
         <table>
           <thead><tr><th>Name</th><th>Size</th></tr></thead>
           <tbody>
             {files.map(([name, blob]) => (
-              <tr key={name} className={sel === name ? 'sel focus' : ''} onMouseDown={() => setSel(name)}>
+              <tr key={name} className={sel.includes(name) ? 'sel focus' : ''} onMouseDown={(e) => pick(e, name)}>
                 <td className="win-mono">{name}</td>
                 <td>{Math.max(1, Math.round(blob.size / 1024)).toLocaleString()} KB</td>
               </tr>
@@ -443,12 +472,32 @@ export function FilesDialog() {
           </tbody>
         </table>
       </div>
+      <div style={{ fontSize: 11, color: '#666', margin: '2px 0' }}>Drop files or folders onto the list to add them.</div>
       <div className="win-buttonrow">
-        <button onClick={() => void add()}>Add files...</button>
-        <button onClick={() => void remove()} disabled={!sel}>Remove</button>
+        <button onClick={async () => add(await pickFiles('*', { multiple: true }))}>Add files...</button>
+        <button onClick={async () => add(await pickFiles('*', { directory: true }))}>Add folder...</button>
+        <button onClick={() => void remove()} disabled={!sel.length}>Remove</button>
+        <button onClick={() => sel.forEach((n) => downloadBlob(folder.get(n)!, n.split('/').pop()!))} disabled={!sel.length}>Download</button>
       </div>
+      {shown && <FilePreview name={sel[0]} blob={shown} />}
     </WinDialog>
   );
+}
+
+/** The selected file, so a mapper can check which bg or hitsound it is without leaving the editor. */
+function FilePreview({ name, blob }: { name: string; blob: Blob }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    const u = URL.createObjectURL(blob);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [blob]);
+  const type = mimeFor(name);
+  if (!url) return null;
+  if (type.startsWith('image/')) return <img src={url} alt={name} style={{ display: 'block', maxWidth: '100%', maxHeight: 160, margin: '4px auto' }} />;
+  if (type.startsWith('audio/')) return <audio key={url} src={url} controls autoPlay style={{ width: '100%' }} />;
+  if (type === 'video/mp4') return <video key={url} src={url} controls muted style={{ display: 'block', maxWidth: '100%', maxHeight: 160, margin: '4px auto' }} />;
+  return null;
 }
 
 /** File → Open .osu / .osb in Notepad: the raw text, editable. */

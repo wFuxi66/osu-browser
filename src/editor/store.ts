@@ -163,11 +163,15 @@ class Editor {
     }, reducedMotion() ? 0 : TOAST_OUT_MS);
   }
 
-  /** A toast that stays up, with text that can change, until it's closed. */
+  /**
+   * A toast with text that can change, until it's closed. Progress toasts hide themselves after a few seconds so a long
+   * conversion or download doesn't sit in the corner; ones with a button stay until closed.
+   */
   stickyToast(text: string, action?: Toast['action']) {
     const id = Date.now() + Math.random();
     this.toasts = [...this.toasts, { id, text, kind: 'info' as const, action }];
     this.emit();
+    if (!action) setTimeout(() => this.dismissToast(id), 4000);
     return {
       update: (next: string) => {
         this.toasts = this.toasts.map((x) => (x.id === id ? { ...x, text: next } : x));

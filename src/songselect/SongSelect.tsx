@@ -9,7 +9,7 @@ import { mapStatus, onlineSet, statusLabel, type MapStatus } from '../project/on
 import { filesFromDrop, linkSetId, openNewBeatmap, pickFiles, projectFromFiles, projectFromLink, updateToLatest } from '../project/open';
 import { downloadInBackground } from '../project/background';
 import { downloadBlob, exportOsz, oszFilename } from '../project/project';
-import { deleteDifficultyLocal, deleteProjectLocal, listProjectsLocal, loadProjectLocal, type DifficultySummary, type ProjectSummary } from '../project/storage';
+import { listProjectsLocal, loadProjectLocal, trashDifficultyLocal, trashProjectLocal, TRASH_DAYS, type DifficultySummary, type ProjectSummary } from '../project/storage';
 import { layoutCode } from '../editor/shortcuts';
 import { options, optionsOpen } from '../ui/options';
 import { ask, confirmBox, promptOpen, type PromptButton } from '../ui/prompt';
@@ -24,6 +24,7 @@ import { GradeIcon, Results } from '../play/Results';
 import { scores, useScores, type Score } from '../play/scores';
 import { gameplay } from '../play/session';
 import { DirectPanel } from './DirectPanel';
+import { TrashPanel } from './TrashPanel';
 import { difficultyColour, GROUP_LABELS, groupOf, matches, parseSearch, SORT_LABELS, sortSets, type GroupMode, type SortMode } from './filter';
 
 type Row =
@@ -81,6 +82,8 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
   const [leaving, setLeaving] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const closeTrash = useCallback(() => setTrashOpen(false), []);
   // The main menu's osu!direct tab opens it straight away.
   const [direct, setDirect] = useState<null | 'search' | 'mine'>(() => {
     if (!screens.get().direct) return null;
@@ -361,7 +364,8 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
     const r = await ask({
       look: 'game',
       title: 'Confirm deletion',
-      message: `${selSet.artist} - ${selSet.songTitle} [${selDiff.version}]`,
+      message: `${selSet.artist} - ${selSet.songTitle} [${selDiff.version}]
+You can restore it from Recently deleted for ${TRASH_DAYS} days.`,
       buttons: [
         ...(many ? [{ label: `Delete only [${selDiff.version}]`, value: 'diff', tone: 'pink' as const }] : []),
         { label: many ? 'Delete ALL difficulties in this beatmap set' : 'Delete this beatmap', value: 'set', tone: 'red' },
@@ -372,10 +376,10 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
     if (r === 'cancel') return;
     await run('Deleting…', async () => {
       if (r === 'diff') {
-        const p = await deleteDifficultyLocal(selSet.id, selDiff.id);
+        const p = await trashDifficultyLocal(selSet.id, selDiff.id);
         if (p && cloud.syncing) await cloud.upload(p).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
       } else {
-        await deleteProjectLocal(selSet.id);
+        await trashProjectLocal(selSet.id);
         if (cloud.driveConnected && !(await cloud.remove(selSet.id))) editor.toast("Deleted. It's removed from Google Drive once you're back online.");
       }
       await refresh();
@@ -443,7 +447,7 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
 
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keyHandler.current = (e: KeyboardEvent) => {
-    if (promptOpen() || optionsOpen() || busy || leaving || directOpen || modSelect || viewing) return;
+    if (promptOpen() || optionsOpen() || busy || leaving || directOpen || modSelect || viewing || trashOpen) return;
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
     if ((e.ctrlKey || e.metaKey) && layoutCode(e) === 'KeyO') {
@@ -584,6 +588,9 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
           )}
         </button>
+        <button className="ss-footer-btn ss-settings" onClick={() => setTrashOpen(true)} title="Recently deleted" aria-label="Recently deleted">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 6h18" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6M14 11v6" /></svg>
+        </button>
         <UserPanel onMyBeatmaps={() => setDirect('mine')} />
         <button className="ss-cookie" onClick={() => confirm()} disabled={!selDiff} title={play ? 'Play (Enter, Ctrl+Enter for autoplay)' : 'Edit (Enter)'}>
           <span>{play ? 'play' : 'edit'}</span>
@@ -591,6 +598,16 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
       </footer>
 
       {modSelect && <ModSelect onClose={() => setModSelect(false)} />}
+      {trashOpen && (
+        <TrashPanel
+          onClose={closeTrash}
+          onRestored={async (id) => {
+            const list = await refresh();
+            const s = list.find((x) => x.id === id);
+            if (s?.difficulties[0]) setSel({ setId: s.id, diffId: s.difficulties[0].id });
+          }}
+        />
+      )}
       {viewing && selSet && selDiff && (
         <div className="ss-results">
           <Results

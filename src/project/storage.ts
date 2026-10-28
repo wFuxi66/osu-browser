@@ -3,7 +3,8 @@ import { beatmapInfo, type BeatmapInfo } from '../osu/info';
 import { parseOsu } from '../osu/parser';
 import { STAR_RATING_VERSION, starRating } from '../osu/stars';
 import { serializeBeatmap } from '../osu/serializer';
-import { checksumOf, projectTitle, type DifficultySource, type Project, type ProjectOrigin } from './project';
+import { parseOsb, parseStoryboardLines, referencedFiles } from '../osu/storyboard';
+import { checksumOf, findFile, projectTitle, uid, uniqueVersionName, type DifficultySource, type Project, type ProjectOrigin } from './project';
 import type { Keybinds } from '../editor/keybinds';
 
 const DB_NAME = 'osu-web-editor';
@@ -19,6 +20,10 @@ interface StoredProject {
   /** Last time this project was successfully uploaded to the cloud (0 = never). */
   syncedAt: number;
   origin?: ProjectOrigin;
+  /** When it was deleted: it waits in Recently deleted until it's restored or cleaned up (see TRASH_DAYS). */
+  deletedAt?: number;
+  /** A difficulty deleted on its own: the set it restores into. Its record holds that difficulty and the files only it used. */
+  trashOf?: string;
 }
 
 interface StoredDifficulty {
@@ -90,9 +95,8 @@ function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T
   );
 }
 
-export async function saveProjectLocal(p: Project, syncedAt?: number): Promise<void> {
-  const existing = await tx<StoredProject | undefined>('readonly', (s) => s.get(p.id));
-  const record: StoredProject = {
+function recordOf(p: Project, existing: StoredProject | undefined, syncedAt?: number): StoredProject {
+  return {
     id: p.id,
     title: projectTitle(p),
     createdAt: p.createdAt,
@@ -106,7 +110,32 @@ export async function saveProjectLocal(p: Project, syncedAt?: number): Promise<v
     syncedAt: syncedAt ?? existing?.syncedAt ?? 0,
     origin: p.origin ?? existing?.origin,
   };
-  await tx('readwrite', (s) => s.put(record));
+}
+
+function getRecord(id: string): Promise<StoredProject | undefined> {
+  return tx<StoredProject | undefined>('readonly', (s) => s.get(id));
+}
+
+/** Puts and deletes records in one transaction, so a crash can't leave half of a change. */
+function write(puts: StoredProject[], deletes: string[] = []): Promise<void> {
+  return db().then(
+    (d) =>
+      new Promise<void>((resolve, reject) => {
+        const t = d.transaction(STORE, 'readwrite');
+        const store = t.objectStore(STORE);
+        for (const r of puts) store.put(r);
+        for (const id of deletes) store.delete(id);
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error);
+      }),
+  );
+}
+
+/** Saves a project. Saving a deleted one (a newer version from Drive, say) takes it out of Recently deleted. */
+export async function saveProjectLocal(p: Project, syncedAt?: number): Promise<void> {
+  await freeSpaceIfShort().catch(() => undefined);
+  const existing = await getRecord(p.id);
+  await tx('readwrite', (s) => s.put(recordOf(p, existing, syncedAt)));
 }
 
 export async function markSynced(id: string, syncedAt: number): Promise<void> {
@@ -130,9 +159,7 @@ export async function saveOriginLocal(id: string, origin: ProjectOrigin): Promis
   await tx('readwrite', (s) => s.put(existing));
 }
 
-export async function loadProjectLocal(id: string): Promise<Project | null> {
-  const r = await tx<StoredProject | undefined>('readonly', (s) => s.get(id));
-  if (!r) return null;
+function toProject(r: StoredProject): Project {
   return {
     id: r.id,
     createdAt: r.createdAt,
@@ -141,6 +168,12 @@ export async function loadProjectLocal(id: string): Promise<Project | null> {
     difficulties: r.difficulties.map((d) => ({ id: d.id, beatmap: parseOsu(d.osu), source: d.source })),
     origin: r.origin,
   };
+}
+
+/** A stored project, or null when there's none (or it's in Recently deleted). */
+export async function loadProjectLocal(id: string): Promise<Project | null> {
+  const r = await getRecord(id);
+  return r && !r.deletedAt ? toProject(r) : null;
 }
 
 const summaryCache = new Map<string, { updatedAt: number; summary: ProjectSummary }>();
@@ -193,7 +226,7 @@ function summarize(r: StoredProject, backfill: StoredProject[]): ProjectSummary 
 export async function listProjectsLocal(): Promise<ProjectSummary[]> {
   const all = await tx<StoredProject[]>('readonly', (s) => s.getAll());
   const backfill: StoredProject[] = [];
-  const list = all.map((r) => summarize(r, backfill)).sort((a, b) => b.updatedAt - a.updatedAt);
+  const list = all.filter((r) => !r.deletedAt).map((r) => summarize(r, backfill)).sort((a, b) => b.updatedAt - a.updatedAt);
   if (backfill.length) void backfillStars(backfill).catch(() => {});
   return list;
 }
@@ -217,18 +250,206 @@ async function backfillStars(records: StoredProject[]): Promise<void> {
   });
 }
 
-/** Remove one difficulty from a stored set. Returns the updated project, or null if it was the last one. */
-export async function deleteDifficultyLocal(projectId: string, diffId: string): Promise<Project | null> {
-  const p = await loadProjectLocal(projectId);
-  if (!p || p.difficulties.length <= 1) return null;
-  p.difficulties = p.difficulties.filter((d) => d.id !== diffId);
-  p.updatedAt = Date.now();
-  await saveProjectLocal(p);
+/** Deletes a set for good (Recently deleted's "Delete forever"; a delete in song select goes to trashProjectLocal). */
+export async function deleteProjectLocal(id: string): Promise<void> {
+  await tx('readwrite', (s) => s.delete(id));
+}
+
+// ------------------------------------------------------------------ Recently deleted
+// Like stable sending deleted maps to the Recycle Bin: a deleted set keeps its record, marked with deletedAt, and a
+// difficulty deleted on its own gets a record of its own. Both stay in the 'projects' store (a new store would need
+// a database upgrade, which a tab still on the old version would block). An older version of the app sees them as
+// ordinary sets; a difficulty's record is stamped as synced so that it doesn't upload it.
+
+/** Days a deleted map can be restored. */
+export const TRASH_DAYS = 30;
+const DAY = 24 * 60 * 60 * 1000;
+/** Share of the browser's storage quota above which the oldest deleted maps go early, before the browser runs short. */
+export const TRASH_PRESSURE = 0.8;
+
+export interface TrashEntry {
+  id: string;
+  /** The set it belongs to (its own id for a whole set). */
+  setId: string;
+  /** "Artist - Title" */
+  title: string;
+  /** The difficulty's name, or null for a whole set. */
+  version: string | null;
+  deletedAt: number;
+  /** The version Drive last had, for sync. */
+  syncedAt: number;
+  /** Bytes it takes up. */
+  size: number;
+}
+
+const trashId = (diffId: string) => `deleted-difficulty:${diffId}`;
+const fileKey = (name: string) => name.toLowerCase().replace(/\\/g, '/');
+
+/** Files a difficulty names: its song, background, video, storyboard images and sounds, and custom hitsounds. */
+function filesNamedBy(osu: string): string[] {
+  const bm = parseOsu(osu);
+  return [
+    bm.general.audioFilename,
+    bm.events.background?.filename,
+    bm.events.video?.filename,
+    ...referencedFiles(parseStoryboardLines(bm.events.storyboardLines).elements),
+    ...bm.hitObjects.map((o) => o.sample.filename),
+  ].filter((f): f is string => !!f);
+}
+
+/**
+ * The set's files that only `d` names, which leave the set with it. Anything the set's other difficulties or its
+ * .osb use stays, and so do files no difficulty names (skin elements, default hitsounds).
+ */
+async function filesOnlyUsedBy(d: StoredDifficulty, others: StoredDifficulty[], files: StoredProject['files']): Promise<Set<string>> {
+  const shared = new Set(others.flatMap((o) => filesNamedBy(o.osu)).map(fileKey));
+  for (const f of files) {
+    if (!f.name.toLowerCase().endsWith('.osb')) continue;
+    shared.add(fileKey(f.name));
+    try {
+      for (const name of referencedFiles(parseOsb(await f.blob.text()).elements)) shared.add(fileKey(name));
+    } catch {
+      // unreadable storyboard: it keeps nothing
+    }
+  }
+  const own = new Set(filesNamedBy(d.osu).map(fileKey).filter((k) => !shared.has(k)));
+  return new Set(files.filter((f) => own.has(fileKey(f.name))).map((f) => f.name));
+}
+
+function sizeOf(r: StoredProject): number {
+  return r.files.reduce((n, f) => n + f.blob.size, 0) + r.difficulties.reduce((n, d) => n + d.osu.length, 0);
+}
+
+/** Sends a set to Recently deleted. */
+export async function trashProjectLocal(id: string): Promise<void> {
+  const r = await getRecord(id);
+  if (r && !r.deletedAt) await write([{ ...r, deletedAt: Date.now() }]);
+}
+
+/**
+ * Sends one difficulty of a set to Recently deleted, with the files only it used. Returns the set as it is now, or
+ * null if that was its last difficulty (the whole set is deleted then).
+ */
+export async function trashDifficultyLocal(projectId: string, diffId: string): Promise<Project | null> {
+  const r = await getRecord(projectId);
+  const d = r?.difficulties.find((x) => x.id === diffId);
+  if (!r || r.deletedAt || !d || r.difficulties.length <= 1) return null;
+  const rest = r.difficulties.filter((x) => x !== d);
+  const own = await filesOnlyUsedBy(d, rest, r.files);
+  const now = Date.now();
+  const set: StoredProject = { ...r, updatedAt: now, difficulties: rest, files: r.files.filter((f) => !own.has(f.name)) };
+  const p = toProject(set);
+  set.title = projectTitle(p);
+  const entry: StoredProject = {
+    id: trashId(d.id),
+    title: r.title,
+    createdAt: r.createdAt,
+    updatedAt: now,
+    syncedAt: now,
+    files: r.files.filter((f) => own.has(f.name)),
+    difficulties: [d],
+    deletedAt: now,
+    trashOf: r.id,
+  };
+  await write([set, entry]);
   return p;
 }
 
-export async function deleteProjectLocal(id: string): Promise<void> {
-  await tx('readwrite', (s) => s.delete(id));
+/** What's in Recently deleted, most recently deleted first. */
+export async function listTrashLocal(): Promise<TrashEntry[]> {
+  const all = await tx<StoredProject[]>('readonly', (s) => s.getAll());
+  return all
+    .filter((r) => r.deletedAt)
+    .map((r) => ({
+      id: r.id,
+      setId: r.trashOf ?? r.id,
+      title: r.title,
+      version: r.trashOf ? (r.difficulties[0] ? parseOsu(r.difficulties[0].osu).metadata.version : '') : null,
+      deletedAt: r.deletedAt!,
+      syncedAt: r.syncedAt,
+      size: sizeOf(r),
+    }))
+    .sort((a, b) => b.deletedAt - a.deletedAt);
+}
+
+/**
+ * Takes a set or difficulty out of Recently deleted. It counts as a new save, so the next sync uploads it. A
+ * difficulty goes back into its set, restoring the set too if that was deleted. Returns the set as it is now.
+ */
+export async function restoreTrashLocal(id: string): Promise<Project | null> {
+  const r = await getRecord(id);
+  if (!r?.deletedAt) return null;
+  const now = Date.now();
+  if (!r.trashOf) {
+    const { deletedAt: _, ...live } = r;
+    const restored = { ...live, updatedAt: now };
+    await write([restored]);
+    return toProject(restored);
+  }
+  const set = await getRecord(r.trashOf);
+  const entry = toProject(r);
+  // Its set was deleted for good some other way: the difficulty makes a set on its own again.
+  const p: Project = set ? toProject(set) : { ...entry, id: r.trashOf, files: new Map(), difficulties: [] };
+  for (const d of entry.difficulties) {
+    if (p.difficulties.some((x) => x.id === d.id)) d.id = uid();
+    d.beatmap.metadata.version = uniqueVersionName(p, d.beatmap.metadata.version);
+    p.difficulties.push(d);
+  }
+  for (const [name, blob] of entry.files) if (!findFile(p, name)) p.files.set(name, blob);
+  p.updatedAt = now;
+  await write([recordOf(p, set)], [id]);
+  return p;
+}
+
+/** Removes entries from Recently deleted for good. A set takes its difficulties' entries along (they can't go back without it). */
+export async function deleteTrashLocal(ids: string[]): Promise<void> {
+  const all = await tx<StoredProject[]>('readonly', (s) => s.getAll());
+  const gone = new Set(ids.filter((id) => all.some((r) => r.id === id && r.deletedAt)));
+  for (const r of all) if (r.deletedAt && r.trashOf && gone.has(r.trashOf)) gone.add(r.id);
+  if (gone.size) await write([], [...gone]);
+}
+
+/**
+ * The entries to remove: those deleted more than TRASH_DAYS ago, then, while `usage` is above TRASH_PRESSURE of
+ * `quota`, the oldest of the rest.
+ */
+export function trashToRemove(entries: Pick<TrashEntry, 'id' | 'deletedAt' | 'size'>[], now: number, usage = 0, quota = 0): string[] {
+  const out: string[] = [];
+  let used = usage;
+  for (const e of [...entries].sort((a, b) => a.deletedAt - b.deletedAt)) {
+    if (now - e.deletedAt > TRASH_DAYS * DAY || (quota > 0 && used > quota * TRASH_PRESSURE)) {
+      out.push(e.id);
+      used -= e.size;
+    }
+  }
+  return out;
+}
+
+async function storageEstimate(): Promise<{ usage: number; quota: number } | null> {
+  const e = await globalThis.navigator?.storage?.estimate?.().catch(() => null);
+  return e?.quota ? { usage: e.usage ?? 0, quota: e.quota } : null;
+}
+
+/**
+ * Removes what was deleted more than TRASH_DAYS ago and, when the site is using most of its storage, the oldest of
+ * the rest: a browser short of space can clear all of a site's data, and old deleted maps mustn't be the cause.
+ */
+export async function cleanUpTrash(now = Date.now()): Promise<void> {
+  const entries = await listTrashLocal();
+  if (!entries.length) return;
+  const e = await storageEstimate();
+  const ids = trashToRemove(entries, now, e?.usage, e?.quota);
+  if (ids.length) await deleteTrashLocal(ids);
+}
+
+let spaceCheckedAt = 0;
+
+/** Before a save: makes room from Recently deleted if storage is filling up (checked at most once a minute). */
+async function freeSpaceIfShort(): Promise<void> {
+  if (Date.now() - spaceCheckedAt < 60_000) return;
+  spaceCheckedAt = Date.now();
+  const e = await storageEstimate();
+  if (e && e.usage > e.quota * TRASH_PRESSURE) await cleanUpTrash();
 }
 
 const PREFS_KEY = 'osu-web-editor:prefs';

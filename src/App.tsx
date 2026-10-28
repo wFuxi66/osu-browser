@@ -4,6 +4,7 @@ import { EditorShell } from './editor/ui/EditorShell';
 import { Toasts } from './editor/ui/Toasts';
 import { editor, useEditor } from './editor/store';
 import { cloud } from './project/cloud';
+import { cleanUpTrash } from './project/storage';
 import { openMapLink, takeMapLink } from './project/deeplink';
 import { skins } from './skin/skin';
 import { applySkinCursor } from './skin/cursor';
@@ -50,6 +51,8 @@ export function App() {
     // Opened from an osu.ppy.sh beatmap page (userscript or bookmarklet): straight into the editor.
     const link = takeMapLink();
     void cloud.init().then(() => link && openMapLink(link));
+    // Deleted maps past their 30 days (or crowding storage) go for good.
+    void cleanUpTrash().catch(() => undefined);
     void skins.use(editor.prefs.skin);
     // The AudioContext can only start after a user gesture.
     const unlock = () => hitsounds.unlock();

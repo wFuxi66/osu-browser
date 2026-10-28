@@ -113,7 +113,7 @@
 .gdialog { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.72); display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--osu-font); color: #fff; animation: ss-fade 0.15s; }
 .gdialog-head { text-align: center; margin-bottom: calc(var(--u) * 26); max-width: 80vw; }
 .gdialog-title { font-size: calc(var(--u) * 34); font-weight: 300; }
-.gdialog-msg { font-size: calc(var(--u) * 17); margin-top: calc(var(--u) * 8); color: #ddd; }
+.gdialog-msg { font-size: calc(var(--u) * 17); margin-top: calc(var(--u) * 8); color: #ddd; white-space: pre-line; }
 .gdialog-buttons { display: flex; flex-direction: column; gap: calc(var(--u) * 10); width: min(70vw, calc(var(--u) * 560)); }
 .gdialog-btn { position: relative; height: calc(var(--u) * 50); border: none; border-radius: calc(var(--u) * 25); font-family: var(--osu-font); font-size: calc(var(--u) * 20); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5); transition: transform 0.12s, filter 0.12s; box-shadow: 0 calc(var(--u) * 3) calc(var(--u) * 10) rgba(0,0,0,0.5); }
 .gdialog-btn:hover:not(:disabled) { transform: scale(1.04); filter: brightness(1.15); border: none; }
@@ -123,6 +123,19 @@
 .gdialog-btn.tone-grey, .gdialog-btn.tone-grey:hover:not(:disabled) { background: linear-gradient(#777, #555); }
 .gdialog-btn.tone-red, .gdialog-btn.tone-red:hover:not(:disabled) { background: linear-gradient(#f05050, #c02a2a); }
 .gdialog-btn.tone-green, .gdialog-btn.tone-green:hover:not(:disabled) { background: linear-gradient(#8fd14f, #5ea52a); }
+
+/* Recently deleted (TrashPanel): the in-game dialog's look, with a list. */
+.trash { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.78); display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--osu-font); color: #fff; animation: ss-fade 0.15s; }
+.trash-box { width: min(92vw, calc(var(--u) * 820)); margin-bottom: calc(var(--u) * 20); background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15); border-radius: calc(var(--u) * 10); }
+.trash-top { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--u) * 10) calc(var(--u) * 14); border-bottom: 1px solid rgba(255,255,255,0.12); font-size: calc(var(--u) * 16); color: #ccc; }
+.trash-list { max-height: 50vh; overflow-y: auto; }
+.trash-row { display: flex; align-items: center; gap: calc(var(--u) * 10); padding: calc(var(--u) * 8) calc(var(--u) * 14); font-size: calc(var(--u) * 16); }
+.trash-row + .trash-row { border-top: 1px solid rgba(255,255,255,0.06); }
+.trash-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trash-what { color: #ffcc22; }
+.trash-left { color: #aaa; font-size: 0.9em; white-space: nowrap; }
+.gdialog-btn.trash-btn { height: calc(var(--u) * 32); padding: 0 calc(var(--u) * 16); border-radius: calc(var(--u) * 16); font-size: calc(var(--u) * 15); white-space: nowrap; }
+.gdialog-btn.trash-btn:disabled { filter: grayscale(0.8) brightness(0.7); }
 
 /* ------------------------------------------------------------------ WinForms-style windows */
 .win-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(0,0,0,0.25); }

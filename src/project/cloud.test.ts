@@ -7,6 +7,8 @@ interface Local {
   updatedAt: number;
   syncedAt: number;
   tag: string;
+  /** In Recently deleted. */
+  deletedAt?: number;
 }
 const remote = new Map<string, DriveProject & { tag: string }>();
 const local = new Map<string, Local>();
@@ -37,8 +39,10 @@ vi.mock('./syncpack', () => ({
   restoreSyncPackage: async (tag: string) => ({ project: project('', { updatedAt: 0, tag }), warnings: [] }),
 }));
 vi.mock('./storage', () => ({
-  listProjectsLocal: async () => [...local].map(([id, l]) => ({ id, ...l })),
-  loadProjectLocal: async (id: string) => (local.has(id) ? project(id, local.get(id)!) : null),
+  listProjectsLocal: async () => [...local].filter(([, l]) => !l.deletedAt).map(([id, l]) => ({ id, ...l })),
+  listTrashLocal: async () =>
+    [...local].filter(([, l]) => l.deletedAt).map(([id, l]) => ({ id, setId: id, title: id, version: null, deletedAt: l.deletedAt, syncedAt: l.syncedAt, size: 0 })),
+  loadProjectLocal: async (id: string) => (local.has(id) && !local.get(id)!.deletedAt ? project(id, local.get(id)!) : null),
   saveProjectLocal: async (p: Project, syncedAt?: number) => {
     local.set(p.id, { updatedAt: p.updatedAt, syncedAt: syncedAt ?? local.get(p.id)?.syncedAt ?? 0, tag: await tagOf(p) });
   },
@@ -134,6 +138,46 @@ describe('Drive sync never replaces unsynced work', () => {
     await cloud.syncAll();
     expect(removed).toEqual(['a']);
     expect(local.has('a')).toBe(false);
+  });
+
+  it('leaves a set in Recently deleted alone: not uploaded, not downloaded again', async () => {
+    synced('a', 100);
+    local.set('a', { updatedAt: 200, syncedAt: 100, tag: 'edited, then deleted', deletedAt: 300 });
+    expect(await cloud.syncAll()).toBe(0);
+    expect(local.get('a')).toMatchObject({ tag: 'edited, then deleted', deletedAt: 300 });
+    expect(remote.get('a')!.tag).toBe('v1');
+  });
+
+  it('a newer version of a deleted set from another device replaces the deleted one', async () => {
+    synced('a', 100);
+    local.set('a', { ...local.get('a')!, deletedAt: 300 });
+    remote.set('a', { ...remote.get('a')!, updatedAt: 400, tag: 'still mapping it on the pc' });
+    await cloud.syncAll();
+    expect(local.get('a')).toEqual({ updatedAt: 400, syncedAt: 400, tag: 'still mapping it on the pc' });
+  });
+
+  it('restoring a set deleted offline cancels its removal from Drive and uploads it', async () => {
+    synced('a', 100);
+    local.set('a', { ...local.get('a')!, deletedAt: 300 });
+    cloud.offline = true;
+    await cloud.remove('a');
+    // Restored (storage clears deletedAt and stamps it as a new save), still offline: the upload waits for the sync.
+    local.set('a', { updatedAt: 500, syncedAt: 100, tag: 'v1' });
+    await cloud.restore(project('a', local.get('a')!));
+    cloud.offline = false;
+    await cloud.syncAll();
+    expect(removed).toEqual([]);
+    expect(remote.get('a')).toMatchObject({ updatedAt: 500, tag: 'v1' });
+    expect(local.get('a')!.syncedAt).toBe(500);
+  });
+
+  it('restoring a set uploads it straight away when Drive is connected', async () => {
+    synced('a', 100);
+    await cloud.remove('a');
+    expect(remote.has('a')).toBe(false);
+    local.set('a', { updatedAt: 700, syncedAt: 100, tag: 'v1' });
+    await cloud.restore(project('a', local.get('a')!));
+    expect(remote.get('a')).toMatchObject({ updatedAt: 700, tag: 'v1' });
   });
 
   it("doesn't sync while offline", async () => {

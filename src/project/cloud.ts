@@ -2,7 +2,7 @@
 // (drive.ts). Published sets are synced as lite packages (see syncpack.ts) and rebuilt from the mirrors.
 import { drive, type DriveProject } from './drive';
 import { importOsz, oszFilename, uid, type Project } from './project';
-import { listProjectsLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal, syncedAtLocal, type Prefs } from './storage';
+import { listProjectsLocal, listTrashLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal, syncedAtLocal, type Prefs } from './storage';
 import { buildSyncPackage, originOf, restoreSyncPackage, setIdOf } from './syncpack';
 
 /** How long to wait before asking the mirrors again for a set they didn't have. */
@@ -295,6 +295,12 @@ class Cloud {
     return false;
   }
 
+  /** A map back from Recently deleted: Drive no longer has to remove it, and it uploads as a new save. */
+  async restore(p: Project): Promise<void> {
+    setPendingRemovals(pendingRemovals().filter((id) => id !== p.id));
+    if (this.syncing) await this.upload(p);
+  }
+
   /** Does the removals left for later; returns the ids Drive still couldn't remove. */
   private async removePending(): Promise<Set<string>> {
     const left: string[] = [];
@@ -329,15 +335,19 @@ class Cloud {
    */
   private async syncAllNow(onProgress?: (done: number, total: number) => void): Promise<number> {
     const stillRemoving = await this.removePending();
-    const [listed, local] = await Promise.all([this.list(), listProjectsLocal()]);
+    const [listed, local, trash] = await Promise.all([this.list(), listProjectsLocal(), listTrashLocal()]);
     const remote = listed.filter((r) => !stillRemoving.has(r.id));
     const localById = new Map(local.map((l) => [l.id, l]));
+    // Sets in Recently deleted, by the version Drive last had: a different one in Drive was saved on another device
+    // since, so someone still works on the set, and it replaces the deleted one.
+    const deleted = new Map(trash.filter((t) => t.version === null).map((t) => [t.id, t.syncedAt]));
     // One map failing (e.g. its set left the mirrors) shouldn't stop the others from syncing.
     const failures: string[] = [];
     const jobs: (() => Promise<void>)[] = [];
     for (const r of remote) {
       const l = localById.get(r.id);
-      if (!l || (r.updatedAt !== l.syncedAt && l.updatedAt <= l.syncedAt && !this.isOpen(r.id))) {
+      const wanted = l ? r.updatedAt !== l.syncedAt && l.updatedAt <= l.syncedAt && !this.isOpen(r.id) : deleted.get(r.id) !== r.updatedAt;
+      if (wanted) {
         jobs.push(async () => {
           try {
             const { project, warnings } = await this.download(r);

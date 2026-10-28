@@ -5,12 +5,12 @@ import { serializeBeatmap } from '../osu/serializer';
 import { cloud } from './cloud';
 import { createProjectFromAudio, importLooseFiles, importOsz, type Project } from './project';
 import { onlineSet, type OnlineSet } from './online';
-import { loadProjectLocal, saveProjectLocal } from './storage';
-import { originOf } from './syncpack';
+import { listProjectsLocal, loadProjectLocal, saveProjectLocal, trashProjectLocal } from './storage';
+import { originOf, setIdOf } from './syncpack';
 
 export const AUDIO_RE = /\.(mp3|ogg|wav|m4a|flac)$/i;
 
-export type OpenResult = { kind: 'created' | 'imported'; project: Project };
+export type OpenResult = { kind: 'created' | 'imported'; project: Project; replaced?: number };
 
 /**
  * Turn dropped or picked files into a stored project. An audio file starts a new beatmap; an .osz, a beatmap
@@ -30,8 +30,13 @@ export async function projectFromFiles(files: File[]): Promise<OpenResult> {
     project = await createProjectFromAudio(audio, cloud.user?.username || editor.prefs.creatorName);
     kind = 'created';
   }
+  // Like stable, an imported set replaces the copy already in song select (which would read as an old version),
+  // but into Recently deleted rather than overwritten, so local edits can be restored.
+  const setId = kind === 'imported' ? setIdOf(project) : 0;
+  const old = setId > 0 ? (await listProjectsLocal()).filter((p) => p.beatmapSetId === setId && p.id !== editor.project?.id) : [];
+  for (const p of old) await trashProjectLocal(p.id);
   await saveProjectLocal(project);
-  return { kind, project };
+  return { kind, project, replaced: old.length };
 }
 
 /** A new beatmap opens straight into the editor with Song Setup, like dropping an mp3 onto stable. */

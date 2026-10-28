@@ -377,7 +377,8 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
       if (r.kind === 'created') await openNewBeatmap(r.project);
       else {
         await selectImported(r.project.id);
-        editor.toast(`Imported ${r.project.difficulties.length} difficult${r.project.difficulties.length > 1 ? 'ies' : 'y'}.`);
+        const replaced = r.replaced ? ' The old version is in Recently deleted.' : '';
+        editor.toast(`Imported ${r.project.difficulties.length} difficult${r.project.difficulties.length > 1 ? 'ies' : 'y'}.${replaced}`);
       }
     });
 

@@ -3,7 +3,7 @@
 // modes run as an autoplay preview.
 import { useEffect, useRef, useState } from 'react';
 import { hitsounds } from '../audio/hitsounds';
-import { music } from '../audio/music';
+import { music, reducedMotion } from '../audio/music';
 import { dist } from '../osu/curves';
 import { serializeBeatmap } from '../osu/serializer';
 import type { Vec2 } from '../osu/types';
@@ -38,6 +38,8 @@ interface Controls {
 
 /** Test mode's quick mod toggles. */
 const TEST_MODS: ModId[] = ['AU', 'HT', 'DT', 'EZ', 'HR', 'HD', 'FL'];
+/** How long Esc's fade back to the editor takes (play.css's .player.leaving matches). */
+const TEST_LEAVE_MS = 300;
 
 function downsample(v: number[], n: number): number[] {
   if (v.length <= n) return v.map((x) => Math.round(x * 1000) / 1000);
@@ -69,13 +71,25 @@ export function Player({ mode }: { mode: 'play' | 'test' }) {
   const editorRate = useRef(music.rate);
   const bg = useBackgroundUrl();
 
+  const [leaving, setLeaving] = useState(false);
+  const leavingRef = useRef(false);
   const quit = () => {
     if (mode === 'test') {
-      music.pause();
-      music.seek(testStart.current);
-      editor.openDialog(null);
+      // The test fades out (song too) to reveal the editor underneath.
+      if (leavingRef.current) return;
+      leavingRef.current = true;
+      const ms = reducedMotion() ? 0 : TEST_LEAVE_MS;
+      setLeaving(true);
+      music.fadeOut(ms);
+      setTimeout(() => {
+        music.pause();
+        music.seek(testStart.current);
+        editor.openDialog(null);
+      }, ms);
     } else editor.closeProject();
   };
+  // Each test starts without mods.
+  useEffect(() => (mode === 'test' ? () => modSelection.set([], 'test') : undefined), []);
   const retry = () => {
     setResult(null);
     setPhase('playing');
@@ -407,7 +421,7 @@ export function Player({ mode }: { mode: 'play' | 'test' }) {
   const meta = editor.project ? editor.bm.metadata : null;
   const c = controls.current;
   return (
-    <div className={`player ${phase === 'results' ? 'done' : ''}`}>
+    <div className={`player ${phase === 'results' ? 'done' : ''} ${leaving ? 'leaving' : ''}`}>
       <canvas ref={ref} />
       {preview && phase === 'playing' && <div className="player-note">osu!{['', 'taiko', 'catch', 'mania'][editor.bm.general.mode]} isn't playable yet: this is an autoplay preview.</div>}
       {skipShown && (

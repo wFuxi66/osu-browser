@@ -148,6 +148,7 @@ kbd { background: #2a2a38; border: 1px solid var(--border); border-radius: 3px; 
 .skin-cursor input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=color]), .skin-cursor textarea, .skin-cursor [contenteditable] { cursor: text !important; }
 .skin-cursor .player, .skin-cursor .player * { cursor: none !important; }
 .skin-cursor .player.done, .skin-cursor .player.done *, .skin-cursor .player:has(.pause-menu), .skin-cursor .player:has(.pause-menu) * { cursor: var(--skin-cursor) !important; }
+.skin-cursor .player-testbar, .skin-cursor .player-testbar * { cursor: var(--skin-cursor) !important; }
 
 /* The editor's motion (menus, windows, toasts, screen changes) is off when the system asks for less motion. */
 @media (prefers-reduced-motion: reduce) {

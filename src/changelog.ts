@@ -2,6 +2,8 @@
 // has that the running one doesn't, so add a line with each change worth telling players about (the build puts
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
+  'Editor test (F5): the mouse cursor shows over the mod buttons, each test starts without mods, and Esc fades back to the editor.',
+  'Song select: "By Date Added" and other long group tab names stay on one line.',
   'Importing an .osz of a set you already have replaces the old copy (it goes to Recently deleted), so song select no longer offers to update a map you just downloaded.',
   'Progress notices (video conversion, downloads) hide after a few seconds instead of staying in the corner.',
   'Leaving a map while the song plays, it keeps playing from where you were (quitting from the pause menu starts it over, like stable).',

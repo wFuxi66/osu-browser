@@ -35,7 +35,7 @@
 .ss-dropdowns select { appearance: none; font-family: var(--osu-font); font-size: calc(var(--u) * 17); color: #fff; background: rgba(0,0,0,0.6) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 12'%3E%3Cpath d='M2 2l8 8 8-8' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E") no-repeat right calc(var(--u) * 8) center / calc(var(--u) * 14) auto; border: 1px solid #8fb8ee; border-radius: calc(var(--u) * 4); width: calc(var(--u) * 190); padding: calc(var(--u) * 2) calc(var(--u) * 26) calc(var(--u) * 2) calc(var(--u) * 4); }
 .ss-dropdowns select option { background: #111; color: #fff; }
 .ss-tabs { display: flex; justify-content: flex-end; gap: calc(var(--u) * 14); margin-top: calc(var(--u) * 3); }
-.ss-tabs button { font-family: var(--osu-font); font-size: calc(var(--u) * 13.5); font-weight: 500; color: #fff; background: #e3245b; border: none; border-radius: 0; width: calc(var(--u) * 105); height: calc(var(--u) * 26); padding: 0; box-shadow: 0 calc(var(--u) * 2) 0 rgba(0,0,0,0.3); }
+.ss-tabs button { font-family: var(--osu-font); font-size: calc(var(--u) * 13.5); font-weight: 500; color: #fff; background: #e3245b; border: none; border-radius: 0; min-width: calc(var(--u) * 105); height: calc(var(--u) * 26); padding: 0 calc(var(--u) * 8); white-space: nowrap; box-shadow: 0 calc(var(--u) * 2) 0 rgba(0,0,0,0.3); }
 .ss-tabs button:hover:not(:disabled) { background: #f03c70; border: none; }
 .ss-tabs button.active, .ss-tabs button.active:hover { background: #fff; color: #222; }
 

@@ -20,6 +20,8 @@ export interface PromptRequest {
   icon?: 'question' | 'warning';
   /** False for message boxes without a Cancel: the close button is greyed out and Esc does nothing, like Windows. */
   closable?: boolean;
+  /** Bulleted lines under the message (in-game dialogs only). */
+  list?: string[];
   /** Optional text field (message boxes only); its value is passed to onInput as it changes. */
   input?: { value: string; onInput: (v: string) => void };
 }

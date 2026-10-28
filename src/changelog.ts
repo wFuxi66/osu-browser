@@ -1,0 +1,13 @@
+// What changed for players, newest first. The "new version available" toast shows the lines the waiting version
+// has that the running one doesn't, so add a line with each change worth telling players about (the build puts
+// this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
+export const CHANGELOG: string[] = [
+  'The new version notice shows what changed before you reload.',
+  'Editor: smoother seeking and zooming, and menus, dialogs, toasts and screen changes animate.',
+  'Install osu!browser as an app from Options.',
+  'Touch: select several objects on the timeline, smoother flings, and half-placed sliders stay visible.',
+  'Phone layout: menus and bars move to the sides for a bigger playfield.',
+  'Recently deleted: deleted sets and difficulties can be restored for 30 days.',
+  'Works offline as an installed app, and Drive sync keeps both versions of a map changed in two places.',
+  'Set downloads come from the mirror that has the latest version on osu!.',
+];

@@ -114,6 +114,8 @@
 .gdialog-head { text-align: center; margin-bottom: calc(var(--u) * 26); max-width: 80vw; }
 .gdialog-title { font-size: calc(var(--u) * 34); font-weight: 300; }
 .gdialog-msg { font-size: calc(var(--u) * 17); margin-top: calc(var(--u) * 8); color: #ddd; white-space: pre-line; }
+.gdialog-list { text-align: left; margin: calc(var(--u) * 14) auto 0; padding-left: 1.2em; max-width: calc(var(--u) * 640); max-height: 50vh; overflow-y: auto; font-size: calc(var(--u) * 17); color: #ddd; }
+.gdialog-list li + li { margin-top: calc(var(--u) * 6); }
 .gdialog-buttons { display: flex; flex-direction: column; gap: calc(var(--u) * 10); width: min(70vw, calc(var(--u) * 560)); }
 .gdialog-btn { position: relative; height: calc(var(--u) * 50); border: none; border-radius: calc(var(--u) * 25); font-family: var(--osu-font); font-size: calc(var(--u) * 20); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5); transition: transform 0.12s, filter 0.12s; box-shadow: 0 calc(var(--u) * 3) calc(var(--u) * 10) rgba(0,0,0,0.5); }
 .gdialog-btn:hover:not(:disabled) { transform: scale(1.04); filter: brightness(1.15); border: none; }

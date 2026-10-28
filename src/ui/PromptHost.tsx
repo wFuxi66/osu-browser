@@ -40,6 +40,11 @@ export function PromptHost() {
         <div className="gdialog-head">
           <div className="gdialog-title">{p.title}</div>
           {p.message && <div className="gdialog-msg">{p.message}</div>}
+          {p.list && (
+            <ul className="gdialog-list">
+              {p.list.map((l) => <li key={l}>{l}</li>)}
+            </ul>
+          )}
         </div>
         <div className="gdialog-buttons">
           {p.buttons.map((b, i) => (

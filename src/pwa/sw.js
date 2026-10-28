@@ -1,7 +1,7 @@
 // Service worker: the whole app from the cache, so mapping and playing the maps stored in the browser works with
 // no network. The build (vite-pwa.ts) puts the file lists above this: every built file with a hash of its contents,
 // except ffmpeg (32 MB, only for converting old background videos), which is cached the first time it's used.
-/* global PRECACHE, LAZY, VERSION */
+/* global PRECACHE, LAZY, VERSION, CHANGELOG */
 const PREFIX = 'osu-browser-';
 const CACHE = PREFIX + VERSION;
 /** ffmpeg's files are named by their contents, so this cache outlives versions (pruned to the current names). */
@@ -56,9 +56,11 @@ self.addEventListener('activate', (e) =>
   ),
 );
 
-// The page asks for this when the player chooses to reload into the new version.
+// The page asks for skip-waiting when the player chooses to reload into the new version, and for the changelog
+// (answered on the port it sends) to show what this version changes.
 self.addEventListener('message', (e) => {
   if (e.data === 'skip-waiting') void self.skipWaiting();
+  else if (e.data === 'changelog') e.ports[0]?.postMessage(CHANGELOG);
 });
 
 self.addEventListener('fetch', (e) => {

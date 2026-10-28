@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { Plugin } from 'vite';
+import { CHANGELOG } from './src/changelog.ts';
 
 const hash = (data: Buffer | string) => createHash('sha256').update(data).digest('hex').slice(0, 16);
 
@@ -37,8 +38,8 @@ export function serviceWorker(): Plugin {
       }
       const version = hash(JSON.stringify(precache));
       const src = readFileSync(new URL('./src/pwa/sw.js', import.meta.url), 'utf8');
-      const head = `const PRECACHE = ${JSON.stringify(precache)};\nconst LAZY = ${JSON.stringify([...lazy])};\nconst VERSION = '${version}';\n`;
-      writeFileSync(join(outDir, 'sw.js'), head + src.replace('/* global PRECACHE, LAZY, VERSION */\n', ''));
+      const head = `const PRECACHE = ${JSON.stringify(precache)};\nconst LAZY = ${JSON.stringify([...lazy])};\nconst VERSION = '${version}';\nconst CHANGELOG = ${JSON.stringify(CHANGELOG)};\n`;
+      writeFileSync(join(outDir, 'sw.js'), head + src.replace('/* global PRECACHE, LAZY, VERSION, CHANGELOG */\n', ''));
     },
   };
 }

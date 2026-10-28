@@ -12,6 +12,7 @@ import { skins, type SkinEntry } from '../skin/skin';
 import { options, useOptions, type OptionsSection } from './options';
 import { confirmBox } from './prompt';
 import { scores } from '../play/scores';
+import { installApp, useCanInstall } from '../pwa/install';
 
 interface Item {
   label: string;
@@ -36,6 +37,7 @@ export function OptionsPanel() {
   const opts = useOptions();
   const ed = useEditor();
   useCloud();
+  const canInstall = useCanInstall();
   const [query, setQuery] = useState('');
   const [capture, setCapture] = useState<{ id: string; slot: number } | null>(null);
   const [skinList, setSkinList] = useState<SkinEntry[]>([]);
@@ -441,6 +443,19 @@ export function OptionsPanel() {
         {
           title: 'General',
           items: [
+            ...(canInstall
+              ? [
+                  {
+                    label: 'Install osu!browser as an app',
+                    keywords: 'download desktop icon shortcut pwa window',
+                    render: () => (
+                      <Button tone="grey" onClick={() => void installApp()}>
+                        Install osu!browser as an app
+                      </Button>
+                    ),
+                  },
+                ]
+              : []),
             {
               label: 'Delete all local scores',
               keywords: 'scores ranking leaderboard clear reset',

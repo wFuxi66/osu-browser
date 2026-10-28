@@ -3,7 +3,7 @@
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
   'Editor: 150% playback rate, to preview a map at DT speed.',
-  'Editor: Song Folder takes dropped files and folders, selects several files, previews images and sounds, and downloads files.',
+  'Editor: Song Folder looks and works like Explorer, with folders, drop to add, multi-select, previews and downloads. Notepad gets Ctrl+S and a status bar.',
   'The new version notice shows what changed before you reload.',
   'Editor: smoother seeking and zooming, and menus, dialogs, toasts and screen changes animate.',
   'Install osu!browser as an app from Options.',

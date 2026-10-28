@@ -7,7 +7,7 @@ import { serializeBeatmap } from '../../../osu/serializer';
 import { beatLengthAt, sliderSpanDuration } from '../../../osu/timing';
 import { defaultSample, newObjectId, type HitObject, type Slider } from '../../../osu/types';
 import { filesFromDrop, pickFiles } from '../../../project/open';
-import { downloadBlob, mimeFor } from '../../../project/project';
+import { downloadBlob, mimeFor, osuFilename, oszFilename } from '../../../project/project';
 import { confirmBox } from '../../../ui/prompt';
 import { Check, GroupBox, NumberBox, OkCancel, Radio, Row, TrackRow, WinDialog } from '../../../ui/win';
 import { expectedDistance } from '../../playfield/snapping';
@@ -408,81 +408,157 @@ export function DifficultiesDialog() {
   );
 }
 
-/** File → Open Song Folder: the files in the beatmap set. */
+/** File → Open Song Folder: the beatmap set's folder, laid out like the Explorer window stable opens. */
 export function FilesDialog() {
   const ed = useEditor();
   const folder = ed.project!.files;
-  const files = [...folder.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const setName = oszFilename(ed.project!).replace(/\.osz$/, '');
+  const [dir, setDir] = useState('');
   const [sel, setSel] = useState<string[]>([]);
   const [over, setOver] = useState(false);
   const anchor = useRef<string | null>(null);
   const close = () => ed.openDialog(null);
+  const prefix = dir ? `${dir}/` : '';
+  // The open folder's direct children; a subfolder is one row holding the total size of the files under it.
+  const children = new Map<string, { path: string; size: number; isDir: boolean }>();
+  for (const [path, blob] of folder) {
+    if (!path.startsWith(prefix)) continue;
+    const rest = path.slice(prefix.length);
+    const slash = rest.indexOf('/');
+    const name = slash < 0 ? rest : rest.slice(0, slash);
+    const row = children.get(name) ?? { path: prefix + name, size: 0, isDir: slash >= 0 };
+    row.size += blob.size;
+    children.set(name, row);
+  }
+  const rows = [...children].sort(([a, x], [b, y]) => Number(y.isDir) - Number(x.isDir) || a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  // A selected folder stands for every file under it.
+  const expand = (paths: string[]) => [...folder.keys()].filter((k) => paths.some((p) => k === p || k.startsWith(`${p}/`)));
+  const open = (path: string) => {
+    setDir(path);
+    setSel([]);
+    anchor.current = null;
+  };
+  const up = () => dir && open(dir.split('/').slice(0, -1).join('/'));
   const refreshSamples = () => hitsounds.setCustomSamples(folder, ed.bm.general.audioFilename);
   // Folder picks and drops keep their path, so a dropped sb folder lands in sb/ like in Explorer.
   const add = async (picked: File[]) => {
     if (!picked.length) return;
-    ed.setFiles(picked.map((f) => [f.webkitRelativePath || f.name, f]));
+    ed.setFiles(picked.map((f) => [prefix + (f.webkitRelativePath || f.name), f]));
     ed.toast(`Added ${picked.length} file${picked.length > 1 ? 's' : ''}. Custom hitsounds are picked up by name (e.g. soft-hitclap2.wav).`);
     await refreshSamples();
   };
   const remove = async () => {
-    if (sel.includes(ed.bm.general.audioFilename)) return ed.toast('This is the audio file; replace it from Song Setup → Audio instead.', 'error');
-    if (await confirmBox('osu!', sel.length === 1 ? `Remove ${sel[0]} from the beatmap folder?` : `Remove ${sel.length} files from the beatmap folder?`)) {
-      ed.setFiles(sel.map((n) => [n, null]));
+    const doomed = expand(sel);
+    if (doomed.includes(ed.bm.general.audioFilename)) return ed.toast('This is the audio file; replace it from Song Setup → Audio instead.', 'error');
+    const what = sel.length === 1 ? `"${sel[0].slice(prefix.length)}"` : `these ${sel.length} items`;
+    if (await confirmBox('osu!', `Delete ${what}${doomed.length > sel.length ? ` (${doomed.length} files)` : ''} from the beatmap folder?`)) {
+      ed.setFiles(doomed.map((n) => [n, null]));
       setSel([]);
       await refreshSamples();
     }
   };
   // Click picks one, Ctrl+click toggles, Shift+click picks a range, like an Explorer list.
-  const pick = (e: MouseEvent, name: string) => {
-    const at = anchor.current ? files.findIndex(([n]) => n === anchor.current) : -1;
+  const pick = (e: MouseEvent, path: string) => {
+    const at = rows.findIndex(([, r]) => r.path === anchor.current);
     if (e.shiftKey && at >= 0) {
-      const i = files.findIndex(([n]) => n === name);
-      return setSel(files.slice(Math.min(at, i), Math.max(at, i) + 1).map(([n]) => n));
+      const i = rows.findIndex(([, r]) => r.path === path);
+      return setSel(rows.slice(Math.min(at, i), Math.max(at, i) + 1).map(([, r]) => r.path));
     }
-    anchor.current = name;
-    if (e.ctrlKey || e.metaKey) setSel(sel.includes(name) ? sel.filter((n) => n !== name) : [...sel, name]);
-    else setSel([name]);
+    anchor.current = path;
+    if (e.ctrlKey || e.metaKey) setSel(sel.includes(path) ? sel.filter((n) => n !== path) : [...sel, path]);
+    else setSel([path]);
   };
+  const selSize = expand(sel).reduce((s, n) => s + folder.get(n)!.size, 0);
   const shown = sel.length === 1 ? folder.get(sel[0]) : undefined;
+  const parts = dir ? dir.split('/') : [];
   return (
-    <WinDialog title="Song Folder" width={520} onClose={close} footer={<div className="win-okcancel"><button className="win-ok" onClick={close}>Close</button></div>}>
-      <div
-        className="win-list"
-        style={{ height: 300, outline: over ? '2px dashed #0078d7' : undefined }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={async (e) => {
-          e.preventDefault();
-          setOver(false);
-          await add(await filesFromDrop(e.dataTransfer));
-        }}
-      >
-        <table>
-          <thead><tr><th>Name</th><th>Size</th></tr></thead>
-          <tbody>
-            {files.map(([name, blob]) => (
-              <tr key={name} className={sel.includes(name) ? 'sel focus' : ''} onMouseDown={(e) => pick(e, name)}>
-                <td className="win-mono">{name}</td>
-                <td>{Math.max(1, Math.round(blob.size / 1024)).toLocaleString()} KB</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <WinDialog title={setName} width={820} className="xp" onClose={close}>
+      <div className="xp-bar">
+        <button className="xp-btn" onClick={async () => add(await pickFiles('*', { multiple: true }))}><span className="xp-glyph">＋</span>Add files</button>
+        <button className="xp-btn" onClick={async () => add(await pickFiles('*', { directory: true }))}><span className="xp-glyph">📁</span>Add folder</button>
+        <span className="xp-sep" />
+        <button className="xp-btn" disabled={!sel.length} onClick={() => expand(sel).forEach((n) => downloadBlob(folder.get(n)!, n.split('/').pop()!))}><span className="xp-glyph">⭳</span>Download</button>
+        <button className="xp-btn" disabled={!sel.length} onClick={() => void remove()}><span className="xp-glyph">🗑</span>Delete</button>
       </div>
-      <div style={{ fontSize: 11, color: '#666', margin: '2px 0' }}>Drop files or folders onto the list to add them.</div>
-      <div className="win-buttonrow">
-        <button onClick={async () => add(await pickFiles('*', { multiple: true }))}>Add files...</button>
-        <button onClick={async () => add(await pickFiles('*', { directory: true }))}>Add folder...</button>
-        <button onClick={() => void remove()} disabled={!sel.length}>Remove</button>
-        <button onClick={() => sel.forEach((n) => downloadBlob(folder.get(n)!, n.split('/').pop()!))} disabled={!sel.length}>Download</button>
+      <div className="xp-address">
+        <button className="xp-btn xp-up" disabled={!dir} onClick={up} aria-label="Up one folder">↑</button>
+        <div className="xp-crumbs">
+          <span className="xp-glyph">📁</span>
+          <span className="xp-chev">›</span>
+          <button className="xp-btn xp-crumb" onClick={() => open('')}>{setName}</button>
+          {parts.map((p, i) => (
+            <span key={i}>
+              <span className="xp-chev">›</span>
+              <button className="xp-btn xp-crumb" onClick={() => open(parts.slice(0, i + 1).join('/'))}>{p}</button>
+            </span>
+          ))}
+        </div>
       </div>
-      {shown && <FilePreview name={sel[0]} blob={shown} />}
+      <div className="xp-main">
+        <div
+          className={`xp-list ${over ? 'over' : ''}`}
+          tabIndex={0}
+          onMouseDown={(e) => e.target === e.currentTarget && setSel([])}
+          onKeyDown={(e) => {
+            if (e.key === 'Delete' && sel.length) void remove();
+            else if (e.key === 'Backspace') up();
+            else if (e.key === 'Enter' && sel.length === 1 && children.get(sel[0].slice(prefix.length))?.isDir) open(sel[0]);
+            else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) setSel(rows.map(([, r]) => r.path));
+            else return;
+            e.preventDefault();
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setOver(true);
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={async (e) => {
+            e.preventDefault();
+            setOver(false);
+            await add(await filesFromDrop(e.dataTransfer));
+          }}
+        >
+          <table>
+            <thead><tr><th>Name</th><th>Type</th><th>Size</th></tr></thead>
+            <tbody>
+              {rows.map(([name, r]) => (
+                <tr key={r.path} className={sel.includes(r.path) ? 'sel' : ''} onMouseDown={(e) => pick(e, r.path)} onDoubleClick={() => r.isDir && open(r.path)}>
+                  <td><span className="xp-icon">{fileIcon(name, r.isDir)}</span>{name}</td>
+                  <td>{r.isDir ? 'File folder' : `${name.includes('.') ? name.split('.').pop()!.toUpperCase() : ''} File`}</td>
+                  <td>{r.isDir ? '' : kb(r.size)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!rows.length && <div className="xp-empty">This folder is empty. Drop files here to add them.</div>}
+        </div>
+        <div className="xp-preview">
+          {shown ? (
+            <>
+              <FilePreview name={sel[0]} blob={shown} />
+              <b>{sel[0].slice(prefix.length)}</b>
+              <span>{kb(shown.size)}</span>
+            </>
+          ) : (
+            <span>{sel.length ? `${sel.length} items selected` : 'Select a file to preview it. Drop files or folders on the list to add them.'}</span>
+          )}
+        </div>
+      </div>
+      <div className="xp-status">
+        <span>{rows.length} item{rows.length === 1 ? '' : 's'}</span>
+        {sel.length > 0 && <span>{sel.length} item{sel.length === 1 ? '' : 's'} selected  {selSize < 1048576 ? kb(selSize) : `${(selSize / 1048576).toFixed(1)} MB`}</span>}
+      </div>
     </WinDialog>
   );
+}
+
+/** Explorer rounds sizes up to the next KB. */
+const kb = (bytes: number) => `${Math.ceil(bytes / 1024).toLocaleString()} KB`;
+
+function fileIcon(name: string, isDir: boolean) {
+  if (isDir) return '📁';
+  const type = mimeFor(name);
+  return type.startsWith('image/') ? '🖼️' : type.startsWith('audio/') ? '🎵' : type.startsWith('video/') ? '🎬' : '📄';
 }
 
 /** The selected file, so a mapper can check which bg or hitsound it is without leaving the editor. */
@@ -495,25 +571,34 @@ function FilePreview({ name, blob }: { name: string; blob: Blob }) {
   }, [blob]);
   const type = mimeFor(name);
   if (!url) return null;
-  if (type.startsWith('image/')) return <img src={url} alt={name} style={{ display: 'block', maxWidth: '100%', maxHeight: 160, margin: '4px auto' }} />;
+  if (type.startsWith('image/')) return <img className="xp-media" src={url} alt={name} />;
   if (type.startsWith('audio/')) return <audio key={url} src={url} controls autoPlay style={{ width: '100%' }} />;
-  if (type === 'video/mp4') return <video key={url} src={url} controls muted style={{ display: 'block', maxWidth: '100%', maxHeight: 160, margin: '4px auto' }} />;
-  return null;
+  if (type === 'video/mp4') return <video key={url} className="xp-media" src={url} controls muted />;
+  return <span className="xp-bigicon">{fileIcon(name, false)}</span>;
 }
 
-/** File → Open .osu / .osb in Notepad: the raw text, editable. */
+/** File → Open .osu / .osb in Notepad: the raw text, editable, in a Notepad-style window. */
 export function NotepadDialog({ kind }: { kind: 'osu' | 'osb' }) {
   const ed = useEditor();
-  const [text, setText] = useState(kind === 'osu' ? serializeBeatmap(ed.bm) : '');
+  const initial = kind === 'osu' ? serializeBeatmap(ed.bm) : '';
+  const [text, setText] = useState(initial);
+  const [saved, setSaved] = useState(initial);
+  const [caret, setCaret] = useState(0);
   storyboard.sync();
   const osbName = storyboard.osbName;
+  const fileName = kind === 'osu' ? osuFilename(ed.bm) : osbName;
   useEffect(() => {
     if (kind !== 'osb') return;
     const blob = ed.project!.files.get(osbName);
-    if (blob) void blob.text().then(setText);
-    else setText('[Events]\n//Background and Video events\n//Storyboard Layer 0 (Background)\n//Storyboard Layer 1 (Fail)\n//Storyboard Layer 2 (Pass)\n//Storyboard Layer 3 (Foreground)\n//Storyboard Layer 4 (Overlay)\n//Storyboard Sound Samples\n');
+    const load = (t: string) => {
+      setText(t);
+      setSaved(t);
+    };
+    if (blob) void blob.text().then(load);
+    else load('[Events]\n//Background and Video events\n//Storyboard Layer 0 (Background)\n//Storyboard Layer 1 (Fail)\n//Storyboard Layer 2 (Pass)\n//Storyboard Layer 3 (Foreground)\n//Storyboard Layer 4 (Overlay)\n//Storyboard Sound Samples\n');
   }, [kind, osbName]); // eslint-disable-line react-hooks/exhaustive-deps
-  const apply = () => {
+  const dirty = text !== saved;
+  const save = () => {
     if (kind === 'osu') {
       try {
         const parsed = parseOsu(text);
@@ -526,11 +611,38 @@ export function NotepadDialog({ kind }: { kind: 'osu' | 'osb' }) {
       ed.setFile(osbName, new Blob([text.replace(/\r?\n/g, '\r\n')], { type: 'text/plain' }));
       design.select(null);
     }
-    ed.openDialog(null);
+    setSaved(text);
+    ed.toast(`Saved ${fileName}.`);
   };
+  const close = async () => {
+    if (!dirty || (await confirmBox('Notepad', `Close without saving your changes to ${fileName}?`))) ed.openDialog(null);
+  };
+  const before = text.slice(0, caret);
   return (
-    <WinDialog title={`${kind === 'osu' ? 'Difficulty' : osbName} - Notepad`} width={760} onClose={() => ed.openDialog(null)} footer={<OkCancel okLabel="Apply" onOk={apply} onCancel={() => ed.openDialog(null)} />}>
-      <textarea className="win-textarea" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
+    <WinDialog title={`${dirty ? '*' : ''}${fileName} - Notepad`} width={860} className="np" onClose={() => void close()}>
+      <div className="np-menu">
+        <button className="xp-btn" onClick={save} title="Ctrl+S">Save</button>
+        <button className="xp-btn" onClick={() => setText(saved)} disabled={!dirty}>Revert</button>
+      </div>
+      <textarea
+        className="np-text"
+        spellCheck={false}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            save();
+          }
+        }}
+      />
+      <div className="np-status">
+        <span>Ln {before.split('\n').length}, Col {caret - before.lastIndexOf('\n')}</span>
+        <span>{text.length.toLocaleString()} characters</span>
+        <span>Windows (CRLF)</span>
+        <span>UTF-8</span>
+      </div>
     </WinDialog>
   );
 }

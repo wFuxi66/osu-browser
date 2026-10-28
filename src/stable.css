@@ -147,9 +147,9 @@
 .win-x { width: 46px; height: 30px; background: none; border: none; border-radius: 0; color: #000; font-size: 13px; padding: 0; }
 .win-x:hover:not(:disabled) { background: #e81123; color: #fff; border: none; }
 .win-x:disabled { background: none; color: #c4c4c4; }
-.win-window button:not(.win-x):not(.win-tab):not(.win-arrow):not(.tsd-icon), .win-btn { font: 12px var(--win-font); color: #000; background: #e1e1e1; border: 1px solid #adadad; border-radius: 0; padding: 2px 10px; min-width: 75px; min-height: 23px; }
-.win-window button:not(.win-x):not(.win-tab):not(.win-arrow):not(.tsd-icon):hover:not(:disabled), .win-btn:hover:not(:disabled) { background: #e5f1fb; border-color: #0078d7; }
-.win-window button:not(.win-x):not(.win-tab):not(.win-arrow):not(.tsd-icon):focus-visible, .win-btn:focus-visible { outline: 1px dotted #000; outline-offset: -4px; border-color: #0078d7; }
+.win-window button:not(.win-x):not(.win-tab):not(.win-arrow):not(.tsd-icon):not(.xp-btn), .win-btn { font: 12px var(--win-font); color: #000; background: #e1e1e1; border: 1px solid #adadad; border-radius: 0; padding: 2px 10px; min-width: 75px; min-height: 23px; }
+.win-window button:not(.win-x):not(.win-tab):not(.win-arrow):not(.tsd-icon):not(.xp-btn):hover:not(:disabled), .win-btn:hover:not(:disabled) { background: #e5f1fb; border-color: #0078d7; }
+.win-window button:not(.win-x):not(.win-tab):not(.win-arrow):not(.tsd-icon):not(.xp-btn):focus-visible, .win-btn:focus-visible { outline: 1px dotted #000; outline-offset: -4px; border-color: #0078d7; }
 .win-window button:disabled { color: #a0a0a0; background: #ccc; border-color: #bfbfbf; opacity: 1; }
 .win-window input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), .win-window select, .win-window textarea { font: 12px var(--win-font); color: #000; background: #fff; border: 1px solid #7a7a7a; border-radius: 0; padding: 2px 4px; }
 .win-window input:disabled, .win-window select:disabled, .win-window textarea:disabled { background: #f0f0f0; color: #6d6d6d; border-color: #ccc; }
@@ -211,7 +211,49 @@
 .win-list tr.sel.focus td { background: #99c9ef; }
 .win-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
 .win-mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; }
-.win-textarea { width: 100%; min-height: 380px; resize: vertical; white-space: pre; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; user-select: text; }
+/* Song Folder and Notepad: modern Windows Explorer and Notepad, the apps stable opens for these. */
+.xp, .np { border-radius: 8px; overflow: hidden; border-color: #a0a0a0; max-width: calc(100vw - 16px); }
+.xp .win-body, .np .win-body { padding: 0; display: flex; flex-direction: column; background: #fff; }
+.xp-bar, .np-menu { display: flex; align-items: center; gap: 2px; padding: 6px 8px; background: #f9f9f9; border-bottom: 1px solid #e5e5e5; flex: none; }
+.np-menu { padding: 3px 6px; }
+.xp-btn { font: 12px var(--win-font); color: #1a1a1a; background: none; border: none; border-radius: 4px; padding: 5px 10px; min-width: 0; min-height: 0; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.xp-btn:hover:not(:disabled) { background: rgba(0,0,0,0.06); }
+.xp-btn:active:not(:disabled) { background: rgba(0,0,0,0.1); }
+.win-window .xp-btn:disabled { color: #a0a0a0; background: none; }
+.xp-btn:disabled .xp-glyph { opacity: 0.4; }
+.xp-btn:focus-visible { outline: 2px solid #0067c0; outline-offset: -2px; }
+.xp-glyph { font-size: 14px; line-height: 1; }
+.xp-sep { width: 1px; height: 20px; background: #e0e0e0; margin: 0 6px; }
+.xp-address { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #f9f9f9; border-bottom: 1px solid #e5e5e5; flex: none; }
+.xp-up { font-size: 15px; padding: 3px 9px; }
+.xp-crumbs { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; padding: 0 6px; background: #fff; border: 1px solid #e5e5e5; border-radius: 4px; overflow: hidden; white-space: nowrap; }
+.xp-crumb { padding: 3px 6px; }
+.xp-chev { color: #777; padding: 0 3px; }
+.xp-main { display: flex; height: min(420px, 60vh); min-height: 0; }
+.xp-list { flex: 1; min-width: 0; overflow: auto; outline: none; }
+.xp-list.over { background: #f0f7ff; box-shadow: inset 0 0 0 2px #0067c0; }
+.xp-list table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+.xp-list th { position: sticky; top: 0; z-index: 1; background: #fff; text-align: left; font-weight: 400; color: #4c4c4c; padding: 8px 8px 6px; border-right: 1px solid #e5e5e5; }
+.xp-list th:nth-child(2) { width: 110px; }
+.xp-list th:nth-child(3) { width: 90px; border-right: none; }
+.xp-list th:nth-child(3), .xp-list td:nth-child(3) { text-align: right; }
+.xp-list td { height: 26px; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+.xp-list td:not(:first-child) { color: #6d6d6d; }
+.xp-list tr:hover td { background: #e5f3ff; }
+.xp-list tr.sel td { background: #cce8ff; }
+.xp-list:focus-visible tr.sel td { box-shadow: inset 0 1px #99d1ff, inset 0 -1px #99d1ff; }
+.xp-icon { display: inline-block; width: 18px; margin-right: 8px; text-align: center; font-size: 14px; }
+.xp-empty { color: #6d6d6d; text-align: center; padding: 48px 16px; }
+.xp-preview { width: 240px; flex: none; border-left: 1px solid #e5e5e5; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6d6d6d; text-align: center; overflow: hidden; word-break: break-all; }
+.xp-preview b { color: #1a1a1a; font-weight: 600; }
+.xp-media { display: block; max-width: 100%; max-height: 220px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+.xp-bigicon { font-size: 56px; }
+.xp-status { display: flex; gap: 24px; padding: 4px 12px; border-top: 1px solid #f0f0f0; background: #fff; flex: none; white-space: pre; }
+.np .np-text { flex: auto; width: 100%; height: 62vh; min-height: 240px; resize: none; border: none; padding: 8px 12px; white-space: pre; overflow: auto; font: 14px/1.45 Consolas, "Cascadia Mono", monospace; tab-size: 4; user-select: text; }
+.np-status { display: flex; padding: 4px 0; white-space: nowrap; overflow: hidden; border-top: 1px solid #e5e5e5; background: #f9f9f9; flex: none; color: #1a1a1a; }
+.np-status span { padding: 0 16px; border-left: 1px solid #e0e0e0; }
+.np-status span:first-child { border-left: none; margin-right: auto; }
+@media (max-width: 640px) { .xp-preview, .np-status span:nth-child(n+3) { display: none; } .xp-bar .xp-btn { padding: 5px 6px; } }
 .win-pad { padding: 6px 8px; }
 .win-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .win-cols .win-group { margin: 0; }

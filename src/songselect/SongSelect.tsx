@@ -266,6 +266,8 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
 
   // ------------------------------------------------------------------ preview music
   useEffect(() => {
+    // Back from a map, the song plays on while the list loads and the map is selected again.
+    if (!selSet && editor.returnedFrom) return;
     if (!selSet?.audio || directOpen) {
       music.pause();
       return;

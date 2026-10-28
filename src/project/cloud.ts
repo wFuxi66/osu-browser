@@ -263,26 +263,44 @@ class Cloud {
   /**
    * Fetch a published beatmapset (.osz) by id. Downloads straight from public mirrors that allow CORS,
    * then falls back to the standalone server's mirror proxy (not available on the Vercel deployment). Without
-   * video, osu.direct leaves the set's video out; the fallbacks always include it.
+   * video, the mirrors that can leave the set's video out do; the proxy always includes it.
+   *
+   * A mirror can keep an old version of a set for weeks after it's updated on osu!, so with `isWanted` the
+   * mirrors are tried in turn until one serves a set it accepts; if none does, the first set that downloaded
+   * is returned anyway.
    */
-  async fetchBeatmapset(setId: number, onProgress?: (fraction: number) => void, video = true): Promise<ArrayBuffer> {
+  async fetchBeatmapset(
+    setId: number,
+    onProgress?: (fraction: number) => void,
+    video = true,
+    isWanted?: (data: ArrayBuffer) => Promise<boolean>,
+  ): Promise<ArrayBuffer> {
+    let fallback: ArrayBuffer | null = null;
     for (const url of [...BROWSER_MIRRORS.map((m) => m(setId, video)), `/api/mirror/${setId}`]) {
       try {
-        const r = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+        // no-cache: the mirrors let browsers keep a download for hours, which would hand back the old version.
+        const r = await fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(120_000) });
         if (!r.ok) continue;
         const data = await readWithProgress(r, onProgress);
-        if (data.byteLength >= 4 && new DataView(data).getUint32(0, true) === 0x04034b50) return data;
+        if (data.byteLength < 4 || new DataView(data).getUint32(0, true) !== 0x04034b50) continue;
+        if (!isWanted || (await isWanted(data))) return data;
+        fallback ??= data;
       } catch {
         // try the next mirror
       }
     }
+    if (fallback) return fallback;
     throw new Error('Could not download that beatmapset from any mirror. Check the link, or download the .osz yourself and drop it here.');
   }
 }
 
-// Mirrors that send Access-Control-Allow-Origin (checked 2026-10-24; catboy.best doesn't, so it's proxy-only).
+// Mirrors that send Access-Control-Allow-Origin (checked 2026-10-27; catboy.best 403s requests without a browser
+// user agent, so test it with one). On 2026-10-27 osu.direct still served a set's 2026-10-08 version 16 days after
+// its 2026-10-11 update, while catboy.best and sayobot had the new one.
 const BROWSER_MIRRORS = [
   (id: number, video: boolean) => `https://osu.direct/api/d/${id}${video ? '' : '?noVideo=1'}`,
+  (id: number, video: boolean) => `https://catboy.best/d/${id}${video ? '' : 'n'}`,
+  (id: number, video: boolean) => `https://dl.sayobot.cn/beatmaps/download/${video ? 'full' : 'novideo'}/${id}`,
   (id: number) => `https://api.nerinyan.moe/d/${id}`,
 ];
 

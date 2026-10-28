@@ -4,7 +4,7 @@ import { md5Text } from '../osu/md5';
 import { serializeBeatmap } from '../osu/serializer';
 import { cloud } from './cloud';
 import { createProjectFromAudio, importLooseFiles, importOsz, type Project } from './project';
-import { onlineSet } from './online';
+import { onlineSet, type OnlineSet } from './online';
 import { loadProjectLocal, saveProjectLocal } from './storage';
 import { originOf } from './syncpack';
 
@@ -58,12 +58,34 @@ export function linkSetId(link: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * Download a set, preferring a mirror that has the version osu! has now (`online`; null takes whatever the mirrors
+ * have). `current` says whether it got that version.
+ */
+async function downloadSet(
+  setId: number,
+  online: OnlineSet | null,
+  onProgress?: (fraction: number) => void,
+  video = true,
+): Promise<{ project: Project; current: boolean }> {
+  const checksums = online && new Set(online.beatmaps.map((b) => b.checksum));
+  const isCurrent = (p: Project) => !checksums || p.difficulties.every((d) => d.source && checksums.has(d.source.md5));
+  const parsed = new Map<ArrayBuffer, Project>();
+  const data = await cloud.fetchBeatmapset(setId, onProgress, video, async (d) => {
+    const p = await importOsz(d);
+    parsed.set(d, p);
+    return isCurrent(p);
+  });
+  const project = parsed.get(data) ?? (await importOsz(data));
+  return { project, current: isCurrent(project) };
+}
+
 /** Download a published set by link or id and store it. */
 export async function projectFromLink(link: string, onProgress?: (fraction: number) => void, video = true): Promise<Project> {
   const setId = linkSetId(link);
   if (setId === null) throw new Error('Paste a beatmapset link like https://osu.ppy.sh/beatmapsets/123456 or just the set id.');
-  const data = await cloud.fetchBeatmapset(setId, onProgress, video);
-  const p = await importOsz(data);
+  const online = await onlineSet(setId, true).catch(() => null);
+  const { project: p } = await downloadSet(setId, online, onProgress, video);
   fillSetId(p, setId);
   // These are exactly the mirror's files, so cloud sync can leave them out without asking the mirror again.
   p.origin = await originOf(setId, p.files);
@@ -73,15 +95,14 @@ export async function projectFromLink(link: string, onProgress?: (fraction: numb
 
 /**
  * Song select's "Update to latest version": replaces a stored set with the version on osu! (downloaded from the
- * mirrors), dropping all local changes like stable does. Nothing changes if the mirrors don't have that version yet.
+ * mirrors), dropping all local changes like stable does. Nothing changes if no mirror has that version yet.
  */
 export async function updateToLatest(projectId: string, setId: number, onProgress?: (fraction: number) => void): Promise<Project> {
   const online = await onlineSet(setId, true);
   if (!online) throw new Error('This beatmap set is no longer on osu!.');
-  const latest = await importOsz(await cloud.fetchBeatmapset(setId, onProgress));
-  const current = new Set(online.beatmaps.map((b) => b.checksum));
-  if (!latest.difficulties.every((d) => d.source && current.has(d.source.md5))) {
-    throw new Error("The download mirrors don't have the latest version of this set yet, so nothing was changed. Try again in a while.");
+  const { project: latest, current } = await downloadSet(setId, online, onProgress);
+  if (!current) {
+    throw new Error("The download mirrors don't have the latest version of this set yet, so nothing was changed. Try again in a while, or download it on osu! and drop the .osz here.");
   }
   const p = await loadProjectLocal(projectId);
   if (!p) throw new Error('This beatmap is no longer in song select.');

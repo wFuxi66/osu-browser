@@ -42,7 +42,8 @@ function inCorner(x: number, y: number): boolean {
 /** Whether the wheel is over an editor area that uses Alt+wheel itself. */
 function editorWheelAt(e: WheelEvent): boolean {
   const area = (e.target as HTMLElement).closest?.<HTMLElement>('[data-wheel]');
-  if (!area) return false;
+  // The timing screen has no distance spacing, so Alt+wheel there is the volume.
+  if (!area || area.dataset.wheel === 'timing') return false;
   if (!area.classList.contains('playfield-canvas')) return true;
   const r = area.getBoundingClientRect();
   return activePlayfield.current?.inPlayfield?.(e.clientX - r.left, e.clientY - r.top) ?? true;

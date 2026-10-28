@@ -2,6 +2,7 @@
 // has that the running one doesn't, so add a line with each change worth telling players about (the build puts
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
+  'Editor: the mouse wheel seeks on the timing screen too.',
   'Drawn (no images) skin: slider ends now show a circle.',
   'Editor: hold Alt to see and drag the distance spacing slider at the top right, like stable.',
   'Editor: grid snap and distance snap stay how you left them after a reload.',

@@ -33,7 +33,7 @@ export function EditorShell() {
   return (
     <div className="ed">
       {!phone && <MenuBar />}
-      <div className={`ed-stage screen-${ed.screen}`}>
+      <div className={`ed-stage screen-${ed.screen}`} data-wheel={ed.screen === 'timing' ? 'timing' : undefined}>
         {ed.screen === 'compose' && <Playfield />}
         {ed.screen === 'timing' && <StageBackground />}
         {ed.screen === 'timing' && <TimingScreen />}

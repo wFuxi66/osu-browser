@@ -22,7 +22,7 @@ import {
 } from '../render/draw';
 import { clampMoveToPlayfield, editor, PLAYFIELD_H, PLAYFIELD_W, snapSliderLength, translateObject } from '../store';
 import { touchedRecently } from '../../ui/touch';
-import { clampToPlayfield, distanceSnapActive, distanceSnapCentre, expectedDistance, gridSnapActive, previousObject, snapPosition, type Modifiers } from './snapping';
+import { clampToPlayfield, distanceSnapActive, distanceSnapCentre, gridSnapActive, snapPosition, type Modifiers } from './snapping';
 
 type Drag =
   | { kind: 'move'; start: Vec2; anchor: HitObject; anchorStart: Vec2; originals: Map<number, HitObject>; moved: boolean }
@@ -181,7 +181,6 @@ export class StdPlayfield {
     if (this.hoverSlider && this.hoverSlider !== sel) this.drawControlPoints(ctx, v, this.hoverSlider, 0.6);
 
     this.drawPlacement(ctx, v, t, r);
-    if (this.mods.alt) this.drawSpacingLabels(ctx, v, visible);
 
     if (this.drag?.kind === 'box') {
       const a = toScreen(v, this.drag.start);
@@ -362,43 +361,6 @@ export class StdPlayfield {
   }
 
   /** Like holding Alt in stable: each shown object's distance from the previous one, as a distance spacing multiplier. */
-  private drawSpacingLabels(ctx: CanvasRenderingContext2D, v: View, visible: HitObject[]) {
-    const bm = editor.bm;
-    const info = editor.processed.info;
-    const label = (from: Vec2, fromTime: number, to: Vec2, time: number) => {
-      const unit = expectedDistance(fromTime, time) / (bm.editor.distanceSpacing || 1);
-      if (!(unit > 0)) return;
-      const a = toScreen(v, from);
-      const b = toScreen(v, to);
-      const text = `${(dist(from, to) / unit).toFixed(2)}x`;
-      const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
-      ctx.strokeText(text, x, y);
-      ctx.fillText(text, x, y);
-    };
-    ctx.save();
-    ctx.font = '600 13px Segoe UI, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-    ctx.fillStyle = '#fff';
-    for (const o of visible) {
-      if (o.kind === 'spinner') continue;
-      const prev = previousObject(o.time);
-      if (!prev) continue;
-      const pi = info.get(prev.id)!;
-      label(pi.endPos, pi.endTime, { x: o.x, y: o.y }, o.time);
-    }
-    // The object about to be placed, too.
-    if ((editor.tool === 'circle' || (editor.tool === 'slider' && !editor.placing)) && this.hover) {
-      const time = editor.snap(music.time);
-      const pos = this.snapHead(this.hover, time);
-      const prev = previousObject(time);
-      if (prev) label(info.get(prev.id)!.endPos, info.get(prev.id)!.endTime, pos, time);
-    }
-    ctx.restore();
-  }
-
   private drawPlacement(ctx: CanvasRenderingContext2D, v: View, t: number, r: number) {
     const tool = editor.tool;
     const placing = editor.placing?.kind === 'slider' ? editor.placing : null;

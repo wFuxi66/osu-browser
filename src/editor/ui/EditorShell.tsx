@@ -23,7 +23,7 @@ import { TouchBar } from './TouchBar';
 import { TimingScreen, TimingTopRight } from './TimingScreen';
 import { StageBackground } from './StageBackground';
 import { shortcutOf } from '../keybinds';
-import { usePhone, useTouch } from '../../ui/touch';
+import { usePhone, useTouch, useTouchMods } from '../../ui/touch';
 import { inputBox } from '../../ui/prompt';
 
 /** The stable editor layout: menu strip, then a full-window stage with the panels laid over the playfield. */
@@ -114,28 +114,75 @@ function ComposeTopRight() {
     });
   };
   const phone = usePhone();
+  const alt = useAltHeld();
+  const mode = ed.bm.general.mode;
   return (
     <>
-      <BeatSnapDivisor />
+      {/* Like stable, holding Alt swaps the divisor slider for the distance spacing one. */}
+      {alt && (mode === 0 || mode === 2) ? <DistanceSpacing /> : <BeatSnapDivisor />}
       <button className="ed-insert-break" onClick={insertBreak}>{phone ? 'Insert Break' : 'Insert Break Time'}</button>
       {!phone && <PositionReadout />}
     </>
   );
 }
 
+/** Alt held on the keyboard or on the touch bar. */
+function useAltHeld() {
+  const [held, setHeld] = useState(false);
+  const touchAlt = useTouchMods().alt;
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => setHeld(e.altKey);
+    const blur = () => setHeld(false);
+    window.addEventListener('keydown', key);
+    window.addEventListener('keyup', key);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('keyup', key);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
+  return held || touchAlt;
+}
+
 /** "Beat Snap Divisor:" slider with stable's 1/1 … 1/16 stops. */
 function BeatSnapDivisor() {
   const ed = useEditor();
-  const track = useRef<HTMLDivElement>(null);
   const i = Math.max(0, DIVISORS.indexOf(ed.beatDivisor));
+  return (
+    <SnapSlider
+      label="Beat Snap Divisor:"
+      value={`1/${ed.beatDivisor}`}
+      f={i / (DIVISORS.length - 1)}
+      set={(f) => ed.setBeatDivisor(DIVISORS[Math.round(f * (DIVISORS.length - 1))])}
+    />
+  );
+}
+
+/** "Distance Spacing:" slider over the 0.1x … 6x range, in 0.1x steps (Alt + wheel still goes finer with Shift). */
+function DistanceSpacing() {
+  const ed = useEditor();
+  const ds = ed.bm.editor.distanceSpacing;
+  return (
+    <SnapSlider
+      label="Distance Spacing:"
+      value={`${fmt(ds, 2)}x`}
+      f={(ds - 0.1) / 5.9}
+      set={(f) => ed.setDistanceSpacing(Math.round((0.1 + f * 5.9) * 10) / 10)}
+    />
+  );
+}
+
+function SnapSlider({ label, value, f, set }: { label: string; value: string; f: number; set: (f: number) => void }) {
+  const track = useRef<HTMLDivElement>(null);
   const setFrom = (clientX: number) => {
     const r = track.current!.getBoundingClientRect();
-    const f = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
-    ed.setBeatDivisor(DIVISORS[Math.round(f * (DIVISORS.length - 1))]);
+    set(Math.max(0, Math.min(1, (clientX - r.left) / r.width)));
   };
+  const pct = `${Math.max(0, Math.min(1, f)) * 100}%`;
   return (
     <div className="ed-divisor">
-      <div className="ed-divisor-label">Beat Snap Divisor:</div>
+      <div className="ed-divisor-label">{label}</div>
       <div
         className="ed-divisor-track"
         ref={track}
@@ -146,10 +193,10 @@ function BeatSnapDivisor() {
         onPointerMove={(e) => e.buttons & 1 && setFrom(e.clientX)}
         data-wheel="divisor"
       >
-        <div className="ed-divisor-fill" style={{ width: `${(i / (DIVISORS.length - 1)) * 100}%` }} />
-        <div className="ed-divisor-knob" style={{ left: `${(i / (DIVISORS.length - 1)) * 100}%` }} />
+        <div className="ed-divisor-fill" style={{ width: pct }} />
+        <div className="ed-divisor-knob" style={{ left: pct }} />
       </div>
-      <div className="ed-divisor-value">1/{ed.beatDivisor}</div>
+      <div className="ed-divisor-value">{value}</div>
     </div>
   );
 }

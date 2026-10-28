@@ -113,11 +113,11 @@ export function drawHitCircle(
 
 /**
  * A slider end circle: the skin's sliderendcircle, else its own hitcircle (no number), as lazer's legacy skins do.
- * Nothing is drawn for a skin with neither of its own, so osu!default and the drawn look stay bare.
+ * The drawn look draws its own circle, unnumbered. Nothing is drawn for a skin with neither, so osu!default stays bare.
  */
 export function drawSliderEndCircle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, colour: Rgb, alpha: number) {
   const skin = skins.current;
-  if (!skin) return;
+  if (!skin) return drawHitCircle(ctx, x, y, r, colour, alpha, null, false);
   const name = skin.has('sliderendcircle') ? 'sliderendcircle' : skin.has('hitcircle') ? 'hitcircle' : null;
   const circle = name && skin.tinted(name, colour);
   if (!circle) return;

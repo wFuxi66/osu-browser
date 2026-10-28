@@ -10,10 +10,29 @@ It follows stable's flow: the main menu (the cookie: Play, Edit, Options, Exit),
 
 ## Architecture
 
-- **Frontend** (`src/`): Vite + React + TypeScript, built to static files. Everything editor-related runs in the browser; projects are saved to IndexedDB with Ctrl+S. `src/songselect/` is the song select, `src/editor/` the editor, `src/ui/` the in-game and Windows-style dialogs.
-- **API** (`server/app.ts`): a small Hono app for osu! OAuth, osu! API lookups (a set's status, your uploaded maps) and the Google Drive sign-in. It runs as a Vercel Function (`api/index.ts`) or as a plain Node server (`server/index.ts`, used by `npm run dev` and Docker).
-- **No database**: the osu! login session and the Google refresh token are AES-GCM encrypted httpOnly cookies (`server/seal.ts`), keyed from the OAuth client secrets, so the server is stateless.
-- **Storage**: beatmaps are never stored on the server. Ctrl+S keeps them in the browser (IndexedDB) and, with Google Drive connected, syncs them straight from the browser to the user's own Drive (`src/project/drive.ts`), one file per set in an "osu-browser" folder. Only the `drive.file` scope is used, so the app sees nothing but its own files. The server (`server/drive.ts`) does the OAuth code exchange and hands out short-lived access tokens; the refresh token lives in an AES-GCM encrypted httpOnly cookie, so there's no token table. Sets that are published on osu! (BeatmapSetID > 0) sync as a few KB: the package holds the `.osu` files, any file that differs from what the mirrors serve for the set (checked by SHA-256), and a manifest of the rest, which another device downloads again from the mirrors (`src/project/syncpack.ts`). It warns if the set changed on osu! since. Original maps, and sets the mirrors don't have, sync as a full `.osz` that also opens in osu!.
+A static single-page app with a small, optional API beside it. Maps, scores, skins and settings live in the browser; the server only handles sign-ins and osu! API lookups.
+
+**Frontend** (`src/`, Vite + React + TypeScript, built to static files)
+
+| Folder | What's in it |
+| --- | --- |
+| `src/osu/` | The beatmap format: `.osu` parser and lossless serializer, timing, slider curves, stacking, `.osb` storyboards, MD5 checksums, star rating calculators (`difficulty/`, ported from lazer) |
+| `src/menu/` | Main menu (the cookie) and Now Playing |
+| `src/songselect/` | Song select carousel, search filters, osu!direct panel, Recently deleted |
+| `src/play/` | Gameplay: osu!standard judging and scoring, mods, HUD, ranking screen, local scores |
+| `src/editor/` | The editor: state and undo (`store.ts`), playfield and timeline rendering, compose/design/timing tools, storyboard editor, AiMod, shortcuts, video playback and conversion |
+| `src/audio/` | Music clock with sample-exact seeking (decoded in a worker), hitsounds, waveform |
+| `src/skin/` | Skin loading (`.osk`, skin folders, osu!default) and the cursor |
+| `src/project/` | Opening and saving sets: `.osz`/folder import, IndexedDB storage, mirror downloads, osu.ppy.sh deep links, Google Drive sync (`drive.ts`, `cloud.ts`, `syncpack.ts`) |
+| `src/ui/` | Options panel, Windows-style dialogs, volume overlay, screen transitions, touch controls |
+| `src/pwa/` | Service worker (offline, update toast) and "Install as an app" |
+| `src/changelog.ts` | Player-facing "What's new" lines |
+
+**API** (`server/app.ts`): a small Hono app for osu! OAuth, osu! API lookups (a set's status, your uploaded maps) and the Google Drive sign-in. It runs as a Vercel Function (`api/index.ts`) or as a plain Node server (`server/index.ts`, used by `npm run dev` and Docker). Without OAuth configured, everything else still works.
+
+**No database**: the osu! login session and the Google refresh token are AES-GCM encrypted httpOnly cookies (`server/seal.ts`), keyed from the OAuth client secrets, so the server is stateless.
+
+**Storage**: beatmaps are never stored on the server. Ctrl+S keeps them in the browser (IndexedDB) and, with Google Drive connected, syncs them straight from the browser to the user's own Drive, one file per set in an "osu-browser" folder. Only the `drive.file` scope is used, so the app sees nothing but its own files; the server (`server/drive.ts`) only does the OAuth code exchange and hands out short-lived access tokens. Sets published on osu! (BeatmapSetID > 0) sync as a few KB: the `.osu` files, any file that differs from what the mirrors serve (checked by SHA-256), and a manifest of the rest, which another device downloads again from the mirrors (`src/project/syncpack.ts`). Original maps, and sets the mirrors don't have, sync as a full `.osz` that also opens in osu!.
 
 ## Running locally
 
@@ -74,103 +93,58 @@ The app also opens osu.ppy.sh's own paths: `https://osu-browser.vercel.app/beatm
 
 Self-hosting? Change the address in `public/osu-browser.user.js` (and in the bookmarklet).
 
-## Feature checklist (vs. stable)
+## Better than stable
 
-**Main menu & play mode**
-- [x] Stable's main menu: the cookie pulsing on the beat (brighter in kiai) with a visualiser ring, Play / Edit / Options / Exit sliding out (P, E, O, D for osu!direct), user panel with local plays and accuracy, "You have N beatmaps available!", Now Playing with previous/play/pause/stop/next and a seek bar, the current song's background with parallax, menu tips. The song carries on between the menu and song select
-- [x] Play-mode song select: Enter plays, Ctrl+Enter plays with Autoplay, F1 mod selection, local ranking (click a score for its ranking screen, right-click to delete it), the info panel's stats and star rating with the selected mods (AR/OD at Double Time's speed, like stable)
-- [x] Mod selection like stable's: Difficulty Reduction (EZ NF HT), Difficulty Increase (HR SD/PF DT/NC HD FL), Special (RX AP SO AU/CN V2), score multiplier, Q W E / A S D F G / Z X C V B keys, 1 reset, 2 close; icons come from the skin's `selection-mod-*.png` when it has them
-- [x] osu!standard gameplay as stable judges it: 300/100/50 windows from OD, notelock (and the early-click miss), sliders scored on head, ticks, repeats and tail (36 ms leniency, follow circle 2.4× once tracking), spinners by rotations (capped at 477 rpm), health drain with breaks, 激/喝, ScoreV1 (difficulty and mod multipliers) or ScoreV2, SS/S/A/B/C/D (silver with HD/FL). Easy's three lives, Sudden Death, Perfect, Relax, Autopilot, Spun Out, Autoplay, Cinema
-- [x] HUD like stable's, skinned when the skin has the images (score/combo fonts, health bar, grades, hit bursts, 激/喝): progress pie or bar, hit error meter, key overlay, live local leaderboard, section pass/fail and break arrows, FPS counter. Hitsounds follow your hits (and stop when a slider is dropped); combobreak, fail and applause sounds
-- [x] Lead-in before early first objects, Skip (Space), pause on Esc or when the tab loses focus (Continue asks you to click where the cursor was, like stable), quick retry (`), fail with the song winding down, ranking screen with hit counts, max combo, accuracy, health graph and unstable rate
-- [x] Gameplay options from stable: background dim (lighter in breaks unless turned off), leaderboard, progress display, score meter type and size, key overlay, approach circle on the first Hidden object, snaking sliders, video, storyboards, ignore beatmap hitsounds, cursor size and automatic cursor size, mouse wheel (changes the volume while playing) and mouse buttons in play mode, song select thumbnails, menu parallax and tips, delete all local scores
-- [ ] osu!taiko, osu!catch and osu!mania are shown as an autoplay preview, not playable yet
+osu!browser follows stable, but being a web app (and coming years later) lets it do a few things stable doesn't:
 
-**Screens & flow**
-- [x] Star ratings for all four modes (star dots, difficulty colours and "Star Rating" in the info panel), matching osu.ppy.sh: a port of lazer's difficulty calculators, checked against 467 ranked maps (`STARS_SETS="<set ids>" npx vitest run stars.website` compares more)
-- [x] Edit-mode song select: carousel of sets that expand into difficulties, the selected map's background, info panel (length, BPM, object counts, CS/AR/OD/HP), preview point playing on a loop, type-to-search with filters (`ar>9`, `bpm>=180`, `length<90`, `mode=mania`, `creator=…`), Group/Sort dropdowns and tabs, arrow keys / Enter / F2 random / F3 options / Shift+Delete delete dialog, right-click absolute scrolling
-- [x] Stable's status box for the selected difficulty: "Latest ranked/qualified/loved/pending version" when it's the version on osu!, "Update to latest version" when it was edited or osu! has a newer one (click, confirm with stable's warning, and the set is replaced with the version on osu!), "Not submitted" otherwise. Difficulties remember the MD5 of the .osu they were imported from, which is osu!'s checksum, so this works even though the editor rewrites .osu files; set info comes from the osu! API through our server (`/api/beatmapsets/:id`), falling back to osu.direct
-- [x] "Drop an mp3 file here to start mapping", open .osz / beatmap folder / osu.ppy.sh link, account panel with cloud sync
-- [x] Esc leaves the editor (asks Yes/No/Cancel to save when there are unsaved changes); switching difficulty asks the same. Back in song select the song carries on from where you left it, and reopening a difficulty returns to the time you left it at (remembered per difficulty, also across reloads), like stable
-- [x] Stable editor layout: Windows-style menu strip, compose/design/timing/song setup tabs, timeline with zoom buttons, Beat Snap Divisor slider, Insert Break Time, position / Prev / Next distance readout, tips line, Sampleset/Additions + tool column, New Combo / Whistle / Finish / Clap / Grid Snap / Distance Snap / Lock Notes toggles, bottom bar with time and %, song overview, play/pause/stop, Test and Playback Rate
-- [x] Stable menus: File (Clear All Notes, Open Difficulty → For Editing, Save, Create a new Difficulty, Revert to Saved (Full), Test, AiMod, Export Package, Open Song Folder, Open .osu/.osb in Notepad, Exit), Edit (incl. reset samples / combo colours / breaks), View, Compose, Design, Timing (Time Signature, Resnap Current Section, Move all notes in time, Recalculate Slider Lengths, …), Web, Help
-- [x] Windows-style tool windows like stable: Song Setup and Timing and Control Points with OK/Cancel, Rotate by / Scale by with live preview, polygon circles, slider to stream, AiMod
-- [x] Letter shortcuts follow the keyboard layout (on AZERTY, W is the key labelled W)
-- [x] Options panel like stable's (gear in song select, Ctrl+O, or View → Options in the editor), with search: osu! account and Google Drive, creator name, volumes and offset, skin, editor display, downloads, and every editor shortcut rebindable (click a key, press the new one; right-click removes it), test mode's hit keys included. Menus, tooltips and the help screen show your keys
-- [x] Settings sync between computers through Google Drive (newest wins; the audio offset and imported skins stay per computer)
+- **Runs anywhere**: any laptop, Chromebook, tablet or phone, with nothing to install. It can be installed as an app and works offline. Phones get a layout with the menus on the sides, and touch controls (multi-select on the timeline, flings).
+- **Your maps follow you**: optional Google Drive sync of maps and settings between computers. Published sets sync as a few KB, and a map changed in two places keeps both versions instead of losing one.
+- **Open maps from the website**: `osu-browser.vercel.app/beatmapsets/…` links (discussion links too) open that difficulty in the editor, and a userscript adds an "Edit in osu!browser" button to beatmap pages.
+- **osu!direct without supporter**: search, preview and download sets from song select, plus "My beatmaps" for your own sets and guest difficulties when logged in.
+- **Star ratings that match the website**: all four modes use the current osu.ppy.sh calculators, not stable's older values.
+- **Mapping tools built in**: Slider Completionator and Slider Merger (as in Mapping Tools) in the Tools menu, no separate program.
+- **Timeline waveform** (View → Timeline waveform).
+- **Any background video plays**: `.avi`/`.flv` and old codecs are converted in the browser for the editor; the set keeps its original file.
+- **Recently deleted**: deleted sets and difficulties can be restored for 30 days.
+- **Keyboard layout aware**: letter shortcuts follow your layout (on AZERTY, W is the key labelled W), and every editor shortcut, test mode's hit keys included, can be rebound.
+- **What's new**: when an update is ready, the toast lists what changed before you reload.
 
-**Files & projects**
-- [x] New beatmap from mp3/ogg (reads ID3 artist/title/cover art)
-- [x] Open `.osz`, a dropped beatmap folder, or loose `.osu` + assets
-- [x] Open published maps by link (direct from CORS-enabled mirrors)
-- [x] osu!direct in song select ("Search & download beatmaps"): search by text with status / mode / sort filters (osu.direct search API), audio previews, one-click download with progress straight into song select, "Open" for sets you already have, with or without video (Options → Downloads). Logged in with osu!, "My beatmaps" lists your pending/WIP, ranked, loved, graveyarded sets and guest difficulties from the osu! API
-- [x] Save (Ctrl+S), revert to saved (Ctrl+L), full revert (Ctrl+Shift+L); no autosave, like stable
-- [x] Export `.osz` package and single `.osu`
-- [x] Multiple difficulties: Create a new Difficulty opens Song Setup to name it, then asks "Would you like to clear all objects and start fresh?" and saves it right away (the current one keeps its last save; flow and wording checked against stable); switch from File → Open Difficulty or Ctrl+O; delete from song select
-- [x] Add files to the beatmap folder (custom hitsounds, images, storyboard assets), replace audio
-- [x] Lossless round trip of `.osu` files (verified against ranked maps)
-- [x] Cloud sync to your own Google Drive (published sets sync only their edited files and come back from the mirrors), offered once after the first save; optional osu! login
-
-**Compose (F1)**
-- [x] Select / circle / slider / spinner tools (1–4), mania note/hold tools
-- [x] Slider placement with auto curve type (linear → perfect circle → bézier), red anchors, preview and length snapped to beat divisor, right-click/Enter to finish (controls checked against the osu! wiki)
-- [x] Spinners placed like stable: click to start at the current time, seek forward, click again to end
-- [x] Slider control point editing: drag, Ctrl+click to toggle red anchor / insert point, right-click to delete
-- [x] Slider repeats by dragging the tail in the timeline
-- [x] Hovering a slider with the select tool shows its control points (draggable right away)
-- [x] Playfield grid always shown, like stable (G / Ctrl+1–4 change its size; View → Show Grid hides it), grid snap (T, Shift to toggle temporarily), distance snap (Y, Alt temporarily) with distance spacing (Alt+wheel)
-- [x] Skins (View → Options): osu!default (stable's default skin from osu-resources), a drawn style, or your own skin imported from an .osk or skin folder (kept in this browser, never uploaded); missing elements fall back to osu!default, skin.ini combo/slider colours and HitCircleOverlap/prefix are read, skin hitsounds replace the defaults. osu!standard compose, the timeline and test mode use it (taiko/mania/catch are still drawn). Optionally, a beatmap's own skin images (hitcircle.png etc. in its folder) are used over yours
-- [x] Approach circles, follow points, combo numbers & colours (stable colour indexing), stacking (stable algorithm), slider ticks/reverse arrows/ball, hit animations, snaking sliders
-- [x] Selection: click, Ctrl/Shift+click, box select on playfield and timeline, Ctrl+A
-- [x] Move (drag, Ctrl+arrows), time-move in timeline (drag, J/K), lock notes (L)
-- [x] Cut/copy/paste (copy also puts the `00:12:345 (1,2,3) - ` timestamp on the clipboard), clone (Ctrl+D), delete
-- [x] Flip H/V (Ctrl+H/J), rotate 90° (Ctrl+,/.), rotate by…, scale by…, reverse selection (Ctrl+G)
-- [x] Polygon circles (Ctrl+Shift+D), convert slider to stream (Ctrl+Shift+F), resnap notes
-- [x] Tools menu (not in stable; these are usually run from [Mapping Tools](https://github.com/OliBomby/Mapping_Tools), which can't reach maps in a browser): **Slider Completionator** works out the SV, length or duration of the selected sliders from the other two (by default it makes a slider end on its last anchor without moving its end time), adding green lines that keep the section's volume and samples and putting back the SV of the sliders after them; **Slider Merger** joins neighbouring selected circles and sliders that touch (within a leniency) into one slider, converting perfect-circle and Catmull curves to Bézier
-- [x] New combo (Q), colour skip
-- [x] Hitsounds: whistle/finish/clap (W/E/R), sampleset and addition set (Shift/Ctrl+Q–R), per-object volume and custom index, per-edge slider hitsounds (click an edge in the timeline)
-- [x] Hitsound playback with default samples and beatmap custom samples (`soft-hitclap2.wav` etc.), slider slide/whistle loops, spinner spin sound
-- [x] Optional song waveform in the timeline (View → Timeline waveform)
-- [x] AiMod (Ctrl+Shift+A): unsnapped objects, overlaps, off-screen, missing files/metadata, breaks…
-- [x] osu!taiko (don/kat/big, drumrolls, dendens), osu!mania (columns, notes, holds), osu!catch (scrolling catch view: fruits/juice streams/banana showers, juice streams placed by clicking (time, x) vertices, catch-style distance snap, hyperdash highlighting, catcher preview)
-
-**Timing (F3 / F6)**
-- [x] Red and green lines (Ctrl+P / Ctrl+Shift+P), delete (Ctrl+I)
-- [x] BPM, offset, meter, sample set, custom index, volume, kiai, omit first bar line
-- [x] Timing tab like stable: BPM / Offset / Slider Velocity / Slider Tick Rate spinners (Shift ×5, Ctrl fine), "Move already placed notes when changing the offset/BPM", slider velocity preview, metronome with Reset / Tap Here! (T) and bar:beat readout, timing point flags in the timeline
-- [x] Timing and Control Points (F6): Timing/Audio/Style tabs, All/Timing Points/Inherited Points list with Ctrl/Shift multi-select, inherit previous settings, scale/snap objects, resnap sliders and adjust bookmarks when applying
-- [x] Bookmarks, preview point, break periods (auto-generate)
-
-**Song setup (F4)**
-- [x] Stable's tabs and wording: metadata (unicode + romanised, greyed when not needed), difficulty (HP/CS/AR/OD/key count), audio (default sampleset, custom overrides, sample volume, hitsound previews), colours (Enable Custom Colours, New/Remove Combo Colour), design (countdown + speed + offset, widescreen, epilepsy warning, letterbox), advanced (stack leniency, Allowed Modes, N+1 style); background & video, slider border/track
-
-**Playback / navigation**
-- [x] Play/pause/stop, 25/50/75/100% playback (pitch preserved), Ctrl+↑/↓ speed
-- [x] Volume overlay like stable: Alt+wheel shows master/music/effect meters in the bottom right and changes master, or the meter under the cursor (in the editor only in the bottom-right corner; elsewhere Alt+wheel keeps distance spacing / timeline zoom, as in stable)
-- [x] Wheel seeking by beat snap (wheel down = forward), eased like lazer, touchpad deltas grouped per notch, Shift 4x, Ctrl+wheel divisor, timing point / bookmark jumps, Z/X/C/V
-- [x] Exact seeking: browsers seek compressed audio only approximately (in VBR mp3s up to a few hundred ms off, measured in Edge), so the editor plays a decoded WAV copy of the song, which seeks to the sample; the clock also corrects itself when the audio is slow to resume after a seek
-- [x] Coloured beat snap ticks (1/1 … 1/16), timeline zoom, song overview with kiai/breaks/bookmarks
-- [x] Test mode (F5): plays from the current time without failing, with quick Autoplay/HT/DT/EZ/HR/HD/FL toggles; Esc goes back to where you were (preview for other modes)
-
-**Design (F2)**
-- [x] Stable layout: Layer Toggles (incl. HitObjects), Transformation (move/scale/fade/rotate/colour), Tweening, Easing In/Out, Origin, Diff. Specific; Movement/Scale/Fade/Rotation keyframe timeline; Keyframe Control (+ / − / previous / next); Background Image/Video toggle; SB load readout; Sprite Library (I); W/A/S/D nudge; Ctrl+X/C/V sprites
-- [x] Storyboard script editing (.osb and difficulty events), preserved on export
-- [x] Storyboard playback in the compose background and Design preview: sprites, animations, F/M/MX/MY/S/V/R/C/P, loops, HitSound triggers, all 35 easings, [Variables], widescreen, storyboard samples
-- [x] Visual sprite editor: add from the library (drag onto the preview), select/drag to move (keyframes at the current time), Shift+drag scale, Ctrl+drag rotate, per-time property keyframes, command list with easing, layers/origin/draw order, .osb vs difficulty, undo
-- [x] Video playback in the editor background, synced to the music. Videos the browser can't play (.avi, .flv, old codecs) are converted to 720p H.264 in the browser with ffmpeg.wasm the first time, and the copy is cached; the set keeps its original file
-
-**Not yet**
-- [ ] Live mapping mode (Ctrl+Tab, which browsers keep for switching tabs), osu!mania sample import and "Open Difficulty → For Reference" (osu!mania only in stable): out of scope, this editor is for osu!standard
-- [ ] Upload Beatmap (use the real client)
+Not there yet: osu!taiko, osu!catch and osu!mania can be mapped but only previewed with autoplay, not played; no live mapping mode (browsers keep Ctrl+Tab); no Upload Beatmap (use the real client).
 
 ## Contributing
 
-Issues and pull requests are welcome. The rule is that osu! stable is the reference: anything that behaves differently from stable is a bug, so the most useful report is "in stable, X does Y; here it does Z". Open an issue before a large change, and run `npm run typecheck` and `npm test` before opening a pull request.
+Issues and pull requests are welcome.
+
+- **Stable is the reference.** Anything that behaves differently from osu! stable is a bug, unless it's listed under "Better than stable". The most useful report is "in stable, X does Y; here it does Z", with the map (a link or `.osz`) and a timestamp when it matters.
+- **Open an issue first** for a large change or a new feature, so we can agree it fits.
+- **Match the surrounding code**: naming, comment style and structure of the file you're in. Avoid new runtime dependencies; the app ships as static files.
+- **Tests**: add a Vitest test next to the code (`*.test.ts`) for parsing, judging, sync, or anything with one right answer. `.osu` round trips must stay lossless (`src/osu/fidelity.test.ts`).
+- **Changelog**: if players will notice the change, add one line at the top of `src/changelog.ts`. The update toast shows it, so write it for players, and don't reword lines that have shipped (they're matched by text).
+- **Before opening a pull request**: `npm run typecheck` and `npm test` must pass. Keep commits focused, with one-line messages like `feat(editor): …` or `fix(play): …`.
+- **No copied osu! code or files**: don't take files from an osu! install, or code from GPL projects such as Mapping Tools; reimplement from behaviour. MIT code from ppy/osu and assets from ppy/osu-resources are fine, with attribution in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
 
 ## Credits
 
-Default hitsound and gameplay samples (including `spinnerspin.wav`, `combobreak.mp3`, `applause.mp3`) and the osu!default skin images in `public/skins/default` are from [ppy/osu-resources](https://github.com/ppy/osu-resources) (CC BY-NC 4.0), unmodified. Slider maths follows osu-framework's `PathApproximator`. Slider Completionator and Slider Merger behave like the tools of the same names in OliBomby's [Mapping Tools](https://github.com/OliBomby/Mapping_Tools) (GPL-3.0); they're written from scratch, with no code taken from it. Star ratings are a TypeScript port of the difficulty calculators in [ppy/osu](https://github.com/ppy/osu) (lazer, MIT licence, version 2026.730.0, which is what osu.ppy.sh runs), together with lazer's `SliderPath` and osu-framework's `PathApproximator` (also MIT) in single precision. The UI font is [Ubuntu](https://design.ubuntu.com/font) (Ubuntu Font Licence), standing in for stable's Aller; icons are drawn in SVG, and no files are copied from an osu! install. This project isn't affiliated with ppy.
+- **Samples and the osu!default skin**: hitsounds, gameplay samples (`spinnerspin.wav`, `combobreak.mp3`, `applause.mp3`, …) and skin images are from [ppy/osu-resources](https://github.com/ppy/osu-resources), unmodified.
+- **Star ratings and slider paths**: a TypeScript port of the difficulty calculators in [ppy/osu](https://github.com/ppy/osu) (lazer 2026.730.0, which is what osu.ppy.sh runs), with lazer's `SliderPath` and [osu-framework](https://github.com/ppy/osu-framework)'s `PathApproximator`, in single precision.
+- **Mapping tools**: Slider Completionator and Slider Merger behave like the tools of the same names in OliBomby's [Mapping Tools](https://github.com/OliBomby/Mapping_Tools). They're written from scratch; no code is taken from it.
+- **Video conversion**: [ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm) (FFmpeg with libx264).
+- **Beatmap mirrors**: [osu.direct](https://osu.direct) (search and downloads), [nerinyan](https://nerinyan.moe) and [catboy.best](https://catboy.best) (downloads).
+- **Font**: [Ubuntu](https://design.ubuntu.com/font), standing in for stable's Aller. Icons are drawn in SVG.
+- Built with [React](https://react.dev), [Vite](https://vite.dev), [Hono](https://hono.dev) and [JSZip](https://stuk.github.io/jszip/).
+
+No files are copied from an osu! install. This project isn't affiliated with or endorsed by ppy Pty Ltd.
 
 ## Licence
 
-The code is under the [MIT License](LICENSE); third-party code and assets are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). The osu!-resources samples and skin images in `public/samples` and `public/skins/default` stay under CC BY-NC 4.0 (non-commercial, see the `ATTRIBUTION.md` files there), and the code ported from ppy/osu and osu-framework stays under their MIT licence. osu! is a trademark of ppy Pty Ltd.
+The code is under the [MIT License](LICENSE). Some parts keep their own licences (full texts in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES)):
+
+| What | Where | Licence |
+| --- | --- | --- |
+| osu!browser | everything not listed below | MIT |
+| Code ported from ppy/osu and osu-framework | `src/osu/difficulty/`, slider path maths | MIT (ppy Pty Ltd) |
+| Samples and osu!default skin from osu-resources | `public/samples`, `public/skins/default` | CC BY-NC 4.0, non-commercial (see the `ATTRIBUTION.md` files there) |
+| FFmpeg build used by the video converter | `@ffmpeg/core`, from npm, unmodified | GPL-2.0-or-later |
+| Ubuntu font | `@fontsource/ubuntu` | Ubuntu Font Licence |
+
+Because of the CC BY-NC assets, a deployment that includes them can't be used commercially. osu! is a trademark of ppy Pty Ltd.

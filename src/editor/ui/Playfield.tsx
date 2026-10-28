@@ -215,7 +215,7 @@ export function Playfield() {
           if (pinchKind === 'spacing') {
             const ds = Math.round(ds0 * scale * 10) / 10;
             if (ds !== editor.bm.editor.distanceSpacing) {
-              editor.distanceSnap = true;
+              if (!editor.prefs.distanceSnap) editor.setPrefs({ distanceSnap: true });
               editor.setDistanceSpacing(ds);
               navigator.vibrate?.(6);
             }

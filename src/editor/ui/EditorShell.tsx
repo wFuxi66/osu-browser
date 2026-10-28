@@ -276,8 +276,8 @@ function ComposeRight() {
       <Toggle on={s.whistle} onClick={() => ed.toggleAddition(2)} top="Whistle" icon={<WhistleIcon />} title="Whistle (W)" />
       <Toggle on={s.finish} onClick={() => ed.toggleAddition(4)} top="Finish" icon={<FinishIcon />} title="Finish (E)" />
       <Toggle on={s.clap} onClick={() => ed.toggleAddition(8)} top="Clap" icon={<ClapIcon />} title="Clap (R)" />
-      {mode === 0 && <Toggle on={ed.gridSnap} onClick={() => { ed.gridSnap = !ed.gridSnap; ed.emit(); }} top="Grid" bottom={phone ? undefined : 'Snap'} icon={<GridSnapIcon />} title="Grid Snap (T, hold Shift to toggle)" />}
-      {(mode === 0 || mode === 2) && <Toggle on={ed.distanceSnap} onClick={() => { ed.distanceSnap = !ed.distanceSnap; ed.emit(); }} top={phone ? ds : 'Distance'} bottom={phone ? undefined : touch ? ds : 'Snap'} icon={<DistanceSnapIcon />} title={`Distance Snap (Y, hold Alt to toggle) · ${fmt(ed.bm.editor.distanceSpacing, 2)}x (Alt + wheel)`} />}
+      {mode === 0 && <Toggle on={ed.prefs.gridSnap} onClick={() => { ed.setPrefs({ gridSnap: !ed.prefs.gridSnap }); }} top="Grid" bottom={phone ? undefined : 'Snap'} icon={<GridSnapIcon />} title="Grid Snap (T, hold Shift to toggle)" />}
+      {(mode === 0 || mode === 2) && <Toggle on={ed.prefs.distanceSnap} onClick={() => { ed.setPrefs({ distanceSnap: !ed.prefs.distanceSnap }); }} top={phone ? ds : 'Distance'} bottom={phone ? undefined : touch ? ds : 'Snap'} icon={<DistanceSnapIcon />} title={`Distance Snap (Y, hold Alt to toggle) · ${fmt(ed.bm.editor.distanceSpacing, 2)}x (Alt + wheel)`} />}
       <Toggle on={ed.locked} onClick={() => { ed.locked = !ed.locked; ed.emit(); }} top="Lock" bottom={phone ? undefined : 'Notes'} icon={<LockIcon />} title="Lock Notes (L)" />
     </div>
   );

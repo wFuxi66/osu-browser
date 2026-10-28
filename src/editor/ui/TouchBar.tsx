@@ -235,7 +235,7 @@ function ContextBar() {
     // Placing: distance spacing instead of clipboard actions (Alt + wheel on desktop). Changing it turns distance
     // snap on, since that's what it's for.
     const ds = (d: number) => () => {
-      ed.distanceSnap = true;
+      if (!ed.prefs.distanceSnap) ed.setPrefs({ distanceSnap: true });
       ed.setDistanceSpacing(ed.bm.editor.distanceSpacing + d);
     };
     buttons = [

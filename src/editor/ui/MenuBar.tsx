@@ -257,7 +257,7 @@ function useMenus(): { menus: [string, Item[]][]; caption: string } {
   const compose: Item[] = [
     { label: 'Snap Divisor', submenu: DIVISORS.map((d) => ({ label: `1/${d}`, checked: ed.beatDivisor === d, action: () => ed.setBeatDivisor(d) })) },
     { label: 'Audio Rate', submenu: [0.25, 0.5, 0.75, 1, 1.5].map((r) => ({ label: pct(r), checked: Math.abs(music.rate - r) < 0.001, action: () => ed.setPlaybackRate(r) })) },
-    { label: 'Grid Snapping', shortcut: key('gridSnap'), checked: ed.gridSnap, disabled: mode !== 0, action: () => { ed.gridSnap = !ed.gridSnap; ed.emit(); } },
+    { label: 'Grid Snapping', shortcut: key('gridSnap'), checked: ed.prefs.gridSnap, disabled: mode !== 0, action: () => { ed.setPrefs({ gridSnap: !ed.prefs.gridSnap }); } },
     sep,
     { label: 'Create Polygon Circles...', shortcut: key('polygon'), action: () => ed.openDialog('polygon'), disabled: mode !== 0 },
     { label: 'Convert slider to stream...', shortcut: key('stream'), action: () => ed.openDialog('stream'), disabled: !ed.selectedObjects.some((o) => o.kind === 'slider') },

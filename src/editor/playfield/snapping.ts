@@ -13,11 +13,11 @@ export interface Modifiers {
 }
 
 export function gridSnapActive(m: Modifiers) {
-  return editor.gridSnap !== m.shift;
+  return editor.prefs.gridSnap !== m.shift;
 }
 
 export function distanceSnapActive(m: Modifiers) {
-  return editor.distanceSnap !== m.alt;
+  return editor.prefs.distanceSnap !== m.alt;
 }
 
 /** The object before `time` that distance snap measures from. */

@@ -94,8 +94,6 @@ class Editor {
   /** A single selected slider edge (0 = head, slides = tail) for per-edge hitsounding. */
   selectedEdge: { id: number; edge: number } | null = null;
   placement = { newCombo: false, whistle: false, finish: false, clap: false, normalSet: 0 as SampleSet, additionSet: 0 as SampleSet };
-  gridSnap = true;
-  distanceSnap = false;
   locked = false;
   dialog: DialogName = null;
   dirty = false;

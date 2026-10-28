@@ -476,6 +476,8 @@ export interface Prefs {
   editorDefaultSkin: boolean;
   /** Show the playfield grid (whether or not grid snap is on). */
   showGrid: boolean;
+  gridSnap: boolean;
+  distanceSnap: boolean;
   /** Draw the timeline's circles with the skin, like stable (otherwise flat discs). */
   skinnedTimeline: boolean;
   /** osu!direct and My beatmaps download sets with their video. */
@@ -536,6 +538,8 @@ export const DEFAULT_PREFS: Prefs = {
   invertScroll: false,
   skin: 'default',
   showGrid: true,
+  gridSnap: true,
+  distanceSnap: false,
   beatmapSkins: false,
   editorDefaultSkin: true,
   skinnedTimeline: true,

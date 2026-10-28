@@ -12,7 +12,7 @@ import { downloadBlob, exportOsz, oszFilename } from '../project/project';
 import { listProjectsLocal, loadProjectLocal, trashDifficultyLocal, trashProjectLocal, TRASH_DAYS, type DifficultySummary, type ProjectSummary } from '../project/storage';
 import { layoutCode } from '../editor/shortcuts';
 import { options, optionsOpen } from '../ui/options';
-import { ask, confirmBox, promptOpen, type PromptButton } from '../ui/prompt';
+import { ask, confirmBox, inputBox, promptOpen, type PromptButton } from '../ui/prompt';
 import { screens, type SelectMode } from '../ui/screens';
 import { nowPlaying } from '../menu/nowPlaying';
 import { osuDifficulty } from '../osu/difficulty/osu';
@@ -25,12 +25,14 @@ import { scores, useScores, type Score } from '../play/scores';
 import { gameplay } from '../play/session';
 import { DirectPanel } from './DirectPanel';
 import { TrashPanel } from './TrashPanel';
+import { collections, useCollections } from './collections';
 import { difficultyColour, GROUP_LABELS, groupOf, matches, parseSearch, SORT_LABELS, sortSets, type GroupMode, type SortMode } from './filter';
 
+// `group` is the group a panel is listed under; `from` names the panels it slides out of when it first appears.
 type Row =
-  | { kind: 'group'; key: string; label: string; count: number; expanded: boolean }
-  | { kind: 'set'; key: string; set: ProjectSummary; diffs: DifficultySummary[] }
-  | { kind: 'diff'; key: string; set: ProjectSummary; diff: DifficultySummary };
+  | { kind: 'group'; key: string; label: string; count: number; expanded: boolean; from?: undefined }
+  | { kind: 'set'; key: string; set: ProjectSummary; diffs: DifficultySummary[]; group: string; from: string[] }
+  | { kind: 'diff'; key: string; set: ProjectSummary; diff: DifficultySummary; group: string; from: string[] };
 
 interface Selection {
   setId: string;
@@ -38,7 +40,7 @@ interface Selection {
 }
 
 const PREFS_KEY = 'osu-web-editor:songselect';
-const TABS: GroupMode[] = ['artist', 'creator', 'date', 'mode', 'none'];
+const TABS: GroupMode[] = ['collections', 'artist', 'creator', 'date', 'mode', 'none'];
 
 function loadUiPrefs(): { group: GroupMode; sort: SortMode } {
   try {
@@ -76,6 +78,9 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
   const [search, setSearch] = useState('');
   const [{ group, sort }, setUi] = useState(loadUiPrefs);
   const [sel, setSel] = useState<Selection | null>(null);
+  // A set can be in several collections: the one it was picked in is the one it opens in.
+  const [selGroup, setSelGroup] = useState<string | null>(null);
+  const colls = useCollections();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
@@ -191,10 +196,12 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
   const parsed = useMemo(() => parseSearch(search), [search]);
   const visible = useMemo(() => {
     if (!sets) return [];
+    // Grouped by collection, only the maps in one are listed, like stable.
+    const inColl = group === 'collections' ? new Set(colls.flatMap((c) => c.diffs)) : null;
     return sortSets(sets, sort)
-      .map((s) => ({ set: s, diffs: s.difficulties.filter((d) => matches(s, d, parsed)) }))
+      .map((s) => ({ set: s, diffs: s.difficulties.filter((d) => matches(s, d, parsed) && (!inColl || inColl.has(d.id))) }))
       .filter((x) => x.diffs.length > 0);
-  }, [sets, sort, parsed]);
+  }, [sets, sort, parsed, group, colls]);
 
   // Keep the selection valid: last opened map, else the first one.
   useEffect(() => {
@@ -214,29 +221,45 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
-    const pushSet = (v: { set: ProjectSummary; diffs: DifficultySummary[] }) => {
-      if (sel?.setId === v.set.id) for (const d of v.diffs) out.push({ kind: 'diff', key: `d-${d.id}`, set: v.set, diff: d });
-      else out.push({ kind: 'set', key: `s-${v.set.id}`, set: v.set, diffs: v.diffs });
+    const pushSet = (v: { set: ProjectSummary; diffs: DifficultySummary[] }, groupKey: string, open: boolean) => {
+      const p = groupKey ? `${groupKey}/` : '';
+      const setKey = `${p}s-${v.set.id}`;
+      const diffKeys = v.diffs.map((d) => `${p}d-${d.id}`);
+      if (open && sel?.setId === v.set.id) v.diffs.forEach((d, i) => out.push({ kind: 'diff', key: diffKeys[i], set: v.set, diff: d, group: groupKey, from: [setKey] }));
+      else out.push({ kind: 'set', key: setKey, set: v.set, diffs: v.diffs, group: groupKey, from: diffKeys });
     };
     if (group === 'none') {
-      visible.forEach(pushSet);
+      visible.forEach((v) => pushSet(v, '', true));
       return out;
     }
     const groups = new Map<string, { order: number | string; items: typeof visible }>();
-    for (const v of visible) {
-      const g = groupOf(v.set, group);
-      if (!groups.has(g.key)) groups.set(g.key, { order: g.order, items: [] });
-      groups.get(g.key)!.items.push(v);
-    }
+    const add = (key: string, order: number | string, v: (typeof visible)[number]) => {
+      if (!groups.has(key)) groups.set(key, { order, items: [] });
+      groups.get(key)!.items.push(v);
+    };
+    if (group === 'collections')
+      colls.forEach((c, i) => {
+        const ids = new Set(c.diffs);
+        for (const v of visible) {
+          const diffs = v.diffs.filter((d) => ids.has(d.id));
+          if (diffs.length) add(c.name, i, { set: v.set, diffs });
+        }
+      });
+    else
+      for (const v of visible) {
+        const g = groupOf(v.set, group);
+        add(g.key, g.order, v);
+      }
     const ordered = [...groups.entries()].sort((a, b) => (a[1].order < b[1].order ? -1 : a[1].order > b[1].order ? 1 : 0));
+    const withSel = ordered.filter(([, g]) => g.items.some((v) => v.set.id === sel?.setId && v.diffs.some((d) => d.id === sel.diffId))).map(([k]) => k);
+    const selKey = selGroup !== null && withSel.includes(selGroup) ? selGroup : withSel[0];
     for (const [key, g] of ordered) {
-      const containsSel = g.items.some((v) => v.set.id === sel?.setId);
-      const expanded = expandedGroups.has(key) || containsSel;
+      const expanded = expandedGroups.has(key) || key === selKey;
       out.push({ kind: 'group', key: `g-${key}`, label: key, count: g.items.length, expanded });
-      if (expanded) g.items.forEach(pushSet);
+      if (expanded) g.items.forEach((v) => pushSet(v, key, key === selKey));
     }
     return out;
-  }, [visible, group, sel?.setId, expandedGroups]);
+  }, [visible, group, sel?.setId, sel?.diffId, selGroup, expandedGroups, colls]);
 
   const selSet = sets?.find((s) => s.id === sel?.setId) ?? null;
   const selDiff = selSet?.difficulties.find((d) => d.id === sel?.diffId) ?? null;
@@ -395,6 +418,7 @@ You can restore it from Recently deleted for ${TRASH_DAYS} days.`,
       buttons: [
         ...(play ? [{ label: 'Play', value: 'play', tone: 'pink' as const }] : []),
         { label: 'Edit', value: 'edit', tone: play ? 'blue' : 'pink' },
+        { label: 'Manage collections', value: 'collections', tone: 'blue' },
         { label: 'Export package (.osz)', value: 'export', tone: 'blue' },
         ...(play && scores.for(selDiff.id).length ? [{ label: 'Clear local scores', value: 'scores', tone: 'grey' as const }] : []),
         { label: 'Delete...', value: 'delete', tone: 'red' },
@@ -406,11 +430,73 @@ You can restore it from Recently deleted for ${TRASH_DAYS} days.`,
     else if (r === 'play') void startPlay();
     else if (r === 'scores') scores.clear(selDiff.id);
     else if (r === 'delete') void deleteDialog();
+    else if (r === 'collections') void collectionsDialog();
     else if (r === 'export')
       void run('Exporting…', async () => {
         const p = await loadProjectLocal(selSet.id);
         if (p) downloadBlob(await exportOsz(p), oszFilename(p));
       });
+  };
+
+  // Stable's collection manager: click a collection to add or remove the selected difficulty. It stays open until closed.
+  const collectionsDialog = async () => {
+    if (!selSet || !selDiff) return;
+    const known = new Set((sets ?? []).flatMap((s) => s.difficulties.map((d) => d.id)));
+    const askName = async (title: string, initial = '') => {
+      const name = (await inputBox(title, 'Collection name:', initial))?.trim();
+      if (!name || name === initial) return null;
+      if (collections.has(name)) {
+        editor.toast(`There's already a collection called "${name}".`, 'error');
+        return null;
+      }
+      return name;
+    };
+    for (;;) {
+      const list = collections.all();
+      const r = await ask({
+        look: 'game',
+        title: 'Collections',
+        message: `${selSet.artist} - ${selSet.songTitle} [${selDiff.version}]`,
+        buttons: [
+          ...list.map((c, i) => {
+            const inIt = c.diffs.includes(selDiff.id);
+            return { label: `${inIt ? '−' : '+'} ${c.name} (${c.diffs.filter((d) => known.has(d)).length})`, value: `c${i}`, tone: inIt ? ('pink' as const) : ('blue' as const) };
+          }),
+          { label: 'Create new collection', value: 'new', tone: 'green' },
+          ...(list.length ? [{ label: 'Rename or delete a collection...', value: 'edit', tone: 'grey' as const }] : []),
+          { label: 'Close', value: 'close', tone: 'grey' },
+        ],
+        cancelValue: 'close',
+      });
+      if (r === 'close') return;
+      if (r === 'new') {
+        const name = await askName('New collection');
+        if (name) collections.create(name, [selDiff.id]);
+      } else if (r === 'edit') {
+        const which = await ask({
+          look: 'game',
+          title: 'Which collection?',
+          buttons: [...list.map((c, i) => ({ label: c.name, value: `c${i}`, tone: 'blue' as const })), { label: 'Back', value: 'back', tone: 'grey' }],
+          cancelValue: 'back',
+        });
+        const c = list[Number(which.slice(1))];
+        if (which === 'back' || !c) continue;
+        const act = await ask({
+          look: 'game',
+          title: c.name,
+          buttons: [
+            { label: 'Rename', value: 'rename', tone: 'blue' },
+            { label: 'Delete', value: 'delete', tone: 'red' },
+            { label: 'Back', value: 'back', tone: 'grey' },
+          ],
+          cancelValue: 'back',
+        });
+        if (act === 'rename') {
+          const name = await askName('Rename collection', c.name);
+          if (name) collections.rename(c.name, name);
+        } else if (act === 'delete' && (await confirmBox('osu!', `Delete the collection "${c.name}"? The beatmaps in it are kept.`))) collections.remove(c.name);
+      } else collections.toggle(list[Number(r.slice(1))].name, selDiff.id);
+    }
   };
 
   // ------------------------------------------------------------------ keyboard navigation
@@ -501,7 +587,7 @@ You can restore it from Recently deleted for ${TRASH_DAYS} days.`,
     >
       <div className="ss-bg">{bg && <img key={bg} src={bg} alt="" />}</div>
 
-      <Carousel ref={carousel} rows={rows} sel={sel} thumbnails={ed.prefs.showThumbnails} onSelect={setSel} onOpen={(s) => confirm(s)} onOptions={optionsDialog}
+      <Carousel ref={carousel} rows={rows} sel={sel} thumbnails={ed.prefs.showThumbnails} onSelect={(s, g) => { setSel(s); setSelGroup(g); }} onOpen={(s) => confirm(s)} onOptions={optionsDialog}
         onToggleGroup={(key) => setExpandedGroups((g) => { const n = new Set(g); if (n.has(key)) n.delete(key); else n.add(key); return n; })} />
 
       <header className="ss-header">
@@ -644,7 +730,8 @@ You can restore it from Recently deleted for ${TRASH_DAYS} days.`,
           <div>Drop an mp3 to start mapping, open an .osz, or search &amp; download beatmaps.</div>
         </div>
       )}
-      {sets && sets.length > 0 && visible.length === 0 && <div className="ss-empty"><div className="ss-empty-title">No matches for “{search}”</div><div>Press Esc to clear the search.</div></div>}
+      {sets && sets.length > 0 && visible.length === 0 && group === 'collections' && !search && <div className="ss-empty"><div className="ss-empty-title">No collections yet!</div><div>Press F3 on a beatmap and choose Manage collections.</div></div>}
+      {sets && sets.length > 0 && visible.length === 0 && (group !== 'collections' || search) && <div className="ss-empty"><div className="ss-empty-title">No matches for “{search}”</div><div>Press Esc to clear the search.</div></div>}
       {busy && <div className="busy">{busy}</div>}
       {syncStatus && <div className="ss-sync-status">{syncStatus}</div>}
       {leaving && <div className="ss-leave" />}
@@ -889,7 +976,7 @@ interface CarouselProps {
   rows: Row[];
   sel: Selection | null;
   thumbnails: boolean;
-  onSelect: (s: Selection) => void;
+  onSelect: (s: Selection, group: string) => void;
   onOpen: (s: Selection) => void;
   onOptions: () => void;
   onToggleGroup: (key: string) => void;
@@ -905,6 +992,8 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
   const fingerDrag = useRef<{ y0: number; from: number; lastY: number; lastT: number; v: number; moved: boolean } | null>(null);
   const draggedAt = useRef(-Infinity);
   const hovered = useRef<string | null>(null);
+  // Where each panel is drawn: x on screen, y down the list. They ease towards their slots, so panels slide.
+  const placedAt = useRef(new Map<string, { x: number; y: number }>());
 
   // Row geometry in px; scales with the window height like stable (768 "osu!pixel" tall screen).
   const layout = () => {
@@ -945,8 +1034,9 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
-    // What the panels were last placed for: once the scroll settles, frames that would place them the same are skipped.
+    // What the panels were last placed for: once everything settles, frames that would place them the same are skipped.
     let placed = '';
+    const ease = (from: number, to: number, k: number, dt: number) => (Math.abs(to - from) < 0.05 ? to : from + (to - from) * (1 - Math.exp(-dt * k)));
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -955,33 +1045,47 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
       const min = -L.h / 2 + (L.heights[0] ?? 0) / 2;
       const max = L.total - L.h / 2 - (L.heights[L.heights.length - 1] ?? 0) / 2;
       s.target = Math.max(min, Math.min(Math.max(min, max), s.target));
-      s.pos += (s.target - s.pos) * Math.min(1, dt * 9);
-      if (Math.abs(s.target - s.pos) < 0.05) s.pos = s.target;
+      s.pos = ease(s.pos, s.target, 8, dt);
       const w = wrap.current?.clientWidth ?? window.innerWidth;
       const key = `${s.pos}|${w}|${L.h}|${L.total}|${hovered.current}`;
       if (key === placed) {
         raf = requestAnimationFrame(tick);
         return;
       }
-      placed = key;
+      const at = placedAt.current;
+      let moving = s.pos !== s.target;
+      const next = new Map<string, { x: number; y: number }>();
       rows.forEach((r, i) => {
+        // Panels on an arc: further from the middle of the screen, further right.
+        const arcX = (y: number) => {
+          const d = Math.abs((y - s.pos + L.heights[i] / 2 - L.h / 2) / L.h);
+          let x = w * (0.585 + 0.13 * d * d * 1.6);
+          if (r.kind === 'diff') x -= w * (r.diff.id === sel?.diffId ? 0.06 : 0.025);
+          if (r.kind === 'group') x += w * 0.02;
+          if (hovered.current === r.key) x -= w * 0.012;
+          return x;
+        };
+        // A new panel slides out of the one it replaces (a set's difficulties out of the set, and back), else out of the panel above.
+        // On first show, and more than a screen away (off it either way), it just appears in its slot.
+        let p = at.size ? (at.get(r.key) ?? r.from?.map((k) => at.get(k)).find(Boolean) ?? (i > 0 ? next.get(rows[i - 1].key) : undefined)) : undefined;
+        p = p && Math.abs(p.y - L.tops[i]) < L.h ? { ...p } : { x: arcX(L.tops[i]), y: L.tops[i] };
+        p.y = ease(p.y, L.tops[i], 11, dt);
+        p.x = ease(p.x, arcX(p.y), 11, dt);
+        if (p.y !== L.tops[i] || p.x !== arcX(p.y)) moving = true;
+        next.set(r.key, p);
         const el = els.current.get(r.key);
         if (!el) return;
-        const top = L.tops[i] - s.pos;
+        const top = p.y - s.pos;
         if (top > L.h + 200 || top + L.heights[i] < -200) {
           el.style.visibility = 'hidden';
           return;
         }
         el.style.visibility = '';
-        // Panels sit on an arc: further from the middle of the screen, further right.
-        const d = Math.abs((top + L.heights[i] / 2 - L.h / 2) / L.h);
-        let x = w * (0.585 + 0.13 * d * d * 1.6);
-        if (r.kind === 'diff') x -= w * (r.diff.id === sel?.diffId ? 0.06 : 0.025);
-        if (r.kind === 'group') x += w * 0.02;
-        if (hovered.current === r.key) x -= w * 0.012;
-        el.style.transform = `translate(${x.toFixed(1)}px, ${top.toFixed(1)}px)`;
+        el.style.transform = `translate(${p.x.toFixed(1)}px, ${top.toFixed(1)}px)`;
         el.style.height = `${L.heights[i]}px`;
       });
+      placedAt.current = next;
+      placed = moving ? '' : key;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -1055,15 +1159,15 @@ const Carousel = forwardRef<{ page: (dir: 1 | -1) => void }, CarouselProps>(func
           onPointerLeave={() => hovered.current === r.key && (hovered.current = null)}
           onClick={() => {
             if (r.kind === 'group') onToggleGroup(r.label);
-            else if (r.kind === 'set') onSelect({ setId: r.set.id, diffId: r.diffs[0].id });
+            else if (r.kind === 'set') onSelect({ setId: r.set.id, diffId: r.diffs[0].id }, r.group);
             else if (r.diff.id === sel?.diffId) onOpen({ setId: r.set.id, diffId: r.diff.id });
-            else onSelect({ setId: r.set.id, diffId: r.diff.id });
+            else onSelect({ setId: r.set.id, diffId: r.diff.id }, r.group);
           }}
           onContextMenu={(e) => {
             e.preventDefault();
             if (r.kind === 'group') return;
             const s = { setId: r.set.id, diffId: r.kind === 'diff' ? r.diff.id : r.diffs[0].id };
-            onSelect(s);
+            onSelect(s, r.group);
             setTimeout(onOptions, 0);
           }}
         >

@@ -2,6 +2,7 @@
 // has that the running one doesn't, so add a line with each change worth telling players about (the build puts
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
+  'Song select: panels glide into place when you pick a map or open a group, and collections are here (F3 > Manage collections, then group by Collections).',
   'Fixed a blank screen on reload after an update was downloaded while it was being published.',
   'Editor: 150% playback rate, to preview a map at DT speed.',
   'Editor: Song Folder looks and works like Explorer, with folders, drop to add, multi-select, previews and downloads. Notepad gets Ctrl+S and a status bar.',

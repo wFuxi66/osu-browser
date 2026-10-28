@@ -2,11 +2,12 @@
 import { MODE_NAMES } from '../osu/types';
 import type { DifficultySummary, ProjectSummary } from '../project/storage';
 
-export type GroupMode = 'none' | 'artist' | 'bpm' | 'creator' | 'date' | 'length' | 'mode' | 'title';
+export type GroupMode = 'none' | 'collections' | 'artist' | 'bpm' | 'creator' | 'date' | 'length' | 'mode' | 'title';
 export type SortMode = 'artist' | 'bpm' | 'creator' | 'date' | 'difficulty' | 'length' | 'title';
 
 export const GROUP_LABELS: Record<GroupMode, string> = {
   none: 'No Grouping',
+  collections: 'Collections',
   artist: 'By Artist',
   bpm: 'By BPM',
   creator: 'By Creator',

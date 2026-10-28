@@ -39,7 +39,7 @@ export class CatchMode implements PlayfieldMode {
   private cache: { rev: number; objects: CatchObject[] } | null = null;
 
   get pxPerMs() {
-    return 0.8 * (this.h / 700) * editor.bm.editor.timelineZoom;
+    return 0.8 * (this.h / 700) * editor.shownZoom;
   }
 
   layout(w: number, h: number) {

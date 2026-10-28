@@ -6,7 +6,13 @@ import { exactSong } from './songData';
 type Listener = () => void;
 
 /** How long a smooth seek takes to ease into place (out-quint, like lazer's editor). */
-const GLIDE_MS = 200;
+export const GLIDE_MS = 200;
+
+/** How much of a glide is still to go, `k` of the way through its time (out-quint). */
+export const glideLeft = (k: number) => (1 - k) ** 5;
+
+/** Whether the system asks for less motion: smooth seeks and zooms then jump straight there. */
+export const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** How long the clock may run ahead of every position the audio element reports before it steps back. */
 const AHEAD_WINDOW_MS = 300;
 const MAX_STEP_BACK_MS = 8;
@@ -202,7 +208,7 @@ class MusicClock {
       this.glide = null;
       return t;
     }
-    return t + (this.glide.from - t) * (1 - k) ** 5;
+    return t + (this.glide.from - t) * glideLeft(k);
   }
 
   private resync() {
@@ -243,7 +249,7 @@ class MusicClock {
 
   /** Jumps to `ms`; with `smooth` while paused, only the drawn time eases there (see displayTime). */
   seek(ms: number, smooth = false) {
-    this.glide = smooth && !this.playing ? { from: this.displayTime, start: performance.now() } : null;
+    this.glide = smooth && !this.playing && !reducedMotion() ? { from: this.displayTime, start: performance.now() } : null;
     const t = Math.max(0, Math.min(ms, this.duration || ms));
     this.pausedTime = t;
     this.el.currentTime = Math.max(0, t + this.offset) / 1000;

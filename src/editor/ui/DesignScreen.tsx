@@ -229,7 +229,7 @@ export function DesignTimeline() {
       redrawNext();
     });
     ro.observe(canvas);
-    const ppm = () => (w / 5000) * (editor.hasProject ? editor.bm.editor.timelineZoom : 1);
+    const ppm = () => (w / 5000) * editor.shownZoom;
     const off = onFrame((t) => {
       if (!w || !editor.hasProject) return;
       const k = ppm();

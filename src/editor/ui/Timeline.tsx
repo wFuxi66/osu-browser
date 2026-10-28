@@ -54,7 +54,7 @@ export function Timeline() {
       drawTimeline(ctx, w, h, t, dragRef.current);
     });
 
-    const pxPerMs = () => (w / 5000) * editor.bm.editor.timelineZoom;
+    const pxPerMs = () => (w / 5000) * editor.shownZoom;
     const timeAt = (x: number) => music.time + (x - w / 2) / pxPerMs();
     const local = (e: PointerEvent | MouseEvent) => {
       const r = canvas.getBoundingClientRect();
@@ -324,7 +324,7 @@ export function Timeline() {
       pinch: {
         start: () => {
           finish(false);
-          zoom0 = editor.hasProject ? editor.bm.editor.timelineZoom : 1;
+          zoom0 = editor.shownZoom;
         },
         update: (_dx, scale) => editor.hasProject && editor.setTimelineZoom(zoom0 * scale),
         end: () => {},
@@ -375,7 +375,7 @@ function drawWaveform(ctx: CanvasRenderingContext2D, w: number, h: number, tStar
 
 function drawTimeline(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, drag: Drag | null) {
   const bm = editor.bm;
-  const ppm = (w / 5000) * bm.editor.timelineZoom;
+  const ppm = (w / 5000) * editor.shownZoom;
   const tStart = t - w / 2 / ppm;
   const tEnd = t + w / 2 / ppm;
   const X = (time: number) => w / 2 + (time - t) * ppm;

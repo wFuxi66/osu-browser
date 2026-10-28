@@ -33,13 +33,15 @@ music.onChange(bumpInput);
 /** Draws the next frame even if nothing seems to have changed: a resized canvas comes back blank. */
 export const redrawNext = bumpInput;
 
-const drawn = { time: NaN, rev: -1, input: -1, at: -Infinity };
+const drawn = { time: NaN, zoom: NaN, rev: -1, input: -1, at: -Infinity };
 
 /** Whether the editor's views would draw the same frame as last time. */
 function stillFrame(shown: number): boolean {
   const now = performance.now();
-  if (!music.playing && shown === drawn.time && editor.rev === drawn.rev && inputRev === drawn.input && now - drawn.at < IDLE_REDRAW_MS) return true;
+  const zoom = editor.shownZoom;
+  if (!music.playing && shown === drawn.time && zoom === drawn.zoom && editor.rev === drawn.rev && inputRev === drawn.input && now - drawn.at < IDLE_REDRAW_MS) return true;
   drawn.time = shown;
+  drawn.zoom = zoom;
   drawn.rev = editor.rev;
   drawn.input = inputRev;
   drawn.at = now;

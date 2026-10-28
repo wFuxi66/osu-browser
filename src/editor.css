@@ -11,6 +11,8 @@
 .wm-title.open, .wm-title.open:hover:not(:disabled) { background: #cce8ff; border-color: #99d1ff; }
 .wm-list { position: absolute; top: 100%; left: 0; min-width: 230px; background: #f2f2f2; border: 1px solid #ccc; box-shadow: 2px 3px 6px rgba(0,0,0,0.25); padding: 2px; color: #000; white-space: nowrap; }
 .wm-list.sub { top: -3px; left: 100%; }
+/* Windows fades its menus in. */
+.wm-list { animation: op-fade 0.1s ease-out; }
 .wm-item { position: relative; display: flex; align-items: center; height: 22px; padding: 0 4px; border: 1px solid transparent; cursor: default; }
 .wm-item:hover, .wm-item.hot { background: #cde8ff; border-color: #99d1ff; }
 .wm-item.disabled { color: #8d8d8d; }
@@ -27,6 +29,8 @@
 /* Touch: stable's bars shrink to a few pixels on a phone, so they get finger-sized minimums; what sits under them moves
    with --top-h / --bottom-h, and the playfield shrinks to fit between them (StdMode.layout). */
 [data-touch] .ed-stage { --tabs-h: max(calc(var(--u) * 30), 28px); --top-h: max(calc(var(--u) * 102), calc(var(--tabs-h) + 52px)); --bottom-h: max(calc(var(--u) * 33), 40px); }
+/* Switching screens: what belongs to the new one fades in over the bars, which stay put. */
+.ed-stage > :where(:not(.ed-top, .ed-bottom)), .ed-top-right > * { animation: op-fade 0.16s ease-out; }
 .ed-stage > .playfield-canvas, .ed-stage-bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .ed-stage button { font-family: var(--osu-font); }
 
@@ -244,6 +248,8 @@
 .ed-phone-menu-icon i { position: absolute; right: -7px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #ffd51e; }
 .ed-phone-menu-btn small { font-size: 9px; opacity: 0.8; }
 .ed-phone-sheet { position: absolute; left: 4px; top: calc(100% - 2px); width: min(340px, 80vw); max-height: calc(100dvh - 64px); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; background: #f2f2f2; border: 1px solid #ccc; box-shadow: 2px 3px 10px rgba(0,0,0,0.6); color: #000; font: 13px var(--win-font); }
+[data-phone] .ed-phone-sheet { animation: ed-sheet-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1); }
+@keyframes ed-sheet-in { from { opacity: 0; transform: translateY(-8px); } }
 .ed-phone-caption { padding: 6px 10px; color: #6d6d6d; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-phone-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 0 6px 6px; }
 .ed-phone-tabs button { height: 34px; padding: 0; border: none; border-radius: 6px; background: #262626; color: #fff; font: 300 14px var(--osu-font); }

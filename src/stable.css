@@ -138,8 +138,9 @@
 .gdialog-btn.trash-btn:disabled { filter: grayscale(0.8) brightness(0.7); }
 
 /* ------------------------------------------------------------------ WinForms-style windows */
-.win-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(0,0,0,0.25); }
-.win-window { color-scheme: light; background: #f0f0f0; color: #000; font: 12px/1.35 var(--win-font); border: 1px solid #7a7a7a; box-shadow: 0 8px 32px rgba(0,0,0,0.5); user-select: none; max-height: 96vh; display: flex; flex-direction: column; }
+.win-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(0,0,0,0.25); animation: op-fade 0.15s ease-out; }
+.win-window { color-scheme: light; background: #f0f0f0; color: #000; font: 12px/1.35 var(--win-font); border: 1px solid #7a7a7a; box-shadow: 0 8px 32px rgba(0,0,0,0.5); user-select: none; max-height: 96vh; display: flex; flex-direction: column; animation: win-open 0.16s cubic-bezier(0.2, 0.9, 0.3, 1); }
+@keyframes win-open { from { opacity: 0; transform: scale(0.96); } }
 .win-titlebar { height: 30px; flex: none; display: flex; align-items: center; justify-content: space-between; background: #fff; padding-left: 8px; font-size: 12px; }
 .win-x { width: 46px; height: 30px; background: none; border: none; border-radius: 0; color: #000; font-size: 13px; padding: 0; }
 .win-x:hover:not(:disabled) { background: #e81123; color: #fff; border: none; }

@@ -261,7 +261,7 @@ export function handleWheel(e: WheelEvent) {
   }
   if (e.altKey) {
     if (area === 'timeline') {
-      editor.setTimelineZoom(editor.bm.editor.timelineZoom * (dir > 0 ? 1 / 1.15 : 1.15));
+      editor.setTimelineZoom(editor.bm.editor.timelineZoom * (dir > 0 ? 1 / 1.15 : 1.15), true);
     } else {
       editor.setDistanceSpacing(editor.bm.editor.distanceSpacing + (dir > 0 ? -1 : 1) * (e.shiftKey ? 0.01 : 0.1));
     }

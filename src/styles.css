@@ -76,6 +76,10 @@ kbd { background: #2a2a38; border: 1px solid var(--border); border-radius: 3px; 
 .toast.error { border-left-color: var(--danger); }
 .toast.has-action { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
 .toast.has-action button { flex: none; }
+.toast { animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1); }
+.toast.leaving { animation: toast-out 0.18s ease-in forwards; pointer-events: none; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(24px); } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(12px); } }
 
 /* ------------------------------------------------------------------ design (storyboard) */
 .check { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; }
@@ -144,3 +148,8 @@ kbd { background: #2a2a38; border: 1px solid var(--border); border-radius: 3px; 
 .skin-cursor input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=color]), .skin-cursor textarea, .skin-cursor [contenteditable] { cursor: text !important; }
 .skin-cursor .player, .skin-cursor .player * { cursor: none !important; }
 .skin-cursor .player.done, .skin-cursor .player.done *, .skin-cursor .player:has(.pause-menu), .skin-cursor .player:has(.pause-menu) * { cursor: var(--skin-cursor) !important; }
+
+/* The editor's motion (menus, windows, toasts, screen changes) is off when the system asks for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .toast, .wm-list, .win-backdrop, .win-window, .ed-stage > *, .ed-top-right > *, .ed-phone-sheet { animation: none !important; }
+}

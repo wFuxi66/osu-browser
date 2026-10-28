@@ -92,7 +92,7 @@ function ScreenTabs() {
 
 function ZoomButtons() {
   const ed = useEditor();
-  const set = (v: number) => ed.setTimelineZoom(v);
+  const set = (v: number) => ed.setTimelineZoom(v, true);
   const z = ed.hasProject ? ed.bm.editor.timelineZoom : 1;
   return (
     <div className="ed-zoom">
@@ -361,7 +361,7 @@ export function jumpToTimestamp(text: string) {
   const m = /(\d+):(\d{1,2})(?:[:.](\d{1,3}))?\s*(?:\(([^)]*)\))?/.exec(text.trim());
   if (!m) return;
   const t = Number(m[1]) * 60000 + Number(m[2]) * 1000 + Number((m[3] ?? '0').padEnd(3, '0'));
-  music.seek(t);
+  music.seek(t, true);
   if (!m[4]) return;
   const bm = editor.bm;
   const ids: number[] = [];

@@ -5,7 +5,7 @@ export function Toasts() {
   return (
     <div className="toasts">
       {ed.toasts.map((t) => (
-        <div key={t.id} className={`toast ${t.kind}${t.action ? ' has-action' : ''}`}>
+        <div key={t.id} className={`toast ${t.kind}${t.action ? ' has-action' : ''}${t.leaving ? ' leaving' : ''}`}>
           {t.text}
           {t.action && <button onClick={t.action.run}>{t.action.label}</button>}
         </div>

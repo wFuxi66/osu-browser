@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { hitsounds } from '../audio/hitsounds';
-import { music } from '../audio/music';
+import { GLIDE_MS, glideLeft, music, reducedMotion } from '../audio/music';
 import { getSliderPath, sliderVertices } from '../osu/curves';
 import { processBeatmap, type ProcessedBeatmap } from '../osu/processing';
 import { objectEndTime, redLineAt, snapTime, sortTimingPoints, stepTick, controlPointAt, beatLengthAt, svAt } from '../osu/timing';
@@ -46,7 +46,12 @@ export interface Toast {
   kind: 'info' | 'error';
   /** A button on the toast. */
   action?: { label: string; run: () => void };
+  /** Fading out, about to be removed. */
+  leaving?: boolean;
 }
+
+/** How long a toast takes to fade out (the .toast.leaving animation). */
+const TOAST_OUT_MS = 180;
 
 const MAX_UNDO = 200;
 /** Set once the first-save Drive prompt has been shown in this browser. */
@@ -148,10 +153,16 @@ class Editor {
     const t = { id: Date.now() + Math.random(), text, kind };
     this.toasts = [...this.toasts, t];
     this.emit();
+    setTimeout(() => this.dismissToast(t.id), kind === 'error' ? 6000 : 2500);
+  }
+
+  private dismissToast(id: number) {
+    this.toasts = this.toasts.map((x) => (x.id === id ? { ...x, leaving: true } : x));
+    this.emit();
     setTimeout(() => {
-      this.toasts = this.toasts.filter((x) => x !== t);
+      this.toasts = this.toasts.filter((x) => x.id !== id);
       this.emit();
-    }, kind === 'error' ? 6000 : 2500);
+    }, reducedMotion() ? 0 : TOAST_OUT_MS);
   }
 
   /** A toast that stays up, with text that can change, until it's closed. */
@@ -164,10 +175,7 @@ class Editor {
         this.toasts = this.toasts.map((x) => (x.id === id ? { ...x, text: next } : x));
         this.emit();
       },
-      close: () => {
-        this.toasts = this.toasts.filter((x) => x.id !== id);
-        this.emit();
-      },
+      close: () => this.dismissToast(id),
     };
   }
 
@@ -716,9 +724,27 @@ class Editor {
     this.setGridSize(GRID_SIZES[(i + 1) % GRID_SIZES.length]);
   }
 
-  setTimelineZoom(z: number) {
+  /** With `smooth` (wheel and buttons, not a pinch), the drawn zoom eases there (see shownZoom). */
+  setTimelineZoom(z: number, smooth = false) {
+    const from = this.shownZoom;
     this.bm.editor.timelineZoom = Math.round(Math.max(0.1, Math.min(8, z)) * 100) / 100;
+    this.zoomGlide = smooth && !reducedMotion() ? { from, start: performance.now() } : null;
     this.emit();
+  }
+
+  private zoomGlide: { from: number; start: number } | null = null;
+
+  /** Timeline zoom to draw: `timelineZoom`, except that it eases there after a smooth change. */
+  get shownZoom(): number {
+    const z = this.project ? this.bm.editor.timelineZoom : 1;
+    if (!this.zoomGlide) return z;
+    const k = (performance.now() - this.zoomGlide.start) / GLIDE_MS;
+    if (k >= 1) {
+      this.zoomGlide = null;
+      return z;
+    }
+    // Eased in ratio rather than difference, so zooming in and out feel the same.
+    return z * (this.zoomGlide.from / z) ** glideLeft(k);
   }
 
   setDistanceSpacing(v: number) {
@@ -756,25 +782,25 @@ class Editor {
     const t = music.time;
     const tps = this.bm.timingPoints;
     const target = direction > 0 ? tps.find((tp) => tp.time > t + 1) : [...tps].reverse().find((tp) => tp.time < t - 1);
-    if (target) music.seek(target.time);
+    if (target) music.seek(target.time, true);
   }
 
   seekBookmark(direction: 1 | -1) {
     const t = music.time;
     const b = this.bm.editor.bookmarks;
     const target = direction > 0 ? b.find((x) => x > t + 1) : [...b].reverse().find((x) => x < t - 1);
-    if (target !== undefined) music.seek(target);
+    if (target !== undefined) music.seek(target, true);
   }
 
   seekFirstObject() {
     const first = this.bm.hitObjects[0];
-    music.seek(first && music.time > first.time + 1 ? first.time : 0);
+    music.seek(first && music.time > first.time + 1 ? first.time : 0, true);
   }
 
   seekLastObject() {
     const last = this.bm.hitObjects[this.bm.hitObjects.length - 1];
     const end = last ? objectEndTime(this.bm, last) : music.duration;
-    music.seek(last && music.time < end - 1 ? end : music.duration);
+    music.seek(last && music.time < end - 1 ? end : music.duration, true);
   }
 
   // ---------------------------------------------------------------- selection

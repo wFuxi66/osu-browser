@@ -22,7 +22,7 @@ export class ManiaMode implements PlayfieldMode {
   private drag: Drag | null = null;
   /** Pixels per millisecond of scroll; adjusted with the timeline zoom. */
   get pxPerMs() {
-    return 0.45 * (this.h / 700) * editor.bm.editor.timelineZoom;
+    return 0.45 * (this.h / 700) * editor.shownZoom;
   }
 
   private get keys() {

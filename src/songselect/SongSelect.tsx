@@ -275,19 +275,30 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
       const p = selSet.difficulties[0]?.previewTime ?? -1;
       return p >= 0 ? p : (music.duration || 0) * 0.4;
     };
-    // Back from the editor, the song starts over from the beginning; otherwise from the preview point. Either way it
-    // fades in, at full speed whatever the editor's playback rate was.
-    const back = editor.returnedFrom === selSet.id;
+    // Back from a map, the song carries on from where it was (the editor or game still has it loaded), at full speed
+    // whatever the editor's playback rate was; if it was paused (quit from the pause menu), it starts over from the
+    // beginning, like stable. Otherwise it starts from the preview point.
+    const back = editor.returnedFrom === selSet.id && !!music.blob && music.time < music.duration - 1000;
     editor.returnedFrom = null;
     nowPlaying.setId = selSet.id;
     const start = async () => {
+      if (back) {
+        music.rate = 1;
+        if (music.playing) music.dip(0.5, 1200);
+        else {
+          music.seek(0);
+          music.fadeIn(800);
+          await music.play();
+        }
+        return;
+      }
       // Coming from the main menu with this song playing, it carries on.
-      if (music.blob === selSet.audio && music.playing && !back) return;
+      if (music.blob === selSet.audio && music.playing) return;
       if (music.blob !== selSet.audio) await music.load(selSet.audio);
       if (cancelled) return;
       music.rate = 1;
-      music.seek(back ? 0 : preview());
-      music.fadeIn(back ? 1200 : 600);
+      music.seek(preview());
+      music.fadeIn(600);
       await music.play();
     };
     void start();

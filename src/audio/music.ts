@@ -135,20 +135,28 @@ class MusicClock {
 
   /** Brings the volume up from silence over `ms`, so a song starting part-way through doesn't cut in. */
   fadeIn(ms: number) {
-    this.fade(0, 1, ms);
+    this.fade((t) => t, ms);
   }
 
   /** Takes the volume down to silence over `ms`; loading another song restores it. */
   fadeOut(ms: number) {
-    this.fade(Math.sqrt(this.fadeLevel), 0, ms);
+    const from = Math.sqrt(this.fadeLevel);
+    this.fade((t) => from * (1 - t), ms);
   }
 
-  private fade(from: number, to: number, ms: number) {
+  /** Ducks the volume to `low` and brings it back up over `ms`, while the song plays on (leaving a map). */
+  dip(low: number, ms: number) {
+    const from = Math.sqrt(this.fadeLevel);
+    this.fade((t) => (t < 0.2 ? from + (low - from) * (t / 0.2) : low + (1 - low) * ((t - 0.2) / 0.8)), ms);
+  }
+
+  /** `curve` maps 0–1 through the fade to the level before squaring. */
+  private fade(curve: (t: number) => number, ms: number) {
     cancelAnimationFrame(this.fadeFrame);
     const start = performance.now();
     const step = () => {
       const t = Math.min(1, (performance.now() - start) / ms);
-      const k = from + (to - from) * t;
+      const k = curve(t);
       // Squared, as loudness follows amplitude roughly logarithmically: a linear ramp sounds like it jumps.
       this.fadeLevel = k * k;
       this.el.volume = this.baseVolume * this.fadeLevel;

@@ -119,7 +119,7 @@ class Editor {
   lastOpened: { projectId: string; diffId: string } | null = null;
   /** Whether the open project is being edited or played (song select's Play loads it without the editor). */
   session: 'edit' | 'play' = 'edit';
-  /** Set when leaving the editor, so song select restarts that song from the beginning instead of the preview point. */
+  /** Set when leaving a map, so song select carries that song on from where it was instead of the preview point. */
   returnedFrom: string | null = null;
 
   get bm(): Beatmap {
@@ -239,17 +239,14 @@ class Editor {
     if (!audio) this.toast(`Audio file "${this.bm.general.audioFilename}" is missing from this beatmap.`, 'error');
   }
 
-  /** Leave the editor without saving (unsaved changes only live in memory, so they are dropped). */
+  /** Leave the editor without saving (unsaved changes only live in memory, so they are dropped). The song plays on. */
   closeProject() {
     const time = music.time;
-    music.pause();
     if (this.project) {
       const diffId = this.project.difficulties[this.diffIndex].id;
       this.lastOpened = { projectId: this.project.id, diffId };
-      if (this.session === 'edit') {
-        this.returnedFrom = this.project.id;
-        rememberEditorTime(diffId, time);
-      }
+      this.returnedFrom = this.project.id;
+      if (this.session === 'edit') rememberEditorTime(diffId, time);
     }
     this.project = null;
     this.dialog = null;

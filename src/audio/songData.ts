@@ -2,6 +2,9 @@
 // timeline waveform (waveform.ts): decoding a long song takes a second or two, so doing it twice showed. The
 // work over every sample runs in a worker, as on the main thread it froze the page for most of a second.
 import type { SongJob, SongResult } from './songWorker';
+// Inlined into the main bundle: a worker file fetched on first use isn't there offline, and without it the editor
+// and the game fell back to the compressed song's approximate seeking (badly off on phones).
+import SongWorker from './songWorker?worker&inline';
 
 /** Milliseconds per peak bucket. */
 export const WAVEFORM_BUCKET_MS = 4;
@@ -27,7 +30,7 @@ export function songPeaks(blob: Blob): Promise<Float32Array> {
 async function analyse(blob: Blob, sampleRate: number, wav: boolean): Promise<SongResult> {
   const buf = await new OfflineAudioContext(1, 1, sampleRate).decodeAudioData(await blob.arrayBuffer());
   const channels = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
-  const worker = new Worker(new URL('./songWorker.ts', import.meta.url), { type: 'module' });
+  const worker = new SongWorker();
   try {
     return await new Promise<SongResult>((resolve, reject) => {
       worker.onmessage = (e: MessageEvent<SongResult>) => resolve(e.data);

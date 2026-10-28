@@ -376,7 +376,7 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
         if (p && cloud.syncing) await cloud.upload(p).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
       } else {
         await deleteProjectLocal(selSet.id);
-        if (cloud.syncing) await cloud.remove(selSet.id);
+        if (cloud.driveConnected && !(await cloud.remove(selSet.id))) editor.toast("Deleted. It's removed from Google Drive once you're back online.");
       }
       await refresh();
     });
@@ -842,9 +842,11 @@ export async function accountDialog(onMyBeatmaps: () => void) {
 function UserPanel({ onMyBeatmaps }: { onMyBeatmaps: () => void }) {
   useCloud();
   const u = cloud.user;
-  const label = !cloud.available ? 'Offline' : u ? u.username : 'Guest';
-  const canOpen = cloud.available && (cloud.driveConfigured || cloud.oauthConfigured || !!u);
-  const sub = !cloud.available
+  const label = cloud.offline || !cloud.available ? 'Offline' : u ? u.username : 'Guest';
+  const canOpen = !cloud.offline && cloud.available && (cloud.driveConfigured || cloud.oauthConfigured || !!u);
+  const sub = cloud.offline && cloud.driveConnected
+    ? 'Drive sync resumes once online'
+    : cloud.offline || !cloud.available
     ? 'Maps are saved in this browser'
     : cloud.syncing
       ? 'Maps sync to Google Drive'

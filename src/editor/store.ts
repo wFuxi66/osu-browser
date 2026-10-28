@@ -44,6 +44,8 @@ export interface Toast {
   id: number;
   text: string;
   kind: 'info' | 'error';
+  /** A button on the toast. */
+  action?: { label: string; run: () => void };
 }
 
 const MAX_UNDO = 200;
@@ -153,9 +155,9 @@ class Editor {
   }
 
   /** A toast that stays up, with text that can change, until it's closed. */
-  stickyToast(text: string) {
+  stickyToast(text: string, action?: Toast['action']) {
     const id = Date.now() + Math.random();
-    this.toasts = [...this.toasts, { id, text, kind: 'info' as const }];
+    this.toasts = [...this.toasts, { id, text, kind: 'info' as const, action }];
     this.emit();
     return {
       update: (next: string) => {
@@ -1333,6 +1335,9 @@ window.addEventListener('pagehide', () => {
   if (editor.project) rememberEditorTime(editor.project.difficulties[editor.diffIndex].id, music.time);
 });
 editor.applyAudioPrefs();
+cloud.isOpen = (id) => editor.project?.id === id;
+cloud.onConflict = (title) =>
+  editor.toast(`"${title}" was changed on another device too, so both versions are kept: the other one is now a second copy in the song list.`);
 (window as unknown as { editor: Editor }).editor = editor;
 
 export function useEditor(): Editor {

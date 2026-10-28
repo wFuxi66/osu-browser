@@ -1,14 +1,54 @@
 // Client for the optional backend: osu! OAuth login, and cloud sync of beatmaps to the user's own Google Drive
 // (drive.ts). Published sets are synced as lite packages (see syncpack.ts) and rebuilt from the mirrors.
 import { drive, type DriveProject } from './drive';
-import { importOsz, oszFilename, type Project } from './project';
-import { listProjectsLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal, type Prefs } from './storage';
+import { importOsz, oszFilename, uid, type Project } from './project';
+import { listProjectsLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal, syncedAtLocal, type Prefs } from './storage';
 import { buildSyncPackage, originOf, restoreSyncPackage, setIdOf } from './syncpack';
 
 /** How long to wait before asking the mirrors again for a set they didn't have. */
 const MIRROR_RECHECK = 1000 * 60 * 60 * 24;
 /** Maps transferred at once by a full sync: enough to hide each request's latency, few enough for memory. */
 const SYNC_CONCURRENCY = 3;
+/** Projects deleted while offline (or while Drive couldn't be reached), removed from Drive by the next sync. */
+const REMOVALS_KEY = 'osu-web-editor:drive-removals';
+
+/** Whether Drive was connected when the backend was last reached, for a start offline. */
+const DRIVE_KEY = 'osu-web-editor:drive-connected';
+
+function remembered(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function remember(key: string, on: boolean) {
+  try {
+    if (on) localStorage.setItem(key, '1');
+    else localStorage.removeItem(key);
+  } catch {
+    // storage unavailable
+  }
+}
+
+function pendingRemovals(): string[] {
+  try {
+    const ids: unknown = JSON.parse(localStorage.getItem(REMOVALS_KEY) ?? '[]');
+    return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function setPendingRemovals(ids: string[]) {
+  try {
+    if (ids.length) localStorage.setItem(REMOVALS_KEY, JSON.stringify(ids));
+    else localStorage.removeItem(REMOVALS_KEY);
+  } catch {
+    // storage unavailable: the map may come back from Drive, but nothing is lost
+  }
+}
 
 /** Runs `fn` over the items, at most `limit` at a time. */
 async function pool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
@@ -37,6 +77,12 @@ class Cloud {
   driveConnected = false;
   /** How the last Google Drive sign-in went (from the redirect back), for song select to report once. */
   driveResult: string | null = null;
+  /** The browser has no network: sync, login and downloads wait, and Drive sync resumes when it's back. */
+  offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  /** Whether a project is open in the editor: a sync leaves its stored copy alone (its next save syncs it). */
+  isOpen: (projectId: string) => boolean = () => false;
+  /** Told when a map had changed both in Drive and here since the last sync, so both versions were kept. */
+  onConflict: ((title: string) => void) | null = null;
   private listeners = new Set<() => void>();
 
   constructor() {
@@ -44,6 +90,16 @@ class Cloud {
       this.driveConnected = false;
       this.emit();
     };
+    if (typeof window === 'undefined') return;
+    window.addEventListener('offline', () => {
+      this.offline = true;
+      this.emit();
+    });
+    window.addEventListener('online', () => {
+      this.offline = false;
+      // The backend may never have been reached (offline at start), or the Drive connection changed meanwhile.
+      void this.init();
+    });
   }
 
   onChange(l: () => void) {
@@ -55,9 +111,9 @@ class Cloud {
     for (const l of this.listeners) l();
   }
 
-  /** Whether saves sync to the cloud. */
+  /** Whether saves sync to the cloud now. Saves made offline stay unsynced, and the next sync sends them. */
   get syncing(): boolean {
-    return this.driveConnected;
+    return this.driveConnected && !this.offline;
   }
 
   async init() {
@@ -67,6 +123,12 @@ class Cloud {
       params.delete('drive');
       history.replaceState(history.state, '', location.pathname + (params.toString() ? `?${params}` : '') + location.hash);
     }
+    if (this.offline) {
+      // Saves stay unsynced until the network is back; this only lets the deletes made meanwhile be remembered.
+      this.driveConnected = remembered(DRIVE_KEY);
+      this.emit();
+      return;
+    }
     try {
       const r = await fetch('/api/auth/me', { credentials: 'include' });
       if (!r.headers.get('content-type')?.includes('json')) throw new Error('no backend');
@@ -75,6 +137,7 @@ class Cloud {
       this.oauthConfigured = !!data.oauthConfigured;
       this.driveConfigured = !!data.driveConfigured;
       this.driveConnected = !!data.driveConnected;
+      remember(DRIVE_KEY, this.driveConnected);
       this.user = data.user ?? null;
     } catch {
       this.available = false;
@@ -107,6 +170,7 @@ class Cloud {
   async disconnectDrive() {
     await drive.disconnect();
     this.driveConnected = false;
+    remember(DRIVE_KEY, false);
     this.emit();
   }
 
@@ -156,6 +220,12 @@ class Cloud {
 
   private async uploadNow(p: Project): Promise<void> {
     const at = p.updatedAt;
+    // Drive's copy isn't the version this browser last synced: another device saved the map too (while this one
+    // was offline, say). Ours is about to replace it, so keep that version first, as a map of its own.
+    const remote = await drive.get(p.id);
+    if (remote && remote.updatedAt !== at && remote.updatedAt !== this.uploaded.get(p.id) && remote.updatedAt !== (await syncedAtLocal(p.id))) {
+      await this.keepCopy(remote);
+    }
     await this.ensureOrigin(p);
     const { blob, lite } = await buildSyncPackage(p);
     const osz = oszFilename(p);
@@ -173,6 +243,16 @@ class Cloud {
     );
     await markSynced(p.id, at);
     this.uploaded.set(p.id, at);
+  }
+
+  /** Saves Drive's version of a project as a separate map in this browser (the next sync uploads it as its own). */
+  private async keepCopy(remote: CloudProject): Promise<void> {
+    const { project } = await this.download(remote);
+    project.id = uid();
+    await saveProjectLocal(project);
+    this.onConflict?.(remote.title);
+    // Back into Drive under its new id; if that fails, it's unsynced here and the next sync sends it.
+    void this.upload(project).catch(() => undefined);
   }
 
   async download(meta: CloudProject): Promise<{ project: Project; warnings: string[] }> {
@@ -198,8 +278,35 @@ class Cloud {
     return null;
   }
 
-  remove(id: string): Promise<void> {
-    return drive.remove(id);
+  /**
+   * Removes a deleted project from Drive. Offline, or when Drive can't be reached, the removal is remembered and
+   * done by the next sync, so the map doesn't come back from Drive. Returns whether it's done now.
+   */
+  async remove(id: string): Promise<boolean> {
+    if (!this.offline) {
+      try {
+        await drive.remove(id);
+        return true;
+      } catch {
+        // left for the next sync
+      }
+    }
+    setPendingRemovals([...new Set([...pendingRemovals(), id])]);
+    return false;
+  }
+
+  /** Does the removals left for later; returns the ids Drive still couldn't remove. */
+  private async removePending(): Promise<Set<string>> {
+    const left: string[] = [];
+    for (const id of pendingRemovals()) {
+      try {
+        await drive.remove(id);
+      } catch {
+        left.push(id);
+      }
+    }
+    setPendingRemovals(left);
+    return new Set(left);
   }
 
   private running: Promise<number> | null = null;
@@ -215,16 +322,22 @@ class Cloud {
     return this.running;
   }
 
+  /**
+   * A map changed on one side since the last sync goes to the other. Changed on both, its upload keeps Drive's
+   * version as a separate map first (see uploadNow). Versions are compared with the last synced one rather than by
+   * date, so neither side's work is replaced, whatever the devices' clocks say.
+   */
   private async syncAllNow(onProgress?: (done: number, total: number) => void): Promise<number> {
-    const [remote, local] = await Promise.all([this.list(), listProjectsLocal()]);
+    const stillRemoving = await this.removePending();
+    const [listed, local] = await Promise.all([this.list(), listProjectsLocal()]);
+    const remote = listed.filter((r) => !stillRemoving.has(r.id));
     const localById = new Map(local.map((l) => [l.id, l]));
-    const remoteById = new Map(remote.map((r) => [r.id, r]));
     // One map failing (e.g. its set left the mirrors) shouldn't stop the others from syncing.
     const failures: string[] = [];
     const jobs: (() => Promise<void>)[] = [];
     for (const r of remote) {
       const l = localById.get(r.id);
-      if (!l || r.updatedAt > l.updatedAt) {
+      if (!l || (r.updatedAt !== l.syncedAt && l.updatedAt <= l.syncedAt && !this.isOpen(r.id))) {
         jobs.push(async () => {
           try {
             const { project, warnings } = await this.download(r);
@@ -237,8 +350,7 @@ class Cloud {
       }
     }
     for (const l of local) {
-      const r = remoteById.get(l.id);
-      if ((!r || l.updatedAt > r.updatedAt) && l.updatedAt > l.syncedAt) {
+      if (l.updatedAt > l.syncedAt) {
         jobs.push(async () => {
           try {
             const p = await loadProjectLocal(l.id);
@@ -275,6 +387,7 @@ class Cloud {
     video = true,
     isWanted?: (data: ArrayBuffer) => Promise<boolean>,
   ): Promise<ArrayBuffer> {
+    if (this.offline) throw new Error("You're offline. Downloading beatmaps needs an internet connection.");
     let fallback: ArrayBuffer | null = null;
     for (const url of [...BROWSER_MIRRORS.map((m) => m(setId, video)), `/api/mirror/${setId}`]) {
       try {

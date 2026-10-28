@@ -101,6 +101,7 @@ export async function searchBeatmapsets(q: DirectQuery, signal?: AbortSignal): P
   if (q.mode !== null) params.set('mode', String(q.mode));
   const status = STATUS[q.status];
   if (status !== null) params.set('status', status);
+  if (!navigator.onLine) throw new Error("You're offline. Searching beatmaps needs an internet connection.");
   const r = await fetch(`https://osu.direct/api/v2/search?${params}`, { signal });
   if (!r.ok) throw new Error(`Beatmap search failed (HTTP ${r.status}).`);
   const data = (await r.json()) as ApiSet[];
@@ -109,6 +110,7 @@ export async function searchBeatmapsets(q: DirectQuery, signal?: AbortSignal): P
 
 /** The logged-in user's uploaded sets and guest difficulties, newest first. */
 export async function myBeatmapsets(signal?: AbortSignal): Promise<DirectSet[]> {
+  if (!navigator.onLine) throw new Error("You're offline. Your beatmaps on osu! need an internet connection.");
   const r = await fetch('/api/me/beatmapsets', { credentials: 'include', signal });
   if (!r.ok) throw new Error(r.status === 401 ? 'Log in with osu! to see your beatmaps.' : `Couldn't list your beatmaps (HTTP ${r.status}).`);
   const data = (await r.json()) as ApiSet[];

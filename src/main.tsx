@@ -12,8 +12,10 @@ import './styles.css';
 import './stable.css';
 import './editor.css';
 import './play.css';
+import { registerServiceWorker } from './pwa/register';
 
 installShortcuts();
+registerServiceWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

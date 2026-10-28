@@ -256,7 +256,9 @@ export function MenuBar() {
     { label: "This Beatmap's Information Page", disabled: setId <= 0, action: () => open(`https://osu.ppy.sh/beatmapsets/${setId}`) },
     { label: "This Beatmap's Thread", disabled: setId <= 0, action: () => open(`https://osu.ppy.sh/beatmapsets/${setId}/discussion`) },
     sep,
-    ...(cloud.available
+    ...(cloud.offline
+      ? [{ label: cloud.driveConnected ? "Offline: saves sync to Google Drive once you're back online" : 'Offline: maps are saved in this browser', disabled: true }]
+      : cloud.available
       ? [
           ...(cloud.driveConfigured
             ? cloud.syncing

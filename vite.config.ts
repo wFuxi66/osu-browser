@@ -1,9 +1,10 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { serviceWorker } from './vite-pwa.ts';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), serviceWorker()],
   // ffmpeg.wasm spawns its own worker by a relative URL, which pre-bundling would break.
   optimizeDeps: { exclude: ['@ffmpeg/ffmpeg'] },
   server: {

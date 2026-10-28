@@ -36,6 +36,34 @@ async function driveError(r: Response): Promise<string> {
   return `Google Drive: ${body?.error?.message ?? `HTTP ${r.status}`}`;
 }
 
+interface ProjectFile {
+  id: string;
+  name: string;
+  size?: string;
+  appProperties?: Record<string, string>;
+}
+const PROJECT_FIELDS = 'id,name,size,appProperties';
+
+/** The newest copy of each project among `files` (two computers uploading a new project at once can each make one). */
+function newestById(files: ProjectFile[]): Map<string, DriveProject> {
+  const byId = new Map<string, DriveProject>();
+  for (const f of files) {
+    const a = f.appProperties ?? {};
+    const p: DriveProject = {
+      fileId: f.id,
+      id: a.projectId ?? '',
+      title: f.name.replace(/( \(edited files only\))?\.(osz|zip)$/i, ''),
+      createdAt: Number(a.createdAt) || 0,
+      updatedAt: Number(a.updatedAt) || 0,
+      size: Number(f.size) || 0,
+    };
+    if (!p.id) continue;
+    const prev = byId.get(p.id);
+    if (!prev || p.updatedAt > prev.updatedAt) byId.set(p.id, p);
+  }
+  return byId;
+}
+
 class Drive {
   private token: { value: string; expires: number } | null = null;
   private folderId: string | null = null;
@@ -111,27 +139,18 @@ class Drive {
 
   /** Every synced project, newest copy per project id. */
   async list(): Promise<DriveProject[]> {
-    const files = await this.search<{ id: string; name: string; size?: string; appProperties?: Record<string, string> }>(
-      `trashed=false and appProperties has { key='${APP_KEY}' and value='project' }`,
-      'id,name,size,appProperties',
-    );
-    const byId = new Map<string, DriveProject>();
-    for (const f of files) {
-      const a = f.appProperties ?? {};
-      const p: DriveProject = {
-        fileId: f.id,
-        id: a.projectId ?? '',
-        title: f.name.replace(/( \(edited files only\))?\.(osz|zip)$/i, ''),
-        createdAt: Number(a.createdAt) || 0,
-        updatedAt: Number(a.updatedAt) || 0,
-        size: Number(f.size) || 0,
-      };
-      if (!p.id) continue;
-      const prev = byId.get(p.id);
-      if (!prev || p.updatedAt > prev.updatedAt) byId.set(p.id, p);
-    }
+    const files = await this.search<ProjectFile>(`trashed=false and appProperties has { key='${APP_KEY}' and value='project' }`, PROJECT_FIELDS);
+    const byId = newestById(files);
     this.fileIds = new Map([...byId.values()].map((p) => [p.id, p.fileId]));
     return [...byId.values()];
+  }
+
+  /** One project's newest copy, or null when it isn't in Drive. */
+  async get(projectId: string): Promise<DriveProject | null> {
+    const files = await this.search<ProjectFile>(`trashed=false and appProperties has { key='projectId' and value=${quote(projectId)} }`, PROJECT_FIELDS);
+    const p = newestById(files).get(projectId) ?? null;
+    if (p) this.fileIds.set(projectId, p.fileId);
+    return p;
   }
 
   private async fileFor(projectId: string): Promise<string | undefined> {

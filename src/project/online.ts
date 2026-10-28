@@ -30,6 +30,7 @@ export function onlineSet(setId: number, fresh = false): Promise<OnlineSet | nul
 }
 
 async function fetchSet(setId: number): Promise<OnlineSet | null> {
+  if (!navigator.onLine) throw new Error('offline');
   try {
     const r = await fetch(`/api/beatmapsets/${setId}`);
     if (r.ok && r.headers.get('content-type')?.includes('json')) {

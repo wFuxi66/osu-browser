@@ -20,7 +20,7 @@ import { FullscreenButton, RotateHint } from './ui/TouchChrome';
 export function useCloud() {
   return useSyncExternalStore(
     (l) => cloud.onChange(l),
-    () => (cloud.available ? `${cloud.user?.id ?? 0}:${cloud.driveConnected}` : 'offline'),
+    () => (cloud.offline ? `offline:${cloud.driveConnected}` : cloud.available ? `${cloud.user?.id ?? 0}:${cloud.driveConnected}` : 'unavailable'),
   );
 }
 

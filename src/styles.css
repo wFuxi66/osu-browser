@@ -74,6 +74,8 @@ kbd { background: #2a2a38; border: 1px solid var(--border); border-radius: 3px; 
 .toasts { position: fixed; right: 16px; bottom: 72px; display: flex; flex-direction: column; gap: 8px; z-index: 70; pointer-events: none; }
 .toast { background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--ok); padding: 8px 12px; border-radius: 6px; max-width: 420px; box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
 .toast.error { border-left-color: var(--danger); }
+.toast.has-action { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
+.toast.has-action button { flex: none; }
 
 /* ------------------------------------------------------------------ design (storyboard) */
 .check { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; }

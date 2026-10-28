@@ -116,6 +116,12 @@ export async function markSynced(id: string, syncedAt: number): Promise<void> {
   await tx('readwrite', (s) => s.put(existing));
 }
 
+/** The updatedAt of the version this browser and Drive last both had (0 = never synced). */
+export async function syncedAtLocal(id: string): Promise<number> {
+  const r = await tx<StoredProject | undefined>('readonly', (s) => s.get(id));
+  return r?.syncedAt ?? 0;
+}
+
 /** Records what the mirrors serve for a project's set, without counting as a save. */
 export async function saveOriginLocal(id: string, origin: ProjectOrigin): Promise<void> {
   const existing = await tx<StoredProject | undefined>('readonly', (s) => s.get(id));

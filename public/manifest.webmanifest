@@ -1,0 +1,15 @@
+{
+  "name": "osu!browser",
+  "short_name": "osu!browser",
+  "description": "Map and play osu! beatmaps in the browser, online or offline.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0e0e12",
+  "theme_color": "#ff66aa",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

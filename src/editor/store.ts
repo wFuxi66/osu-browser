@@ -760,7 +760,7 @@ class Editor {
   }
 
   setPlaybackRate(r: number) {
-    music.rate = Math.max(0.25, Math.min(1, Math.round(r * 100) / 100));
+    music.rate = Math.max(0.25, Math.min(1.5, Math.round(r * 100) / 100));
     this.emit();
   }
 

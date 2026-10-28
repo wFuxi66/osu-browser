@@ -393,10 +393,10 @@ function BottomBar() {
   const ed = useEditor();
   const [, force] = useState(0);
   useEffect(() => music.onChange(() => force((n) => n + 1)), []);
-  const rates = [0.25, 0.5, 0.75, 1];
+  const rates = [0.25, 0.5, 0.75, 1, 1.5];
   const phone = usePhone();
   if (phone) {
-    // Phone: one play/pause button and one speed button that steps 100 → 75 → 50 → 25%.
+    // Phone: one play/pause button and one speed button that steps 100 → 75 → 50 → 25 → 150%.
     const i = rates.findIndex((r) => Math.abs(music.rate - r) < 0.001);
     return (
       <div className="ed-bottom">
@@ -407,7 +407,7 @@ function BottomBar() {
         <div className="ed-transport">
           <button onClick={() => music.toggle()} title={music.playing ? 'Pause' : 'Play'}>{music.playing ? <PauseIcon /> : <PlayIcon />}</button>
           <button className="ed-test" onClick={() => { music.pause(); ed.openDialog('test'); }} title="Test"><TestIcon /> Test</button>
-          <button className={`ed-speed ${i === 3 ? '' : 'lit'}`} onClick={() => ed.setPlaybackRate(rates[(i + 3) % 4])} title="Playback rate">
+          <button className={`ed-speed ${i === 3 ? '' : 'lit'}`} onClick={() => ed.setPlaybackRate(rates[(i + rates.length - 1) % rates.length])} title="Playback rate">
             {Math.round(music.rate * 100)}%
           </button>
         </div>

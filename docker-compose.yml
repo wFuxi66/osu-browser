@@ -10,6 +10,14 @@ services:
     env_file: .env
     environment:
       PORT: "8787"
+    # The server writes nothing to disk and needs no privileges (it runs as the node user on a high port).
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   caddy:
     image: caddy:2.10-alpine

@@ -26,6 +26,8 @@ export const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Cross-Origin-Opener-Policy': 'same-origin',
+  // Browser features the app never uses, so nothing injected can ask for them either.
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), midi=()',
 };
 
 /** Vercel adds HSTS on its own; the Node server only sends it when it's served over HTTPS. */

@@ -401,13 +401,14 @@ export class StdPlayfield {
 
   private drawPlacement(ctx: CanvasRenderingContext2D, v: View, t: number, r: number) {
     const tool = editor.tool;
-    if (tool === 'select' || !this.hover) return;
-    const time = editor.snap(t);
     const placing = editor.placing?.kind === 'slider' ? editor.placing : null;
+    // A half-placed slider stays drawn without a cursor: on a touch screen the finger lifts between its points.
+    if (tool === 'select' || (!this.hover && !placing)) return;
+    const time = editor.snap(t);
     const firstPoint = !placing;
-    const pos = firstPoint ? this.snapHead(this.hover, time) : this.snapNonHead(this.hover);
+    const pos = !this.hover ? null : firstPoint ? this.snapHead(this.hover, time) : this.snapNonHead(this.hover);
 
-    if (firstPoint && distanceSnapActive(this.mods) && (tool === 'circle' || tool === 'slider')) {
+    if (pos && firstPoint && distanceSnapActive(this.mods) && (tool === 'circle' || tool === 'slider')) {
       const ds = distanceSnapCentre(time);
       if (ds) {
         const c = toScreen(v, ds.centre);
@@ -422,18 +423,20 @@ export class StdPlayfield {
       }
     }
 
-    if (tool === 'circle') {
+    if (tool === 'circle' && pos) {
       const s = toScreen(v, pos);
       drawHitCircle(ctx, s.x, s.y, r, { r: 200, g: 200, b: 200 }, 0.5, null, false);
     } else if (tool === 'slider') {
       if (placing) {
         // Preview the body clipped to the beat-snapped length it will get, like stable.
-        const verts = [...placing.vertices, pos];
+        const verts = pos ? [...placing.vertices, pos] : placing.vertices;
         const preview = { x: verts[0].x, y: verts[0].y, curveType: autoCurveType(verts), points: verts.slice(1), length: 0, time: placing.time } as Slider;
-        preview.length = getSliderPath(preview).rawLength;
-        snapSliderLength(editor.bm, preview, editor.beatDivisor);
-        const body = preview.length >= 1 ? getSliderPath(preview).points : computeRawPath(preview.curveType, verts);
-        drawSliderBody(ctx, body.map((q) => toScreen(v, q)), r, { r: 180, g: 180, b: 180 }, { r: 255, g: 255, b: 255 }, 0.6, false);
+        if (verts.length > 1) {
+          preview.length = getSliderPath(preview).rawLength;
+          snapSliderLength(editor.bm, preview, editor.beatDivisor);
+          const body = preview.length >= 1 ? getSliderPath(preview).points : computeRawPath(preview.curveType, verts);
+          drawSliderBody(ctx, body.map((q) => toScreen(v, q)), r, { r: 180, g: 180, b: 180 }, { r: 255, g: 255, b: 255 }, 0.6, false);
+        }
         if (preview.length >= 1) {
           const end = toScreen(v, getSliderPath(preview).positionAt(1));
           drawHitCircle(ctx, end.x, end.y, r, { r: 200, g: 200, b: 200 }, 0.45, null, false);
@@ -444,7 +447,22 @@ export class StdPlayfield {
         ctx.restore();
         const h = toScreen(v, placing.vertices[0]);
         drawHitCircle(ctx, h.x, h.y, r, { r: 200, g: 200, b: 200 }, 0.7, null, false);
-      } else {
+        // The points placed so far, red anchors in red, so a double tap's effect shows.
+        const [head, ...rest] = placing.vertices;
+        this.drawControlPoints(ctx, v, { ...preview, x: head.x, y: head.y, points: rest }, 0.9);
+        if (touchedRecently()) {
+          const top = toScreen(v, { x: 256, y: 0 });
+          ctx.save();
+          ctx.fillStyle = '#fff';
+          ctx.font = '13px Segoe UI, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur = 3;
+          const hint = placing.vertices.length < 2 ? 'Tap where the slider goes next.' : 'Tap: add a point · Double tap: make it red · Finish when done';
+          ctx.fillText(hint, top.x, top.y + 14);
+          ctx.restore();
+        }
+      } else if (pos) {
         const s = toScreen(v, pos);
         drawHitCircle(ctx, s.x, s.y, r, { r: 200, g: 200, b: 200 }, 0.5, null, false);
       }

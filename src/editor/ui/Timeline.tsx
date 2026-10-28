@@ -9,7 +9,7 @@ import { onFrame, redrawNext } from '../playback';
 import { drawHitCircle, rgba, shade } from '../render/draw';
 import { editor, shiftObjectTime, snapSliderLength } from '../store';
 import { fmt } from '../../osu/info';
-import { attachTouch, canvasDpr, touchMods, touchedRecently, undoTap } from '../../ui/touch';
+import { attachTouch, canvasDpr, TAP_SLOP, touchMods, touchedRecently, undoTap } from '../../ui/touch';
 
 /** Object row geometry as fractions of the timeline height. */
 const OBJ_R = 0.32;
@@ -18,9 +18,14 @@ const OBJ_Y = 0.5;
 type Drag =
   | { kind: 'move'; startTime: number; anchorTime: number; originals: Map<number, HitObject>; moved: boolean }
   | { kind: 'end'; obj: HitObject; original: HitObject; moved: boolean }
-  | { kind: 'box'; t0: number; t1: number; additive: boolean }
+  // `base` is the selection the box adds to; `toggle` is the object a long press toggles if the finger doesn't move.
+  | { kind: 'box'; t0: number; t1: number; base: number[]; x0?: number; toggle?: number }
   | { kind: 'scrub' }
-  | { kind: 'pan'; x0: number; t0: number };
+  | { kind: 'pan'; x0: number; t0: number; samples: { x: number; t: number }[] };
+
+/** How fast a flung timeline slows down (ms time constant), and the release speed (px/ms) below which it doesn't fling. */
+const FLING_DECAY_MS = 325;
+const FLING_MIN_V = 0.25;
 
 type Mods = { ctrl: boolean; shift: boolean };
 
@@ -57,7 +62,7 @@ export function Timeline() {
     };
 
     type Hit = { obj: HitObject; part: 'body' | 'end' | 'edge'; edge?: number };
-    const hitTest = (x: number, y: number): Hit | null => {
+    const hitTest = (x: number, y: number, among?: (o: HitObject) => boolean): Hit | null => {
       const bm = editor.bm;
       const t = music.time;
       const ppm = pxPerMs();
@@ -78,7 +83,7 @@ export function Timeline() {
         const x0 = w / 2 + (o.time - t) * ppm;
         const end = objectEndTime(bm, o);
         const x1 = w / 2 + (end - t) * ppm;
-        if (x1 < x - r || x0 > x + r) continue;
+        if (x1 < x - r || x0 > x + r || (among && !among(o))) continue;
         if (o.kind !== 'circle' && Math.abs(x - x1) <= r) consider(Math.abs(x - x1), { obj: o, part: 'end', edge: o.kind === 'slider' ? o.slides : undefined });
         else if (Math.abs(x - x0) <= r) consider(Math.abs(x - x0), { obj: o, part: 'body', edge: 0 });
         else if (x >= x0 && x <= x1) {
@@ -102,6 +107,7 @@ export function Timeline() {
     };
 
     const onDown = (e: PointerEvent) => {
+      stopFling();
       if (!editor.hasProject || e.pointerType === 'touch') return;
       if (e.button === 0) canvas.setPointerCapture(e.pointerId);
       const { x, y } = local(e);
@@ -109,7 +115,7 @@ export function Timeline() {
       pressAt(x, y, e.button, modsOf(e));
     };
 
-    const pressAt = (x: number, y: number, button: number, m: Mods) => {
+    const pressAt = (x: number, y: number, button: number, m: Mods, hit = editor.screen === 'timing' ? null : hitTest(x, y)) => {
       // The timing view's timeline only seeks.
       if (editor.screen === 'timing') {
         if (button !== 0) return;
@@ -117,7 +123,6 @@ export function Timeline() {
         music.seek(Math.round(snapTime(editor.bm, timeAt(x), editor.beatDivisor)));
         return;
       }
-      const hit = hitTest(x, y);
       if (button === 2) {
         if (hit) editor.deleteObject(hit.obj.id);
         return;
@@ -125,8 +130,8 @@ export function Timeline() {
       if (button !== 0) return;
       const ctrl = m.ctrl;
       if (!hit) {
-        dragRef.current = { kind: 'box', t0: timeAt(x), t1: timeAt(x), additive: ctrl || m.shift };
         if (!ctrl && !m.shift) editor.clearSelection();
+        dragRef.current = { kind: 'box', t0: timeAt(x), t1: timeAt(x), base: [...editor.selection] };
         return;
       }
       if (ctrl) {
@@ -164,14 +169,22 @@ export function Timeline() {
       const raw = timeAt(x);
       const snap = (t: number) => (shift ? Math.round(t) : Math.round(snapTime(bm, t, editor.beatDivisor)));
       if (d.kind === 'pan') {
-        music.seek(snap(Math.max(0, d.t0 - (x - d.x0) / pxPerMs())));
+        // The strip follows the finger exactly; it lands on a tick when let go (see settle).
+        const now = performance.now();
+        d.samples.push({ x, t: now });
+        while (d.samples.length > 2 && now - d.samples[0].t > 100) d.samples.shift();
+        music.seek(Math.round(Math.max(0, d.t0 - (x - d.x0) / pxPerMs())));
       } else if (d.kind === 'scrub') {
         // Seeking already happened on press; moving the strip under the cursor would run away.
       } else if (d.kind === 'box') {
+        if (d.toggle !== undefined) {
+          if (Math.abs(x - d.x0!) <= TAP_SLOP) return;
+          d.toggle = undefined;
+        }
         d.t1 = raw;
         const a = Math.min(d.t0, d.t1);
         const b = Math.max(d.t0, d.t1);
-        editor.select(bm.hitObjects.filter((o) => o.time >= a && o.time <= b).map((o) => o.id), d.additive);
+        editor.select([...d.base, ...bm.hitObjects.filter((o) => o.time >= a && o.time <= b).map((o) => o.id)]);
       } else if (d.kind === 'move') {
         const target = snap(d.anchorTime + (raw - d.startTime));
         const delta = target - d.anchorTime;
@@ -216,14 +229,60 @@ export function Timeline() {
       }
     };
 
-    const onUp = () => {
+    /** Ends the drag; a pan let go while moving keeps gliding when `fling` is set. */
+    const finish = (fling: boolean) => {
       const d = dragRef.current;
       dragRef.current = null;
       if (!d) return;
       if (d.kind === 'move' || d.kind === 'end') {
         if (d.moved) editor.endChange();
         else editor.cancelChange();
+      } else if (d.kind === 'box' && d.toggle !== undefined) {
+        editor.toggleSelect(d.toggle);
+      } else if (d.kind === 'pan') {
+        const s = d.samples;
+        const a = s[0];
+        const b = s[s.length - 1];
+        const v = fling && b && b !== a && performance.now() - b.t < 60 ? (b.x - a.x) / Math.max(1, b.t - a.t) : 0;
+        if (Math.abs(v) >= FLING_MIN_V && !music.playing) startFling(v);
+        else settle();
       }
+    };
+    const onUp = () => finish(false);
+
+    /** Eases the paused timeline onto the nearest tick, unless Shift (no snapping) is held. */
+    const settle = () => {
+      if (music.playing || touchMods.get().shift) return;
+      music.seek(Math.round(snapTime(editor.bm, music.time, editor.beatDivisor)), true);
+    };
+
+    let fling = 0;
+    const stopFling = () => {
+      cancelAnimationFrame(fling);
+      fling = 0;
+    };
+    /** Keeps the timeline moving at `v` px/ms after the finger leaves it, slowing down until it stops. */
+    const startFling = (v: number) => {
+      let pos = music.time;
+      let last = performance.now();
+      const step = (now: number) => {
+        const dt = Math.min(50, now - last);
+        last = now;
+        v *= Math.exp(-dt / FLING_DECAY_MS);
+        pos -= (v * dt) / pxPerMs();
+        const end = music.duration || Infinity;
+        const hitEdge = pos <= 0 || pos >= end;
+        pos = Math.max(0, Math.min(pos, end));
+        music.seek(Math.round(pos));
+        if (music.playing) return void (fling = 0);
+        if (hitEdge || Math.abs(v) < 0.03) {
+          fling = 0;
+          settle();
+          return;
+        }
+        fling = requestAnimationFrame(step);
+      };
+      fling = requestAnimationFrame(step);
     };
 
     const onDbl = (e: MouseEvent) => {
@@ -238,26 +297,33 @@ export function Timeline() {
       else music.seek(Math.round(snapTime(editor.bm, timeAt(x), editor.beatDivisor)));
     };
 
-    // Touch: dragging empty timeline (or anywhere on the timing screen) scrolls it, a long press deletes the
-    // object under the finger or starts a box selection, and a pinch zooms.
+    // Touch: a tap selects one object (or toggles it with Multi-select on), dragging scrolls the timeline (and flings
+    // it) unless it starts on a selected object, which moves the selection, a long press adds to the selection
+    // (the object under the finger, or a box when the finger then drags), and a pinch zooms. Objects are close
+    // together under a fingertip, so dragging only grabs what is already selected.
     let zoom0 = 1;
     const detachTouch = attachTouch(canvas, {
       press: (x, y, kind) => {
         if (!editor.hasProject) return;
         const m = { ...touchMods.get() };
         if (kind === 'tap' && editor.screen === 'compose') editor.leavePlacement(true);
-        const hit = editor.screen === 'timing' ? null : hitTest(x, y);
-        if (kind === 'long') pressAt(x, y, hit ? 2 : 0, m);
-        else if (kind === 'drag' && !hit) dragRef.current = { kind: 'pan', x0: x, t0: music.time };
-        else pressAt(x, y, 0, m);
+        const timing = editor.screen === 'timing';
+        if (kind === 'long' && !timing) {
+          const t0 = timeAt(x);
+          dragRef.current = { kind: 'box', t0, t1: t0, base: [...editor.selection], x0: x, toggle: hitTest(x, y)?.obj.id };
+        } else if (kind === 'drag') {
+          const grab = timing ? null : hitTest(x, y, (o) => editor.selection.has(o.id));
+          if (grab) pressAt(x, y, 0, m, grab);
+          else dragRef.current = { kind: 'pan', x0: x, t0: music.time, samples: [{ x, t: performance.now() }] };
+        } else pressAt(x, y, 0, m);
       },
       move: (x) => dragTo(x, touchMods.get().shift),
-      release: onUp,
+      release: () => finish(true),
       doubleTap: (x, y) => editor.hasProject && seekAt(x, y),
       multiTap: (n) => editor.hasProject && undoTap(n, () => editor.undo(), () => editor.redo()),
       pinch: {
         start: () => {
-          onUp();
+          finish(false);
           zoom0 = editor.hasProject ? editor.bm.editor.timelineZoom : 1;
         },
         update: (_dx, scale) => editor.hasProject && editor.setTimelineZoom(zoom0 * scale),
@@ -270,9 +336,11 @@ export function Timeline() {
     canvas.addEventListener('pointerup', onUp);
     canvas.addEventListener('pointercancel', onUp);
     canvas.addEventListener('dblclick', onDbl);
+    canvas.addEventListener('wheel', stopFling, { passive: true });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     return () => {
       off();
+      stopFling();
       ro.disconnect();
       detachTouch();
       canvas.removeEventListener('pointerdown', onDown);
@@ -280,6 +348,7 @@ export function Timeline() {
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
       canvas.removeEventListener('dblclick', onDbl);
+      canvas.removeEventListener('wheel', stopFling);
     };
   }, []);
 

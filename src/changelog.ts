@@ -2,6 +2,7 @@
 // has that the running one doesn't, so add a line with each change worth telling players about (the build puts
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
+  'Editor: Song Folder takes dropped files and folders, selects several files, previews images and sounds, and downloads files.',
   'The new version notice shows what changed before you reload.',
   'Editor: smoother seeking and zooming, and menus, dialogs, toasts and screen changes animate.',
   'Install osu!browser as an app from Options.',

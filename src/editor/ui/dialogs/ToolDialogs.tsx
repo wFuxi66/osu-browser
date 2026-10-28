@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { hitsounds } from '../../../audio/hitsounds';
 import { music } from '../../../audio/music';
 import { sliderPositionAtSpan } from '../../../osu/curves';
@@ -6,7 +6,8 @@ import { parseOsu } from '../../../osu/parser';
 import { serializeBeatmap } from '../../../osu/serializer';
 import { beatLengthAt, sliderSpanDuration } from '../../../osu/timing';
 import { defaultSample, newObjectId, type HitObject, type Slider } from '../../../osu/types';
-import { pickFiles } from '../../../project/open';
+import { filesFromDrop, pickFiles } from '../../../project/open';
+import { downloadBlob, mimeFor } from '../../../project/project';
 import { confirmBox } from '../../../ui/prompt';
 import { Check, GroupBox, NumberBox, OkCancel, Radio, Row, TrackRow, WinDialog } from '../../../ui/win';
 import { expectedDistance } from '../../playfield/snapping';
@@ -433,7 +434,7 @@ export function FilesDialog() {
     }
   };
   // Click picks one, Ctrl+click toggles, Shift+click picks a range, like an Explorer list.
-  const pick = (e: React.MouseEvent, name: string) => {
+  const pick = (e: MouseEvent, name: string) => {
     const at = anchor.current ? files.findIndex(([n]) => n === anchor.current) : -1;
     if (e.shiftKey && at >= 0) {
       const i = files.findIndex(([n]) => n === name);

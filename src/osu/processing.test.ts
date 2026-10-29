@@ -81,6 +81,16 @@ describe('stacking time references (stable: circle compares starts, slider compa
     expect(proc.info.get(a.id)!.stackHeight).toBe(0);
     expect(proc.info.get(b.id)!.stackHeight).toBe(0);
   });
+
+  it('reports the longest object, so a view can look back far enough for one still running', () => {
+    const s = slider(100, 100, 1000, { x: 300, y: 100 }, 200);
+    const c = circle(100, 200, 5000);
+    const proc = processBeatmap(map([s, c]));
+    // 200 px at 1.4x slider multiplier and 500 ms beats is 714 ms: longer than the 1200 ms preempt is not needed
+    // here, but a slider can easily outlast it and must not be culled while it is still being played.
+    expect(proc.maxDuration).toBeCloseTo(714.29, 1);
+    expect(proc.maxDuration).toBeGreaterThan(proc.info.get(c.id)!.endTime - c.time);
+  });
 });
 
 describe('stackTarget (placement snapping onto a shown head or slider tail)', () => {

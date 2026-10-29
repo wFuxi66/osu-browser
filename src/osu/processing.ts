@@ -34,6 +34,8 @@ export interface ProcessedBeatmap {
   preempt: number;
   fadeIn: number;
   stackOffset: number;
+  /** Longest object from its start to its end: how far back a view has to look for one that is still running. */
+  maxDuration: number;
 }
 
 const STACK_DISTANCE = 3;
@@ -54,6 +56,7 @@ export function processBeatmap(bm: Beatmap, carryStackHeights?: ProcessedBeatmap
   // The colour index starts at 1, so the first combo uses the second combo colour, as in stable.
   let comboIndex = 0;
   let comboNumber = 0;
+  let maxDuration = 0;
   objs.forEach((o, i) => {
     const prev = objs[i - 1];
     if (o.kind !== 'spinner' && (i === 0 || o.newCombo || prev.kind === 'spinner')) {
@@ -63,12 +66,14 @@ export function processBeatmap(bm: Beatmap, carryStackHeights?: ProcessedBeatmap
     if (o.kind !== 'spinner') comboNumber++;
     const endPos = o.kind === 'slider' ? sliderEndPosition(o) : { x: o.x, y: o.y };
     const stackHeight = carryStackHeights?.info.get(o.id)?.stackHeight ?? 0;
-    info.set(o.id, { comboNumber: o.kind === 'spinner' ? 0 : comboNumber, comboIndex, stackHeight, endTime: objectEndTime(bm, o), endPos });
+    const endTime = objectEndTime(bm, o);
+    if (endTime - o.time > maxDuration) maxDuration = endTime - o.time;
+    info.set(o.id, { comboNumber: o.kind === 'spinner' ? 0 : comboNumber, comboIndex, stackHeight, endTime, endPos });
   });
 
   if (bm.general.mode === 0 && !carryStackHeights) applyStacking(bm, objs, info, preempt);
   const scale = (1 - (0.7 * (bm.difficulty.circleSize - 5)) / 5) / 2;
-  return { info, radius, preempt, fadeIn, stackOffset: -6.4 * scale };
+  return { info, radius, preempt, fadeIn, stackOffset: -6.4 * scale, maxDuration };
 }
 
 function applyStacking(bm: Beatmap, objs: HitObject[], info: Map<number, ObjectInfo>, preempt: number) {

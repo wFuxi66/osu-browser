@@ -93,12 +93,17 @@ export class StdPlayfield {
    * scan starts from a binary search on the times, which are kept sorted, instead of walking the whole map, so a long
    * map doesn't cost a pass over thousands of objects every frame. A drag that moves objects in time leaves the array
    * unsorted until it ends, and then the scan falls back to starting at 0.
+   *
+   * The search looks back far enough for the longest object, not just one preempt: a slider can start more than a
+   * preempt before the current time and still be playing (and fading out after its end), and it must stay on screen
+   * until it is done.
    */
   private visibleScan(t: number): { objects: HitObject[]; indices: number[] } {
     const p = editor.processed;
     const fo = this.fadeOutDuration();
     const objs = editor.bm.hitObjects;
-    const start = !editor.changing || ascendingByTime(objs) ? firstAtOrAfter(objs, t - p.preempt) : 0;
+    const lookBack = Math.max(p.preempt, (Number.isFinite(p.maxDuration) ? p.maxDuration : 0) + fo);
+    const start = !editor.changing || ascendingByTime(objs) ? firstAtOrAfter(objs, t - lookBack) : 0;
     const objects: HitObject[] = [];
     const indices: number[] = [];
     for (let i = start; i < objs.length; i++) {

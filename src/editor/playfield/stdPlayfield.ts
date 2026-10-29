@@ -1,6 +1,6 @@
 // osu!standard / osu!catch compose playfield: rendering and mouse interaction.
 import { music } from '../../audio/music';
-import { autoCurveType, computeRawPath, dist, getSliderPath, sliderPositionAtSpan } from '../../osu/curves';
+import { autoCurveType, dist, getSliderPath, sliderPositionAtSpan } from '../../osu/curves';
 import { comboColourIndex, sliderTickProgresses, stackedPosition } from '../../osu/processing';
 import { beatLengthAt, pixelsPerBeat, sliderSpanDuration } from '../../osu/timing';
 import { comboColours, sliderColours } from '../../skin/skin';
@@ -21,7 +21,7 @@ import {
   type View,
 } from '../render/draw';
 import { sliderFromShape } from '../placement';
-import { clampMoveToPlayfield, editor, PLAYFIELD_H, PLAYFIELD_W, snapSliderLength, translateObject } from '../store';
+import { clampMoveToPlayfield, editor, PLAYFIELD_H, PLAYFIELD_W, translateObject } from '../store';
 import { touchedRecently } from '../../ui/touch';
 import { clampToPlayfield, distanceSnapActive, distanceSnapCentre, gridSnapActive, snapPosition, type Modifiers } from './snapping';
 
@@ -393,14 +393,13 @@ export class StdPlayfield {
       drawHitCircle(ctx, s.x, s.y, r, { r: 200, g: 200, b: 200 }, 0.5, null, false);
     } else if (tool === 'slider') {
       if (placing) {
-        // Preview the body clipped to the beat-snapped length it will get, like stable.
+        // The preview is the slider as it will be placed: the whole drawn path, at its own length. Stable doesn't
+        // snap a new slider's end to the beat divisor, so neither does the preview.
         const verts = pos ? [...placing.vertices, pos] : placing.vertices;
         const preview = { x: verts[0].x, y: verts[0].y, curveType: autoCurveType(verts), points: verts.slice(1), length: 0, time: placing.time } as Slider;
         if (verts.length > 1) {
           preview.length = getSliderPath(preview).rawLength;
-          snapSliderLength(editor.bm, preview, editor.beatDivisor);
-          const body = preview.length >= 1 ? getSliderPath(preview).points : computeRawPath(preview.curveType, verts);
-          drawSliderBody(ctx, body.map((q) => toScreen(v, q)), r, { r: 180, g: 180, b: 180 }, { r: 255, g: 255, b: 255 }, 0.6, false);
+          drawSliderBody(ctx, getSliderPath(preview).points.map((q) => toScreen(v, q)), r, { r: 180, g: 180, b: 180 }, { r: 255, g: 255, b: 255 }, 0.6, false);
         }
         if (preview.length >= 1) {
           const end = toScreen(v, getSliderPath(preview).positionAt(1));
@@ -647,8 +646,8 @@ export class StdPlayfield {
       s.x = verts[0].x;
       s.y = verts[0].y;
       s.points = verts.slice(1);
+      // The drag keeps the drawn length: the mapper's end stays where they let go (stable, not the divisor).
       s.length = getSliderPath({ ...s, length: 0 }).rawLength;
-      snapSliderLength(editor.bm, s, editor.beatDivisor);
       d.moved = true;
       editor.touch();
     } else if (d.kind === 'place') {
@@ -849,7 +848,8 @@ export class StdPlayfield {
       editor.emit();
       return;
     }
-    snapSliderLength(editor.bm, s, editor.beatDivisor);
+    // No beat snapping here: stable lets a new slider end where the mapper drew it, and AiMod flags it if that's
+    // between two ticks. Timing → Recalculate Slider Lengths does the snapping when asked.
     editor.addObject(s);
     editor.advanceAfterPlace(s);
   }
@@ -919,7 +919,6 @@ export class StdPlayfield {
       s.points = verts.slice(1);
       if (s.curveType !== 'B' && s.curveType !== 'L') s.curveType = 'B';
       s.length = getSliderPath({ ...s, length: 0 }).rawLength;
-      snapSliderLength(editor.bm, s, editor.beatDivisor);
     });
   }
 
@@ -942,7 +941,6 @@ export class StdPlayfield {
       s.points = verts.slice(1);
       if (s.curveType === 'P' || s.curveType === 'L') s.curveType = 'B';
       s.length = getSliderPath({ ...s, length: 0 }).rawLength;
-      snapSliderLength(editor.bm, s, editor.beatDivisor);
     });
     return true;
   }
@@ -953,7 +951,6 @@ export class StdPlayfield {
       s.points.splice(idx - 1, 1);
       if (s.curveType === 'P' && s.points.length !== 2) s.curveType = 'B';
       s.length = getSliderPath({ ...s, length: 0 }).rawLength;
-      snapSliderLength(editor.bm, s, editor.beatDivisor);
     });
   }
 }

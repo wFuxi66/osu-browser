@@ -19,7 +19,7 @@ import { cloud } from '../project/cloud';
 import { skins } from '../skin/skin';
 import { ask } from '../ui/prompt';
 import { touchedRecently } from '../ui/touch';
-import { nextPlacementTime } from './placement';
+import { nextPlacementTime, snapSliderLength } from './placement';
 
 export type Screen = 'compose' | 'design' | 'timing';
 export type Tool = 'select' | 'circle' | 'slider' | 'spinner';
@@ -1357,15 +1357,8 @@ export function reverseSliderPath(s: Slider) {
   s.edgeSets.reverse();
 }
 
-/** Clamp a slider's length to a whole number of divisor ticks that fits its path. */
-export function snapSliderLength(bm: Beatmap, s: Slider, divisor: number) {
-  const raw = getSliderPath({ ...s, length: 0 }).rawLength;
-  const ppb = bm.difficulty.sliderMultiplier * 100 * svAt(bm, s.time);
-  const tickLen = ppb / divisor;
-  if (tickLen <= 0) return;
-  const ticks = Math.max(1, Math.floor((Math.min(s.length || raw, raw) + 0.01) / tickLen));
-  s.length = Number((ticks * tickLen).toFixed(6));
-}
+/** Slider length clamping lives with the other pure placement helpers; re-exported so callers keep one import. */
+export { snapSliderLength } from './placement';
 
 export function maniaColumn(x: number, keys: number): number {
   const k = Math.max(1, Math.round(keys));

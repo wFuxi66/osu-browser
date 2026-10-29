@@ -1,6 +1,6 @@
-// What a placement builds, and where the playhead goes afterwards (pure, so the editor and the tests share it).
+// Placement and slider-length helpers (pure, so the editor and the tests share them).
 import { autoCurveType, getSliderPath } from '../osu/curves';
-import { objectEndTime, stepTick } from '../osu/timing';
+import { objectEndTime, stepTick, svAt } from '../osu/timing';
 import type { Beatmap, HitObject, HitSample, Slider, Vec2 } from '../osu/types';
 
 export interface SliderShape {
@@ -59,4 +59,18 @@ export function nextPlacementTime(bm: Beatmap, o: HitObject, divisor: number, ti
     return t;
   }
   return objectEndTime(bm, o);
+}
+
+/**
+ * Clamp a slider's length to a whole number of divisor ticks that fits its path. This is stable's "Recalculate
+ * slider lengths", the timeline's tail drag and a resnap after timing changes — never a fresh placement, which keeps
+ * the length the mapper drew (an unsnapped end, which AiMod then flags).
+ */
+export function snapSliderLength(bm: Beatmap, s: Slider, divisor: number) {
+  const raw = getSliderPath({ ...s, length: 0 }).rawLength;
+  const ppb = bm.difficulty.sliderMultiplier * 100 * svAt(bm, s.time);
+  const tickLen = ppb / divisor;
+  if (tickLen <= 0) return;
+  const ticks = Math.max(1, Math.floor((Math.min(s.length || raw, raw) + 0.01) / tickLen));
+  s.length = Number((ticks * tickLen).toFixed(6));
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sliderFromShape, nextPlacementTime } from './placement';
+import { sliderFromShape, nextPlacementTime, snapSliderLength } from './placement';
 import { getSliderPath } from '../osu/curves';
 import { objectEndTime, snapTime } from '../osu/timing';
 import { createEmptyBeatmap, defaultSample, newObjectId, type Beatmap, type Circle, type Spinner } from '../osu/types';
@@ -91,5 +91,15 @@ describe('sliderFromShape (what a placement builds)', () => {
     const arc = sliderFromShape(shape([{ x: 200, y: 100 }, { x: 200, y: 200 }]))!;
     expect(arc.curveType).toBe('P');
     expect(getSliderPath(arc).length).toBeGreaterThan(1);
+  });
+
+  it('the explicit recalculate command still snaps a slider to whole divisor ticks', () => {
+    const bm = map();
+    const s = sliderFromShape(shape([{ x: 200, y: 130 }]))!;
+    expect(s.length).toBeCloseTo(104.403, 2);
+    // 1/4 of a 140 px beat is 35 px: the recalculate command floors the 104.4 px path to 2 whole ticks (70 px).
+    snapSliderLength(bm, s, bm.editor.beatDivisor);
+    expect(s.length).toBeCloseTo(70, 6);
+    expect(snapTime(bm, objectEndTime(bm, s), bm.editor.beatDivisor)).toBeCloseTo(objectEndTime(bm, s), 3);
   });
 });

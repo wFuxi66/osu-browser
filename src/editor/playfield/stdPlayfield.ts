@@ -85,16 +85,31 @@ export class StdPlayfield {
   }
 
   visibleObjects(t: number): HitObject[] {
+    return this.visibleScan(t).objects;
+  }
+
+  /**
+   * Visible objects at `t`, with their index in the beatmap (follow points look at the next object in the map). The
+   * scan starts from a binary search on the times, which are kept sorted, instead of walking the whole map, so a long
+   * map doesn't cost a pass over thousands of objects every frame. A drag that moves objects in time leaves the array
+   * unsorted until it ends, and then the scan falls back to starting at 0.
+   */
+  private visibleScan(t: number): { objects: HitObject[]; indices: number[] } {
     const p = editor.processed;
     const fo = this.fadeOutDuration();
-    const out: HitObject[] = [];
-    for (const o of editor.bm.hitObjects) {
+    const objs = editor.bm.hitObjects;
+    const start = !editor.changing || ascendingByTime(objs) ? firstAtOrAfter(objs, t - p.preempt) : 0;
+    const objects: HitObject[] = [];
+    const indices: number[] = [];
+    for (let i = start; i < objs.length; i++) {
+      const o = objs[i];
       if (o.time - p.preempt > t) break;
       const end = p.info.get(o.id)?.endTime ?? o.time;
       if (end + fo < t) continue;
-      out.push(o);
+      objects.push(o);
+      indices.push(i);
     }
-    return out;
+    return { objects, indices };
   }
 
   private selectedSlider(): Slider | null {
@@ -139,14 +154,14 @@ export class StdPlayfield {
     }
     ctx.restore();
 
-    const visible = this.visibleObjects(t);
+    const visible = this.visibleScan(t);
+    const shown = visible.objects;
 
     // Follow points between consecutive objects of the same combo.
     if (editor.prefs.showFollowPoints) {
-      for (let i = 0; i < visible.length; i++) {
-        const o = visible[i];
-        const idx = bm.hitObjects.indexOf(o);
-        const next = bm.hitObjects[idx + 1];
+      for (let i = 0; i < shown.length; i++) {
+        const o = shown[i];
+        const next = bm.hitObjects[visible.indices[i] + 1];
         if (!next || next.kind === 'spinner' || o.kind === 'spinner' || p.info.get(next.id)!.comboNumber === 1) continue;
         const oEnd = p.info.get(o.id)!.endTime;
         if (t > next.time || t < oEnd - p.preempt) continue;
@@ -159,8 +174,8 @@ export class StdPlayfield {
     }
 
     // Draw back-to-front so earlier objects are on top.
-    for (let i = visible.length - 1; i >= 0; i--) {
-      const o = visible[i];
+    for (let i = shown.length - 1; i >= 0; i--) {
+      const o = shown[i];
       const alpha = this.objectAlpha(o, t);
       if (alpha <= 0) continue;
       const selected = editor.selection.has(o.id);
@@ -170,7 +185,7 @@ export class StdPlayfield {
     }
 
     // Approach circles on top.
-    for (const o of visible) {
+    for (const o of shown) {
       if (o.kind === 'spinner' || t > o.time) continue;
       const alpha = this.objectAlpha(o, t);
       const prog = Math.min(1, Math.max(0, (o.time - t) / p.preempt));
@@ -592,7 +607,9 @@ export class StdPlayfield {
       if (editor.locked) return;
       const originals = new Map<number, HitObject>();
       for (const o of editor.selectedObjects) originals.set(o.id, structuredClone(o));
-      editor.beginChange();
+      // Moving objects around changes neither their times nor their shapes, so the frame keeps the snapshot it has:
+      // stack heights and slider tails are a frame stale, which no one can see, instead of reprocessing the map.
+      editor.beginChange('freeze');
       this.drag = { kind: 'move', start: p, anchor: hit, anchorStart: { x: hit.x, y: hit.y }, originals, moved: false };
     } else {
       this.drag = { kind: 'box', start: p, end: p, additive: this.mods.ctrl || this.mods.shift };
@@ -962,4 +979,22 @@ function distToSegment(p: Vec2, a: Vec2, b: Vec2): number {
   if (l2 === 0) return dist(p, a);
   const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2));
   return dist(p, { x: a.x + t * dx, y: a.y + t * dy });
+}
+
+/** First index whose object starts at or after `time`; the beatmap's objects are sorted by time. */
+function firstAtOrAfter(objs: HitObject[], time: number): number {
+  let lo = 0;
+  let hi = objs.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (objs[mid].time < time) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Whether the objects are still in time order: a drag that moves them in time sorts the array only when it ends. */
+function ascendingByTime(objs: HitObject[]): boolean {
+  for (let i = 1; i < objs.length; i++) if (objs[i].time < objs[i - 1].time) return false;
+  return true;
 }

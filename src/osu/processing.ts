@@ -38,7 +38,12 @@ export interface ProcessedBeatmap {
 
 const STACK_DISTANCE = 3;
 
-export function processBeatmap(bm: Beatmap): ProcessedBeatmap {
+/**
+ * Derived data for every object. `carryStackHeights` is the editor's shortcut for a drag that is still running: the
+ * map is reprocessed for combo numbers and end positions, but stacking (the expensive part) is skipped and each
+ * object keeps the height it had, so dragging doesn't re-stack the whole map on every frame.
+ */
+export function processBeatmap(bm: Beatmap, carryStackHeights?: ProcessedBeatmap): ProcessedBeatmap {
   const objs = bm.hitObjects;
   const info = new Map<number, ObjectInfo>();
   const radius = circleRadius(bm.difficulty.circleSize);
@@ -57,10 +62,11 @@ export function processBeatmap(bm: Beatmap): ProcessedBeatmap {
     }
     if (o.kind !== 'spinner') comboNumber++;
     const endPos = o.kind === 'slider' ? sliderEndPosition(o) : { x: o.x, y: o.y };
-    info.set(o.id, { comboNumber: o.kind === 'spinner' ? 0 : comboNumber, comboIndex, stackHeight: 0, endTime: objectEndTime(bm, o), endPos });
+    const stackHeight = carryStackHeights?.info.get(o.id)?.stackHeight ?? 0;
+    info.set(o.id, { comboNumber: o.kind === 'spinner' ? 0 : comboNumber, comboIndex, stackHeight, endTime: objectEndTime(bm, o), endPos });
   });
 
-  if (bm.general.mode === 0) applyStacking(bm, objs, info, preempt);
+  if (bm.general.mode === 0 && !carryStackHeights) applyStacking(bm, objs, info, preempt);
   const scale = (1 - (0.7 * (bm.difficulty.circleSize - 5)) / 5) / 2;
   return { info, radius, preempt, fadeIn, stackOffset: -6.4 * scale };
 }

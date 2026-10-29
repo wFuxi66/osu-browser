@@ -117,6 +117,8 @@ class Editor {
   private redoStack: Beatmap[] = [];
   private savedSnapshot: Beatmap | null = null;
   private processedCache: { rev: number; value: ProcessedBeatmap } | null = null;
+  /** How `processed` keeps up while a continuous change is open (see beginChange). */
+  private changeMode: 'cheap' | 'freeze' = 'cheap';
   private clipboard: HitObject[] = [];
   private changeOpen = false;
   private dirtyBeforeChange = false;
@@ -135,11 +137,24 @@ class Editor {
     return this.project !== null;
   }
 
+  /**
+   * Derived per-object data, cached until the content changes. While a drag is running it is refreshed cheaply: a
+   * position-only drag keeps the snapshot it started with (stack heights and slider tails stay at their pre-drag
+   * positions for the length of the drag, which is invisible while dragging), and a drag that moves objects in time
+   * reprocesses combo numbers and end positions while carrying the stack heights, which skips the stacking pass.
+   * Ending the change recomputes everything once.
+   */
   get processed(): ProcessedBeatmap {
-    if (!this.processedCache || this.processedCache.rev !== this.contentRev) {
-      this.processedCache = { rev: this.contentRev, value: processBeatmap(this.bm) };
-    }
-    return this.processedCache.value;
+    if (this.processedCache && this.processedCache.rev === this.contentRev) return this.processedCache.value;
+    const prev = this.processedCache?.value;
+    const value = this.changeOpen && this.changeMode === 'freeze' && prev ? prev : processBeatmap(this.bm, this.changeOpen ? prev : undefined);
+    this.processedCache = { rev: this.contentRev, value };
+    return value;
+  }
+
+  /** True while a drag (or another continuous change) is open. */
+  get changing(): boolean {
+    return this.changeOpen;
   }
 
   subscribe = (l: () => void) => {
@@ -612,12 +627,20 @@ class Editor {
     this.markDirty();
   }
 
-  /** Start a continuous change (e.g. a drag). Call `touch()` while it runs and `endChange()` at the end. */
-  beginChange() {
+  /**
+   * Start a continuous change (e.g. a drag). Call `touch()` while it runs and `endChange()` at the end.
+   *
+   * `mode` says how the per-object data keeps up meanwhile (see `processed`): 'freeze' for a drag that only moves
+   * objects around, 'cheap' for one that changes their times, their length or their shape.
+   */
+  beginChange(mode: 'cheap' | 'freeze' = 'cheap') {
     if (!this.project || this.changeOpen) return;
     this.pushUndo();
     this.changeOpen = true;
+    this.changeMode = mode;
     this.dirtyBeforeChange = this.dirty;
+    // Take the snapshot now, so the first frame of the drag has one to freeze.
+    void this.processed;
   }
 
   touch() {
@@ -817,6 +840,8 @@ class Editor {
   // ---------------------------------------------------------------- selection
 
   get selectedObjects(): HitObject[] {
+    // Called on every frame by the UI; with nothing selected (playback, a fresh map) it must not walk the map.
+    if (this.selection.size === 0) return [];
     return this.bm.hitObjects.filter((o) => this.selection.has(o.id));
   }
 

@@ -81,7 +81,8 @@ function applyStacking(bm: Beatmap, objs: HitObject[], info: Map<number, ObjectI
       while (--n >= 0) {
         const objN = objs[n];
         if (objN.kind === 'spinner') continue;
-        if (objI.time - inf(objN).endTime > threshold) break;
+        // Stable compares the two start times here; the end time of a circle is its start, a slider's is not.
+        if (objI.time - objN.time > threshold) break;
         if (objN.kind === 'slider' && dist(inf(objN).endPos, pos(objI)) < STACK_DISTANCE) {
           const offset = inf(objI).stackHeight - inf(objN).stackHeight + 1;
           for (let j = n + 1; j <= i; j++) {
@@ -99,7 +100,8 @@ function applyStacking(bm: Beatmap, objs: HitObject[], info: Map<number, ObjectI
       while (--n >= 0) {
         const objN = objs[n];
         if (objN.kind === 'spinner') continue;
-        if (objI.time - objN.time > threshold) break;
+        // A slider compares against where the previous object ends, so a long slider's own length counts.
+        if (objI.time - inf(objN).endTime > threshold) break;
         if (dist(inf(objN).endPos, pos(objI)) < STACK_DISTANCE) {
           inf(objN).stackHeight = inf(objI).stackHeight + 1;
           objI = objN;
@@ -113,6 +115,28 @@ function applyStacking(bm: Beatmap, objs: HitObject[], info: Map<number, ObjectI
 export function stackedPosition(o: HitObject, p: ProcessedBeatmap): Vec2 {
   const h = p.info.get(o.id)?.stackHeight ?? 0;
   return { x: o.x + h * p.stackOffset, y: o.y + h * p.stackOffset };
+}
+
+/**
+ * The position a placement point within `tol` osu!px lands exactly on, so the new object lands on top of an existing
+ * one: a circle's head, or a slider's head or tail. Stable's own stack distance is 3; the caller picks the tolerance
+ * (mouse or finger). Returns null when the point is farther than that from every shown object.
+ */
+export function stackTarget(p: Vec2, shown: HitObject[], proc: ProcessedBeatmap, tol: number): Vec2 | null {
+  let best: Vec2 | null = null;
+  let bestD = tol;
+  for (const o of shown) {
+    if (o.kind === 'spinner') continue;
+    const info = proc.info.get(o.id);
+    if (!info) continue;
+    const sh = info.stackHeight * proc.stackOffset;
+    const d = dist(p, stackedPosition(o, proc));
+    if (d < bestD) [best, bestD] = [{ x: o.x, y: o.y }, d];
+    if (o.kind !== 'slider') continue;
+    const de = dist(p, { x: info.endPos.x + sh, y: info.endPos.y + sh });
+    if (de < bestD) [best, bestD] = [info.endPos, de];
+  }
+  return best;
 }
 
 /** Index into a combo colour palette of `count` colours (the beatmap's, or the skin's when it has none). */

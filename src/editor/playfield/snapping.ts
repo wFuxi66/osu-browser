@@ -1,6 +1,6 @@
 // Grid and distance snapping for placement and dragging.
 import { music } from '../../audio/music';
-import { stackedPosition } from '../../osu/processing';
+import { stackTarget } from '../../osu/processing';
 import { objectEndTime, beatLengthAt, svAt } from '../../osu/timing';
 import type { HitObject, Vec2 } from '../../osu/types';
 import { touchedRecently } from '../../ui/touch';
@@ -50,29 +50,22 @@ export function distanceSnapCentre(time: number, exclude?: Set<number>): { centr
   return { centre: pos, radius };
 }
 
+/** Placement snap distance in osu!px: stable's own stack distance for a mouse, a fingertip's slack for touch. */
+const STACK_SNAP_MOUSE = 3;
+const STACK_SNAP_TOUCH = 8;
+
 /**
  * Like stable, a point over a shown object (its head, or a slider's tail) lands exactly on that object's position, so
  * the two stack: this goes before distance snap, which could never put an object on top of the previous one.
+ *
+ * The tolerance is 3 osu!px, not a fraction of the circle: anything further is left where the mapper put it, so a
+ * nearly-stacked circle stays a nearly-stacked circle instead of becoming an exact stack.
  */
 export function stackSnap(p: Vec2, shown: HitObject[]): Vec2 | null {
   const proc = editor.processed;
-  const tol = proc.radius * (touchedRecently() ? 0.7 : 0.5);
-  let best: Vec2 | null = null;
-  let bestD = tol;
-  for (const o of shown) {
-    if (o.kind === 'spinner') continue;
-    const sh = proc.info.get(o.id)!.stackHeight * proc.stackOffset;
-    const d = dist(p, stackedPosition(o, proc));
-    if (d < bestD) [best, bestD] = [{ x: o.x, y: o.y }, d];
-    if (o.kind !== 'slider') continue;
-    const end = proc.info.get(o.id)!.endPos;
-    const de = dist(p, { x: end.x + sh, y: end.y + sh });
-    if (de < bestD) [best, bestD] = [end, de];
-  }
+  const best = stackTarget(p, shown, proc, touchedRecently() ? STACK_SNAP_TOUCH : STACK_SNAP_MOUSE);
   return best && { x: Math.round(best.x), y: Math.round(best.y) };
 }
-
-const dist = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /** `shown`: the objects on screen, which a point over one of them stacks onto (see stackSnap). */
 export function snapPosition(p: Vec2, m: Modifiers, time = editor.snap(music.time), exclude?: Set<number>, shown?: HitObject[]): Vec2 {

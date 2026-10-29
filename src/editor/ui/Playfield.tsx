@@ -134,12 +134,21 @@ export function Playfield() {
       mode.mods = { shift: e.shiftKey || t.shift, alt: e.altKey || t.alt, ctrl: e.ctrlKey || e.metaKey || t.ctrl };
     };
     const down = (e: PointerEvent) => {
-      if (!editor.hasProject || e.pointerType === 'touch') return;
+      if (!editor.hasProject || e.pointerType === 'touch' || e.button !== 0) return;
       syncMods(e);
       canvas.setPointerCapture(e.pointerId);
       const p = local(e);
-      if (e.button === 0 && editor.leavePlacement(ensureMode().inPlayfield?.(p.x, p.y) === false)) return;
+      if (editor.leavePlacement(ensureMode().inPlayfield?.(p.x, p.y) === false)) return;
       ensureMode().pointerDown(p.x, p.y, e.button);
+    };
+    // A pointer only fires pointerdown for its first button, so a right-click made while the left button is held (a
+    // repeat on a slider being placed) arrives as mousedown alone; handling the right button here avoids seeing a
+    // lone right-click twice.
+    const auxDown = (e: MouseEvent) => {
+      if (!editor.hasProject || e.button !== 2) return;
+      syncMods(e);
+      const p = local(e);
+      ensureMode().pointerDown(p.x, p.y, 2);
     };
     const move = (e: PointerEvent) => {
       if (!editor.hasProject || e.pointerType === 'touch') return;
@@ -232,6 +241,7 @@ export function Playfield() {
       },
     });
     canvas.addEventListener('pointerdown', down);
+    canvas.addEventListener('mousedown', auxDown);
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
     canvas.addEventListener('pointercancel', cancelPointer);
@@ -246,6 +256,7 @@ export function Playfield() {
       activePlayfield.current = null;
       detachTouch();
       canvas.removeEventListener('pointerdown', down);
+      canvas.removeEventListener('mousedown', auxDown);
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);
       canvas.removeEventListener('pointercancel', cancelPointer);

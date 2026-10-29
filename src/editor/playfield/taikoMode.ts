@@ -177,8 +177,11 @@ export class TaikoMode implements PlayfieldMode {
     const hitSound = (pl.whistle ? 2 : 0) | (pl.finish ? 4 : 0) | (pl.clap ? 8 : 0);
     const base = { id: newObjectId(), x: 256, y: 192, time, newCombo: pl.newCombo, comboSkip: 0, hitSound, sample };
     const bm = editor.bm;
-    if (editor.tool === 'circle') editor.addObject({ ...base, kind: 'circle' });
-    else if (editor.tool === 'spinner') editor.spinnerClick();
+    if (editor.tool === 'circle') {
+      const o = { ...base, kind: 'circle' as const };
+      editor.addObject(o);
+      editor.advanceAfterPlace(o);
+    } else if (editor.tool === 'spinner') editor.spinnerClick();
     else if (editor.tool === 'slider') {
       const len = bm.difficulty.sliderMultiplier * 100 * svAt(bm, time);
       const s = {
@@ -194,6 +197,7 @@ export class TaikoMode implements PlayfieldMode {
       s.length = getSliderPath({ ...s, length: 0 }).rawLength;
       snapSliderLength(bm, s, editor.beatDivisor);
       editor.addObject(s);
+      editor.advanceAfterPlace(s);
     }
   }
 

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { music } from '../../audio/music';
 import { findFile } from '../../project/project';
 import { onFrame, redrawNext } from '../playback';
 import { CatchMode } from '../playfield/catchMode';
@@ -148,7 +147,15 @@ export function Playfield() {
       const p = local(e);
       ensureMode().pointerMove(p.x, p.y);
     };
-    const up = (e: PointerEvent) => e.pointerType !== 'touch' && mode?.pointerUp();
+    // Only the left button finishes a drag: while placing a slider the right button adds a repeat, and releasing it
+    // must not finish the slider.
+    const up = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' && e.button === 0) mode?.pointerUp();
+    };
+    // A cancelled pointer (the browser took it over) always ends the drag, without acting on it.
+    const cancelPointer = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') mode?.pointerUp();
+    };
     const leave = (e: PointerEvent) => e.pointerType !== 'touch' && mode?.pointerLeave();
     const dbl = (e: MouseEvent) => {
       if (touchedRecently()) return;
@@ -164,12 +171,10 @@ export function Playfield() {
     };
     // Touch: a long press is the right click, placement tools preview under the finger and place on lift,
     // a two-finger horizontal swipe seeks like the wheel (swiping left moves forward in time), and a pinch changes
-    // distance spacing like Alt + wheel. With auto-advance
-    // on, placing a circle moves time forward so the next one can be tapped right away.
+    // distance spacing like Alt + wheel. Placing an object moves the playhead on afterwards (see editor.advanceAfterPlace).
     let swipeSteps = 0;
     let pinchKind: 'seek' | 'spacing' | null = null;
     let ds0 = 1;
-    let placeRev: number | null = null;
     // While placing, the cursor sits above the finger so the finger doesn't hide it, easing back to the finger
     // near the bottom edge so the bottom of the playfield stays reachable.
     const lift = (y: number) =>
@@ -185,19 +190,13 @@ export function Playfield() {
         if (!editor.hasProject) return;
         syncMods(keyMods);
         if (kind === 'tap' && editor.leavePlacement(ensureMode().inPlayfield?.(x, lift(y)) === false)) return;
-        placeRev = kind === 'tap' && editor.tool === 'circle' ? editor.contentRev : null;
         ensureMode().pointerDown(x, lift(y), kind === 'long' ? 2 : 0, kind === 'drag');
       },
       move: (x, y) => {
         syncMods(keyMods);
         mode?.pointerMove(x, lift(y));
       },
-      release: () => {
-        mode?.pointerUp();
-        const ticks = editor.prefs.touchAutoAdvance;
-        if (placeRev !== null && editor.contentRev !== placeRev && ticks > 0 && !music.playing) editor.seekTick(1, ticks);
-        placeRev = null;
-      },
+      release: () => mode?.pointerUp(),
       leave: () => mode?.pointerLeave(),
       doubleTap: (x, y) => mode?.doubleClick(x, y),
       multiTap: (n) => editor.hasProject && undoTap(n, () => editor.undo(), () => editor.redo()),
@@ -235,7 +234,7 @@ export function Playfield() {
     canvas.addEventListener('pointerdown', down);
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
-    canvas.addEventListener('pointercancel', up);
+    canvas.addEventListener('pointercancel', cancelPointer);
     canvas.addEventListener('pointerleave', leave);
     canvas.addEventListener('dblclick', dbl);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -249,7 +248,7 @@ export function Playfield() {
       canvas.removeEventListener('pointerdown', down);
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);
-      canvas.removeEventListener('pointercancel', up);
+      canvas.removeEventListener('pointercancel', cancelPointer);
       canvas.removeEventListener('pointerleave', leave);
       canvas.removeEventListener('dblclick', dbl);
       window.removeEventListener('keydown', keys);

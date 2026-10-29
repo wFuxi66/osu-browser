@@ -255,9 +255,13 @@ export class ManiaMode implements PlayfieldMode {
       if (editor.tool === 'slider') {
         // A click without dragging makes a one-beat hold.
         const end = d.end > d.start ? d.end : Math.round(d.start + redLineAt(editor.bm, d.start).beatLength);
-        editor.addObject({ ...base, kind: 'hold', endTime: end });
+        const o = { ...base, kind: 'hold' as const, endTime: end };
+        editor.addObject(o);
+        editor.advanceAfterPlace(o);
       } else {
-        editor.addObject({ ...base, kind: 'circle' });
+        const o = { ...base, kind: 'circle' as const };
+        editor.addObject(o);
+        editor.advanceAfterPlace(o);
       }
     }
   }

@@ -406,7 +406,7 @@ export class CatchMode implements PlayfieldMode {
       this.placeFruit(this.snapX(this.osuX(x), time), time);
     } else if (tool === 'slider') {
       this.stream = [{ time, x: this.snapX(this.osuX(x), time) }];
-      editor.placing = { kind: 'slider', vertices: [], time };
+      editor.placing = { kind: 'slider', vertices: [], time, slides: 1 };
       editor.emit();
     } else if (tool === 'spinner') {
       this.drag = { kind: 'banana', start: time, end: time };
@@ -430,7 +430,9 @@ export class CatchMode implements PlayfieldMode {
 
   private placeFruit(x: number, time: number) {
     const { sample, hitSound } = this.sampleForPlacement();
-    editor.addObject({ kind: 'circle', id: newObjectId(), x, y: 192, time, newCombo: editor.placement.newCombo, comboSkip: 0, hitSound, sample });
+    const o: HitObject = { kind: 'circle', id: newObjectId(), x, y: 192, time, newCombo: editor.placement.newCombo, comboSkip: 0, hitSound, sample };
+    editor.addObject(o);
+    editor.advanceAfterPlace(o);
   }
 
   /** Turn the placed vertices into a juice stream (needs at least two). */
@@ -467,6 +469,7 @@ export class CatchMode implements PlayfieldMode {
       ],
     };
     editor.addObject(slider);
+    editor.advanceAfterPlace(slider);
   }
 
   pointerMove(x: number, y: number) {
@@ -518,7 +521,9 @@ export class CatchMode implements PlayfieldMode {
     } else if (d.kind === 'banana') {
       const end = d.end > d.start ? d.end : Math.round(d.start + redLineAt(editor.bm, d.start).beatLength * 2);
       const { sample, hitSound } = this.sampleForPlacement();
-      editor.addObject({ kind: 'spinner', id: newObjectId(), x: 256, y: 192, time: d.start, endTime: end, newCombo: true, comboSkip: 0, hitSound, sample });
+      const o: HitObject = { kind: 'spinner', id: newObjectId(), x: 256, y: 192, time: d.start, endTime: end, newCombo: true, comboSkip: 0, hitSound, sample };
+      editor.addObject(o);
+      editor.advanceAfterPlace(o);
     }
   }
 

@@ -18,6 +18,8 @@ import { loadPrefs, loadProjectLocal, saveProjectLocal, savePrefs, type Prefs } 
 import { cloud } from '../project/cloud';
 import { skins } from '../skin/skin';
 import { ask } from '../ui/prompt';
+import { touchedRecently } from '../ui/touch';
+import { nextPlacementTime } from './placement';
 
 export type Screen = 'compose' | 'design' | 'timing';
 export type Tool = 'select' | 'circle' | 'slider' | 'spinner';
@@ -100,7 +102,10 @@ class Editor {
   prefs: Prefs = loadPrefs();
   toasts: Toast[] = [];
   /** Object currently being placed (slider in progress, or a spinner waiting for its end) – drawn by the playfield. */
-  placing: { kind: 'slider'; vertices: Vec2[]; time: number } | { kind: 'spinner'; time: number } | null = null;
+  placing:
+    | { kind: 'slider'; vertices: Vec2[]; time: number; slides: number }
+    | { kind: 'spinner'; time: number; /** Where a desktop drag would end it (null until dragged). */ end: number | null }
+    | null = null;
   metronome = false;
   /** Timing tab: "Move already placed notes when changing the offset/BPM". */
   moveNotesWithTiming = true;
@@ -866,23 +871,44 @@ class Editor {
 
   /**
    * Stable-style spinner placement: the first click starts a spinner at the current time, a second click
-   * after seeking forward ends it there.
+   * after seeking forward ends it there (touch, and taiko).
    */
   spinnerClick(x = 256, y = 192) {
-    const time = Math.round(this.snap(music.time));
-    const p = this.placing;
-    if (p?.kind !== 'spinner') {
-      this.placing = { kind: 'spinner', time };
+    if (this.placing?.kind !== 'spinner') {
+      this.placing = { kind: 'spinner', time: Math.round(this.snap(music.time)), end: null };
       this.emit();
       return;
     }
-    if (time <= p.time) {
-      this.toast('Seek forward to where the spinner should end, then click again.');
-      return;
-    }
+    if (!this.endSpinner(music.time, x, y)) this.toast('Seek forward to where the spinner should end, then click again.');
+  }
+
+  /** Ends a half-placed spinner at `time` (rounded); false when that isn't after its start. */
+  endSpinner(time: number, x = 256, y = 192): boolean {
+    const p = this.placing;
+    if (p?.kind !== 'spinner') return false;
+    const end = Math.round(time);
+    if (!(end > p.time)) return false;
     this.placing = null;
     // stable always flags spinners as new combo
-    this.addObject({ id: newObjectId(), kind: 'spinner', x, y, time: p.time, endTime: time, newCombo: true, comboSkip: 0, ...this.placementSound() });
+    const o: HitObject = { id: newObjectId(), kind: 'spinner', x, y, time: p.time, endTime: end, newCombo: true, comboSkip: 0, ...this.placementSound() };
+    this.addObject(o);
+    this.advanceAfterPlace(o);
+    return true;
+  }
+
+  /**
+   * Moves the playhead on after placing an object, like stable, so the next one doesn't land on the same tick: a
+   * circle goes to the next beat-divisor tick, a slider or spinner to its end. Only while the song is paused.
+   *
+   * On touch the toolbar's own tick count decides how many ticks a circle moves (0 keeps the playhead put), which is
+   * how a phone mapper overrides `autoAdvance`; `touchedRecently()` says whether a finger or a mouse placed it.
+   */
+  advanceAfterPlace(o: HitObject) {
+    if (music.playing || !this.prefs.autoAdvance) return;
+    const ticks = touchedRecently() ? this.prefs.touchAutoAdvance : 1;
+    if (ticks <= 0) return;
+    const t = nextPlacementTime(this.bm, o, this.beatDivisor, ticks);
+    if (t !== null) music.seek(t, true);
   }
 
   deleteSelection() {

@@ -44,13 +44,13 @@ function PlayButton() {
 
 const ADVANCE_STEPS = [0, 1, 2, 4];
 
-/** Cycles how many ticks placing a circle moves time forward (see Playfield). */
+/** Cycles how many ticks placing a circle moves time forward (see editor.advanceAfterPlace). */
 function AutoAdvance() {
   const ed = useEditor();
   const n = ed.prefs.touchAutoAdvance;
   const next = () => ed.setPrefs({ touchAutoAdvance: ADVANCE_STEPS[(ADVANCE_STEPS.indexOf(n) + 1) % ADVANCE_STEPS.length] });
   return (
-    <button className={`ed-thumb-advance ${n ? 'on' : ''}`} onClick={next} title="Move forward after placing a circle">
+    <button className={`ed-thumb-advance ${n ? 'on' : ''}`} onClick={next} title="Ticks to move forward after placing a circle (sliders and spinners go to their end)">
       {n ? `+${n}` : 'Auto'}
       <small>{n ? (n === 1 ? 'tick' : 'ticks') : 'off'}</small>
     </button>

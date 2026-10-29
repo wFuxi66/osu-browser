@@ -395,6 +395,18 @@ export function OptionsPanel() {
           items: [
             { label: 'Background dim', keywords: 'dim background', render: () => <Slider label="Background dim" value={p.backgroundDim} min={0} max={1} step={0.05} format={pct} onChange={(v) => set({ backgroundDim: v })} /> },
             { label: 'Show the grid', keywords: 'grid lines', render: () => <Toggle label="Show the grid" hint="G changes its size. Grid snap (T) only decides whether objects snap to it." value={p.showGrid} onChange={(v) => set({ showGrid: v })} /> },
+            {
+              label: 'Advance after placing',
+              keywords: 'auto advance playhead next tick stable',
+              render: () => (
+                <Toggle
+                  label="Advance after placing"
+                  hint="While the song is paused: a circle moves the playhead to the next beat-divisor tick, a slider or spinner to its end, so the next object doesn't land on the one just placed."
+                  value={p.autoAdvance}
+                  onChange={(v) => set({ autoAdvance: v })}
+                />
+              ),
+            },
             { label: 'Hit animations', render: () => <Toggle label="Hit animations" value={p.showHitAnimations} onChange={(v) => set({ showHitAnimations: v })} /> },
             { label: 'Follow points', render: () => <Toggle label="Follow points" value={p.showFollowPoints} onChange={(v) => set({ showFollowPoints: v })} /> },
             { label: 'Snaking sliders', render: () => <Toggle label="Snaking sliders" value={p.snakingSliders} onChange={(v) => set({ snakingSliders: v })} /> },

@@ -484,7 +484,9 @@ export interface Prefs {
   downloadVideo: boolean;
   /** Key binding changes from the defaults (see editor/keybinds.ts). */
   keybinds: Keybinds;
-  /** Touch editor: beat-snap ticks to move forward after placing a circle (0 = off). */
+  /** Move the playhead on after placing an object (circle → next tick, slider/spinner → end), like stable. */
+  autoAdvance: boolean;
+  /** Touch editor: beat-snap ticks to move forward after placing (0 = off, overrides autoAdvance on touch). */
   touchAutoAdvance: number;
 
   // Gameplay (play mode and the editor's test mode), as in stable's Options.
@@ -544,7 +546,8 @@ export const DEFAULT_PREFS: Prefs = {
   editorDefaultSkin: true,
   skinnedTimeline: true,
   downloadVideo: true,
-  touchAutoAdvance: 0,
+  autoAdvance: true,
+  touchAutoAdvance: 1,
   keybinds: {},
   playDim: 0.8,
   keepDimInBreaks: false,

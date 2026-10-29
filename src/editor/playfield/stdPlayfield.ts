@@ -2,7 +2,7 @@
 import { music } from '../../audio/music';
 import { autoCurveType, computeRawPath, dist, getSliderPath, sliderPositionAtSpan } from '../../osu/curves';
 import { comboColourIndex, sliderTickProgresses, stackedPosition } from '../../osu/processing';
-import { sliderSpanDuration } from '../../osu/timing';
+import { beatLengthAt, pixelsPerBeat, sliderSpanDuration } from '../../osu/timing';
 import { comboColours, sliderColours } from '../../skin/skin';
 import { defaultSample, newObjectId, type HitObject, type Rgb, type Slider, type Vec2 } from '../../osu/types';
 import {
@@ -20,6 +20,7 @@ import {
   toScreen,
   type View,
 } from '../render/draw';
+import { sliderFromShape } from '../placement';
 import { clampMoveToPlayfield, editor, PLAYFIELD_H, PLAYFIELD_W, snapSliderLength, translateObject } from '../store';
 import { touchedRecently } from '../../ui/touch';
 import { clampToPlayfield, distanceSnapActive, distanceSnapCentre, gridSnapActive, snapPosition, type Modifiers } from './snapping';
@@ -27,7 +28,9 @@ import { clampToPlayfield, distanceSnapActive, distanceSnapCentre, gridSnapActiv
 type Drag =
   | { kind: 'move'; start: Vec2; anchor: HitObject; anchorStart: Vec2; originals: Map<number, HitObject>; moved: boolean }
   | { kind: 'box'; start: Vec2; end: Vec2; additive: boolean }
-  | { kind: 'point'; slider: Slider; index: number; moved: boolean };
+  | { kind: 'point'; slider: Slider; index: number; moved: boolean }
+  /** A desktop placement drag: the slider or spinner is in `editor.placing`, `from` is where the pointer went down. */
+  | { kind: 'place'; from: Vec2; moved: boolean };
 
 const SPINNER_RADIUS = 180;
 
@@ -402,6 +405,16 @@ export class StdPlayfield {
         if (preview.length >= 1) {
           const end = toScreen(v, getSliderPath(preview).positionAt(1));
           drawHitCircle(ctx, end.x, end.y, r, { r: 200, g: 200, b: 200 }, 0.45, null, false);
+          if (placing.slides > 1) {
+            ctx.save();
+            ctx.fillStyle = '#fff';
+            ctx.font = '13px Segoe UI, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 3;
+            ctx.fillText(`×${placing.slides}`, end.x, end.y - r - 6);
+            ctx.restore();
+          }
         }
         ctx.save();
         ctx.strokeStyle = 'rgba(255,255,255,0.6)';
@@ -437,8 +450,10 @@ export class StdPlayfield {
         ctx.fillStyle = '#fff';
         ctx.font = '13px Segoe UI, sans-serif';
         ctx.textAlign = 'center';
-        const len = Math.round(time - pending.time);
-        ctx.fillText(len > 0 ? `Spinner: ${len} ms. Click to end it here.` : 'Seek forward and click to end the spinner.', c.x, c.y + 4);
+        // A desktop drag previews the end it would get; touch seeks and clicks instead.
+        const len = Math.round((pending.end ?? time) - pending.time);
+        const hint = pending.end !== null ? (len > 0 ? `Spinner: ${len} ms. Release to place it.` : 'Drag to the right to set the spinner length.') : len > 0 ? `Spinner: ${len} ms. Click to end it here.` : 'Seek forward and click to end the spinner.';
+        ctx.fillText(hint, c.x, c.y + 4);
       }
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
@@ -510,6 +525,7 @@ export class StdPlayfield {
   pointerDown(p: Vec2, button: number, v: View, touchDrag = false) {
     const t = music.time;
     this.view = v;
+    this.hover = p;
     closeNodeMenu();
     if (button === 2) {
       this.rightClick(p, v, t);
@@ -522,10 +538,14 @@ export class StdPlayfield {
         this.placeCircle(p);
         return;
       case 'spinner':
-        editor.spinnerClick();
+        // Desktop places a spinner by dragging it out in time; touch (and a spinner already half-placed) clicks.
+        if (touchedRecently() || editor.placing) editor.spinnerClick();
+        else this.startSpinnerDrag(p);
         return;
       case 'slider':
-        this.sliderClick(p);
+        // Desktop: press, drag to the end, release. Touch (and a slider already being placed) taps point by point.
+        if (touchedRecently() || editor.placing) this.sliderClick(p);
+        else this.startSliderDrag(p);
         return;
     }
 
@@ -631,6 +651,13 @@ export class StdPlayfield {
       snapSliderLength(editor.bm, s, editor.beatDivisor);
       d.moved = true;
       editor.touch();
+    } else if (d.kind === 'place') {
+      // A slider's second vertex is the preview cursor itself, so the drawn preview already follows the pointer.
+      if (dist(p, d.from) > 3) d.moved = true;
+      if (editor.placing?.kind === 'spinner') {
+        editor.placing.end = this.spinnerEnd(d.from, p);
+        editor.emit();
+      }
     }
   }
 
@@ -638,6 +665,16 @@ export class StdPlayfield {
     const d = this.drag;
     this.drag = null;
     if (!d) return;
+    if (d.kind === 'place') {
+      if (editor.placing?.kind === 'spinner') this.finishSpinnerDrag();
+      else if (d.moved) this.finishSlider();
+      // A click with the slider tool places nothing, like stable: a drag makes the slider.
+      else if (editor.placing) {
+        editor.placing = null;
+        editor.emit();
+      }
+      return;
+    }
     if (d.kind === 'move' || d.kind === 'point') {
       if (d.moved) editor.endChange();
       else editor.cancelChange();
@@ -676,11 +713,14 @@ export class StdPlayfield {
 
   private rightClick(p: Vec2, v: View, t: number) {
     if (editor.placing?.kind === 'slider') {
-      this.finishSlider();
+      // Like stable: the right button adds a repeat while a slider is being placed; the left release finishes it.
+      editor.placing.slides += 1;
+      editor.emit();
       return;
     }
     if (editor.placing?.kind === 'spinner') {
-      editor.spinnerClick();
+      // A spinner being dragged out must not be ended by the right button; touch's click-seek-click still is.
+      if (this.drag?.kind !== 'place') editor.spinnerClick();
       return;
     }
     // With nothing half-placed, right-click leaves the placement tool for select.
@@ -705,6 +745,7 @@ export class StdPlayfield {
   cancel() {
     if (editor.placing) {
       editor.placing = null;
+      if (this.drag?.kind === 'place') this.drag = null;
       editor.emit();
       return true;
     }
@@ -732,7 +773,7 @@ export class StdPlayfield {
   private placeCircle(p: Vec2) {
     const time = this.placementTime();
     const pos = clampToPlayfield(this.snapHead(p, time));
-    editor.addObject({
+    const o: HitObject = {
       id: newObjectId(),
       kind: 'circle',
       x: pos.x,
@@ -742,7 +783,18 @@ export class StdPlayfield {
       comboSkip: 0,
       hitSound: this.placementSound(),
       sample: this.placementSample(),
-    });
+    };
+    editor.addObject(o);
+    editor.advanceAfterPlace(o);
+  }
+
+  /** Desktop slider tool: the head is where the pointer went down; the drag's end is the tail. */
+  private startSliderDrag(p: Vec2) {
+    const time = this.placementTime();
+    const pos = clampToPlayfield(this.snapHead(p, time));
+    editor.placing = { kind: 'slider', vertices: [pos], time, slides: 1 };
+    this.drag = { kind: 'place', from: p, moved: false };
+    editor.emit();
   }
 
   private sliderClick(p: Vec2) {
@@ -750,7 +802,7 @@ export class StdPlayfield {
     const placing = editor.placing?.kind === 'slider' ? editor.placing : null;
     if (!placing) {
       const pos = clampToPlayfield(this.snapHead(p, time));
-      editor.placing = { kind: 'slider', vertices: [pos], time };
+      editor.placing = { kind: 'slider', vertices: [pos], time, slides: 1 };
       editor.emit();
       return;
     }
@@ -784,35 +836,49 @@ export class StdPlayfield {
       editor.emit();
       return;
     }
-    const verts = placing.vertices;
-    const sound = this.placementSound();
-    const s: Slider = {
+    const s = sliderFromShape({
       id: newObjectId(),
-      kind: 'slider',
-      x: verts[0].x,
-      y: verts[0].y,
       time: placing.time,
+      vertices: placing.vertices,
+      slides: placing.slides,
       newCombo: editor.placement.newCombo,
-      comboSkip: 0,
-      hitSound: sound,
+      hitSound: this.placementSound(),
       sample: this.placementSample(),
-      curveType: autoCurveType(verts),
-      points: verts.slice(1),
-      slides: 1,
-      length: 0,
-      edgeSounds: [sound, sound],
-      edgeSets: [
-        { normal: 0, addition: 0 },
-        { normal: 0, addition: 0 },
-      ],
-    };
-    s.length = getSliderPath({ ...s, length: 0 }).rawLength;
-    if (s.length < 1) {
+    });
+    if (!s) {
       editor.emit();
       return;
     }
     snapSliderLength(editor.bm, s, editor.beatDivisor);
     editor.addObject(s);
+    editor.advanceAfterPlace(s);
+  }
+
+  /**
+   * Desktop spinner tool: the pointer went down at the spinner's start; dragging right sets how long it lasts. One
+   * beat's distance in the playfield (the map's own pixels per beat) adds one beat, snapped to the divisor.
+   */
+  private startSpinnerDrag(p: Vec2) {
+    editor.placing = { kind: 'spinner', time: this.placementTime(), end: null };
+    this.drag = { kind: 'place', from: p, moved: false };
+    editor.emit();
+  }
+
+  private spinnerEnd(from: Vec2, to: Vec2): number {
+    const p = editor.placing;
+    if (p?.kind !== 'spinner') return 0;
+    const bm = editor.bm;
+    const beat = beatLengthAt(bm, p.time);
+    const beats = (to.x - from.x) / Math.max(1, pixelsPerBeat(bm, p.time));
+    return Math.round(Math.max(p.time, editor.snap(p.time + beats * beat)));
+  }
+
+  private finishSpinnerDrag() {
+    const p = editor.placing;
+    if (p?.kind !== 'spinner' || p.end === null || !editor.endSpinner(p.end)) {
+      editor.placing = null;
+      editor.emit();
+    }
   }
 
   // ------------------------------------------------------------------ control point editing

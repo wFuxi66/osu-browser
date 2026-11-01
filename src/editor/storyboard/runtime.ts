@@ -1,6 +1,6 @@
 // Live storyboard state for the open project: parsed .osb + difficulty storyboard, compiled timelines,
 // image loading, and canvas rendering in storyboard space (640x480, 854x480 when widescreen).
-import { findFile } from '../../project/project';
+import { fileKey, findFile } from '../../project/project';
 import { controlPointAt, sliderSpanDuration } from '../../osu/timing';
 import {
   animationFrameFile,
@@ -195,9 +195,9 @@ class StoryboardRuntime {
 
   /** True if the storyboard draws the beatmap's background file itself (stable then hides the background). */
   usesFile(name: string): boolean {
-    const lower = name.toLowerCase().replace(/\\/g, '/');
+    const key = fileKey(name);
     for (const sb of [this.osb, this.diff]) {
-      for (const el of sb.elements) if (el.kind !== 'sample' && el.file.toLowerCase().replace(/\\/g, '/') === lower) return true;
+      for (const el of sb.elements) if (el.kind !== 'sample' && fileKey(el.file) === key) return true;
     }
     return false;
   }

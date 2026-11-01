@@ -2,6 +2,15 @@
 // has that the running one doesn't, so add a line with each change worth telling players about (the build puts
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
+  'If importing an .osz fails to save (storage full), the copy you already have stays in song select.',
+  'If saving fails when you leave a map (storage full), the map stays open instead of losing your changes.',
+  'Drive sync and "Update to latest version" keep your local scores, collections and place in the map.',
+  'A set replaced by importing a new .osz no longer comes back from Google Drive.',
+  'Big sets no longer fail to download on slower connections, as long as the download keeps moving.',
+  'Maps in very old file formats play with stable\'s timing, stacking and slider ticks, and keep their format when exported.',
+  'Timing points at fractions of a millisecond keep their exact time when saved.',
+  'Exactly 1% of 50s now still gets an S, like stable.',
+  'Song select opens faster with a lot of maps.',
   'Fixed "Update to latest version" saying the mirrors don\'t have the new version of a map when one did.',
   'Editor test (F5): the mouse cursor shows over the mod buttons, each test starts without mods, and Esc fades back to the editor.',
   'Song select: "By Date Added" and other long group tab names stay on one line.',

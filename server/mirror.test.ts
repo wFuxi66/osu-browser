@@ -63,6 +63,47 @@ describe('beatmap mirror proxy', () => {
     expect((await app.request('/api/mirror/1')).status).toBe(200);
   });
 
+  it('lets a slow download run past the stall limit as long as chunks keep coming', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let sent = 0;
+      mirrors.mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start: (ctrl) => ctrl.enqueue(ZIP),
+            pull: (ctrl) =>
+              new Promise<void>((resolve) =>
+                setTimeout(() => {
+                  if (++sent > 3) ctrl.close();
+                  else ctrl.enqueue(new Uint8Array([9]));
+                  resolve();
+                }, 20_000),
+              ),
+          }),
+        ),
+      );
+      const res = await app.request('/api/mirror/1');
+      const body = res.arrayBuffer();
+      await vi.advanceTimersByTimeAsync(100_000);
+      expect((await body).byteLength).toBe(ZIP.length + 3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('frees the slot of a download that stopped moving', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      mirrors.mockImplementation(async () => streamed([ZIP], new Promise(() => undefined)));
+      for (let i = 0; i < MAX_DOWNLOADS; i++) expect((await app.request('/api/mirror/1')).status).toBe(200);
+      expect((await app.request('/api/mirror/1')).status).toBe(503);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect((await app.request('/api/mirror/1')).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('frees the slot when every mirror fails', async () => {
     mirrors.mockRejectedValue(new Error('down'));
     for (let i = 0; i <= MAX_DOWNLOADS; i++) expect((await app.request('/api/mirror/1')).status).toBe(502);

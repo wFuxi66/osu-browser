@@ -11,7 +11,10 @@ const MIRRORS = [
   (id: number) => `https://osu.direct/api/d/${id}`,
 ];
 const ZIP_MAGIC = 0x04034b50;
-const TIMEOUT_MS = 30_000;
+/** How long a download may go without a chunk: a big set may take minutes, as long as it keeps moving. */
+const STALL_MS = 30_000;
+/** The longest one download may hold its slot, however slowly a client reads it. */
+const MAX_MS = 10 * 60_000;
 export const MAX_DOWNLOADS = 4;
 
 export function mirrorRoutes(app: Hono<Env>) {
@@ -28,13 +31,25 @@ export function mirrorRoutes(app: Hono<Env>) {
       released = true;
     };
     for (const mirror of MIRRORS) {
-      const signal = AbortSignal.timeout(TIMEOUT_MS);
+      const stalled = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const alive = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => stalled.abort(), STALL_MS);
+      };
+      alive();
+      const signal = AbortSignal.any([stalled.signal, AbortSignal.timeout(MAX_MS)]);
+      let streaming = false;
       try {
         const res = await fetch(mirror(id), { redirect: 'follow', signal });
         if (!res.ok || !res.body) continue;
-        const body = await zipStream(res.body, release);
+        const body = await zipStream(res.body, alive, () => {
+          clearTimeout(timer);
+          release();
+        });
         if (!body) continue;
-        // Past the timeout the download is aborted, so its slot is free even if the client stopped reading.
+        streaming = true;
+        // A client that stops reading stops the chunks too, so its download is aborted and its slot freed.
         signal.addEventListener('abort', release);
         const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' };
         const length = res.headers.get('content-length');
@@ -43,6 +58,8 @@ export function mirrorRoutes(app: Hono<Env>) {
         return c.body(body, 200, headers);
       } catch {
         // try the next mirror
+      } finally {
+        if (!streaming) clearTimeout(timer);
       }
     }
     release();
@@ -50,13 +67,17 @@ export function mirrorRoutes(app: Hono<Env>) {
   });
 }
 
-/** The body passed through as it arrives, or null when it doesn't start like a zip. `done` runs when it ends, however it ends. */
-async function zipStream(body: ReadableStream<Uint8Array>, done: () => void): Promise<ReadableStream<Uint8Array> | null> {
+/**
+ * The body passed through as it arrives, or null when it doesn't start like a zip. `alive` runs on every chunk, and
+ * `done` when it ends, however it ends.
+ */
+async function zipStream(body: ReadableStream<Uint8Array>, alive: () => void, done: () => void): Promise<ReadableStream<Uint8Array> | null> {
   const reader = body.getReader();
   let head = new Uint8Array(0);
   while (head.length < 4) {
     const { value, done: end } = await reader.read();
     if (end) break;
+    alive();
     head = Buffer.concat([head, value]);
   }
   if (head.length < 4 || Buffer.from(head.buffer, head.byteOffset, 4).readUInt32LE(0) !== ZIP_MAGIC) {
@@ -73,7 +94,10 @@ async function zipStream(body: ReadableStream<Uint8Array>, done: () => void): Pr
         if (end) {
           ctrl.close();
           done();
-        } else ctrl.enqueue(value);
+        } else {
+          alive();
+          ctrl.enqueue(value);
+        }
       } catch (e) {
         ctrl.error(e);
         done();

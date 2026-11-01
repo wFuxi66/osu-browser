@@ -80,7 +80,8 @@ function groupStoryboard(lines: string[]) {
 export function serializeBeatmap(bm: Beatmap): string {
   const out: string[] = [];
   const g = bm.general;
-  out.push('osu file format v14', '');
+  // The file's own version: older ones mean different timing, stacking and ticks, in stable as well as here.
+  out.push(`osu file format v${bm.formatVersion}`, '');
   out.push('[General]');
   out.push(`AudioFilename: ${g.audioFilename}`);
   out.push(`AudioLeadIn: ${g.audioLeadIn}`);
@@ -152,7 +153,7 @@ export function serializeBeatmap(bm: Beatmap): string {
   out.push('[TimingPoints]');
   for (const tp of bm.timingPoints) {
     const effects = (tp.kiai ? 1 : 0) | (tp.omitFirstBarLine ? 8 : 0);
-    out.push([tp.time, n(tp.beatLength), tp.meter, tp.sampleSet, tp.sampleIndex, tp.volume, b(tp.uninherited), effects].join(','));
+    out.push([n(tp.time), n(tp.beatLength), tp.meter, tp.sampleSet, tp.sampleIndex, tp.volume, b(tp.uninherited), effects].join(','));
   }
   out.push('');
 

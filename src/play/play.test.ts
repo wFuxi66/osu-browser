@@ -79,6 +79,9 @@ describe('grades', () => {
     expect(gradeOf(c(10, 0, 0, 0), ['HD'])).toBe('XH');
     expect(gradeOf(c(95, 5, 0, 0), [])).toBe('S');
     expect(gradeOf(c(95, 4, 0, 1), [])).toBe('A');
+    // S allows at most 1% 50s: exactly 1% still counts.
+    expect(gradeOf(c(95, 4, 1, 0), [])).toBe('S');
+    expect(gradeOf(c(95, 3, 2, 0), [])).toBe('A');
     expect(gradeOf(c(85, 15, 0, 0), [])).toBe('A');
     expect(gradeOf(c(50, 50, 0, 0), [])).toBe('D');
     expect(accuracyOf(c(1, 1, 0, 0))).toBeCloseTo(2 / 3);

@@ -50,7 +50,7 @@ export function gradeOf(c: Counts, mods: ModId[]): Grade {
   if (!total || c.n300 === total) return silver ? 'XH' : 'X';
   const r300 = c.n300 / total;
   const r50 = c.n50 / total;
-  if (r300 > 0.9 && r50 < 0.01 && c.nMiss === 0) return silver ? 'SH' : 'S';
+  if (r300 > 0.9 && r50 <= 0.01 && c.nMiss === 0) return silver ? 'SH' : 'S';
   if ((r300 > 0.8 && c.nMiss === 0) || r300 > 0.9) return 'A';
   if ((r300 > 0.7 && c.nMiss === 0) || r300 > 0.8) return 'B';
   if (r300 > 0.6) return 'C';

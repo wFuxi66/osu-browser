@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { hitsounds } from '../audio/hitsounds';
 import { GLIDE_MS, glideLeft, music, reducedMotion } from '../audio/music';
 import { getSliderPath, sliderVertices } from '../osu/curves';
+import { timeOffset } from '../osu/difficulty/objects';
 import { processBeatmap, type ProcessedBeatmap } from '../osu/processing';
 import { objectEndTime, redLineAt, snapTime, sortTimingPoints, stepTick, controlPointAt, beatLengthAt, svAt } from '../osu/timing';
 import {
@@ -228,10 +229,10 @@ class Editor {
     }
   }
 
-  /** Volumes (master × music/effect) and offset; song select's preview uses them too. */
+  /** Volumes (master × music/effect) and offset, plus what the open map's file format adds; song select's preview uses them too. */
   applyAudioPrefs() {
     music.volume = this.prefs.masterVolume * this.prefs.musicVolume;
-    music.offset = this.prefs.audioOffset;
+    music.offset = this.prefs.audioOffset + (this.project ? timeOffset(this.bm) : 0);
     hitsounds.setVolume(this.prefs.masterVolume * this.prefs.hitsoundVolume);
   }
 
@@ -276,6 +277,7 @@ class Editor {
     this.dialog = null;
     this.placing = null;
     this.dirty = false;
+    this.applyAudioPrefs();
     void skins.setBeatmap(null);
     this.emit();
   }
@@ -300,8 +302,9 @@ class Editor {
       cancelValue: 'cancel',
     });
     if (r === 'cancel') return false;
-    if (r === 'yes') await this.save();
-    else await this.discardChanges();
+    // A save that failed stays here: leaving would drop the changes the user just asked to keep.
+    if (r === 'yes') return this.save();
+    await this.discardChanges();
     return true;
   }
 
@@ -344,6 +347,7 @@ class Editor {
     const prevAudio = this.bm.general.audioFilename;
     rememberEditorTime(this.project.difficulties[this.diffIndex].id, t);
     this.diffIndex = i;
+    this.applyAudioPrefs();
     this.selection.clear();
     this.selectedEdge = null;
     this.undoStack = [];
@@ -508,16 +512,16 @@ class Editor {
     this.emit();
   }
 
-  /** Ctrl+S: write the whole set to browser storage, then sync it to the account if logged in. */
-  async save() {
-    if (!this.project) return;
+  /** Ctrl+S: write the whole set to browser storage, then sync it to the account if logged in. Returns whether it saved. */
+  async save(): Promise<boolean> {
+    if (!this.project) return false;
     this.project.updatedAt = Date.now();
     try {
       await saveProjectLocal(this.project);
     } catch (e) {
       console.error(e);
       this.toast('Saving failed: browser storage is unavailable or full.', 'error');
-      return;
+      return false;
     }
     this.dirty = false;
     this.savedSnapshot = cloneBeatmap(this.bm);
@@ -530,6 +534,7 @@ class Editor {
       this.toast('Saved.');
       void this.firstSaveNudge();
     }
+    return true;
   }
 
   /**
@@ -1254,7 +1259,8 @@ class Editor {
       omitFirstBarLine: false,
     };
     this.commit((b) => {
-      b.timingPoints = b.timingPoints.filter((t) => !(t.time === time && t.uninherited === uninherited));
+      // Rounded: a point from a file can sit at a fraction of a millisecond, and `time` never does.
+      b.timingPoints = b.timingPoints.filter((t) => !(Math.round(t.time) === time && t.uninherited === uninherited));
       b.timingPoints.push(tp);
     });
     return tp;
@@ -1273,7 +1279,7 @@ class Editor {
     const next = reds.find((t) => t.time > red.time);
     const isFirst = red === reds[0];
     const end = next ? next.time : Infinity;
-    const newTime = Math.round(patch.time ?? red.time);
+    const newTime = patch.time === undefined ? red.time : Math.round(patch.time);
     const newBL = patch.beatLength ?? red.beatLength;
     if (!(newBL > 0)) return;
     const map = (t: number) => Math.round(newTime + (t - red.time) * (newBL / red.beatLength));
@@ -1414,7 +1420,6 @@ editor.applyAudioPrefs();
 cloud.isOpen = (id) => editor.project?.id === id;
 cloud.onConflict = (title) =>
   editor.toast(`"${title}" was changed on another device too, so both versions are kept: the other one is now a second copy in the song list.`);
-(window as unknown as { editor: Editor }).editor = editor;
 
 export function useEditor(): Editor {
   useSyncExternalStore(editor.subscribe, () => editor.rev);

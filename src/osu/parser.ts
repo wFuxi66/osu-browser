@@ -126,7 +126,7 @@ export function parseTimingPoint(line: string): TimingPoint | null {
   const beatLength = num(p[1]);
   const effects = Math.trunc(num(p[7]));
   return {
-    time: Math.round(num(p[0])),
+    time: num(p[0]),
     beatLength,
     meter: Math.trunc(num(p[2], 4)) || 4,
     sampleSet: clampSet(num(p[3], 0)),

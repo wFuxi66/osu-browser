@@ -1,12 +1,14 @@
 // Client for the optional backend: osu! OAuth login, and cloud sync of beatmaps to the user's own Google Drive
 // (drive.ts). Published sets are synced as lite packages (see syncpack.ts) and rebuilt from the mirrors.
 import { drive, type DriveProject } from './drive';
-import { importOsz, oszFilename, uid, type Project } from './project';
-import { listProjectsLocal, listTrashLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal, syncedAtLocal, type Prefs } from './storage';
+import { importOsz, keepDifficultyIds, oszFilename, uid, type Project } from './project';
+import { listProjectsLocal, listTrashLocal, loadProjectLocal, markSynced, saveOriginLocal, saveProjectLocal, storedDifficulties, storedVersion, syncedAtLocal, type Prefs } from './storage';
 import { buildSyncPackage, originOf, restoreSyncPackage, setIdOf } from './syncpack';
 
 /** How long to wait before asking the mirrors again for a set they didn't have. */
 const MIRROR_RECHECK = 1000 * 60 * 60 * 24;
+/** How long a mirror may send nothing before the next one is tried: a big set may take minutes, as long as it keeps moving. */
+const STALL_MS = 60_000;
 /** Maps transferred at once by a full sync: enough to hide each request's latency, few enough for memory. */
 const SYNC_CONCURRENCY = 3;
 /** Projects deleted while offline (or while Drive couldn't be reached), removed from Drive by the next sync. */
@@ -351,6 +353,10 @@ class Cloud {
         jobs.push(async () => {
           try {
             const { project, warnings } = await this.download(r);
+            // The download took a while: a save, delete or restore made since then wins, and the next sync sorts it out.
+            const now = await storedVersion(r.id);
+            if (this.isOpen(r.id) || (l ? now?.updatedAt !== l.updatedAt || now.deleted : now && !now.deleted)) return;
+            keepDifficultyIds(project, await storedDifficulties(r.id));
             await saveProjectLocal(project, r.updatedAt);
             for (const w of warnings) failures.push(`"${r.title}": ${w}`);
           } catch (e) {
@@ -401,12 +407,8 @@ class Cloud {
     let fallback: ArrayBuffer | null = null;
     for (const url of [...BROWSER_MIRRORS.map((m) => m(setId, video)), `/api/mirror/${setId}`]) {
       try {
-        // no-cache: the mirrors let browsers keep a download for hours, which would hand back the old version.
-        // no-referrer: catboy.best 403s requests referred by osu-browser.vercel.app.
-        const r = await fetch(url, { cache: 'no-cache', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(120_000) });
-        if (!r.ok) continue;
-        const data = await readWithProgress(r, onProgress);
-        if (data.byteLength < 4 || new DataView(data).getUint32(0, true) !== 0x04034b50) continue;
+        const data = await downloadFrom(url, onProgress);
+        if (!data || data.byteLength < 4 || new DataView(data).getUint32(0, true) !== 0x04034b50) continue;
         if (!isWanted || (await isWanted(data))) return data;
         fallback ??= data;
       } catch {
@@ -429,19 +431,38 @@ const BROWSER_MIRRORS = [
   (id: number) => `https://api.nerinyan.moe/d/${id}`,
 ];
 
-/** Reads a response body, reporting progress when the size is known. */
-async function readWithProgress(r: Response, onProgress?: (fraction: number) => void): Promise<ArrayBuffer> {
-  const total = Number(r.headers.get('content-length')) || 0;
-  if (!onProgress || !total || !r.body) return r.arrayBuffer();
-  const reader = r.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let got = 0;
-  for (let c = await reader.read(); !c.done; c = await reader.read()) {
-    chunks.push(c.value);
-    got += c.value.length;
-    onProgress(Math.min(1, got / total));
+/**
+ * A mirror's answer, read to the end and reporting progress when the size is known; null when it answers with an
+ * error. Throws when it sends nothing for STALL_MS.
+ */
+async function downloadFrom(url: string, onProgress?: (fraction: number) => void): Promise<ArrayBuffer | null> {
+  const stalled = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const alive = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => stalled.abort(), STALL_MS);
+  };
+  alive();
+  try {
+    // no-cache: the mirrors let browsers keep a download for hours, which would hand back the old version.
+    // no-referrer: catboy.best 403s requests referred by osu-browser.vercel.app.
+    const r = await fetch(url, { cache: 'no-cache', referrerPolicy: 'no-referrer', signal: stalled.signal });
+    if (!r.ok) return null;
+    if (!r.body) return await r.arrayBuffer();
+    const total = Number(r.headers.get('content-length')) || 0;
+    const reader = r.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let got = 0;
+    for (let c = await reader.read(); !c.done; c = await reader.read()) {
+      alive();
+      chunks.push(c.value);
+      got += c.value.length;
+      if (total) onProgress?.(Math.min(1, got / total));
+    }
+    return await new Blob(chunks as BlobPart[]).arrayBuffer();
+  } finally {
+    clearTimeout(timer);
   }
-  return new Blob(chunks as BlobPart[]).arrayBuffer();
 }
 
 export const cloud = new Cloud();

@@ -61,9 +61,11 @@ export function createApp() {
 
   // OAuth callbacks are registered for PUBLIC_URL only, and the state cookie must be set on the domain the
   // callback lands on: a login started on another domain serving the app (an older vercel.app name) restarts there.
+  // Hosts, not origins: behind a proxy (Caddy) the request reaches us over http even though PUBLIC_URL is https.
+  const publicHost = new URL(PUBLIC_URL).host;
   const startOnPublicUrl = async (c: Context, next: () => Promise<void>) => {
     const url = new URL(c.req.url);
-    if (SECURE_COOKIES && url.origin !== PUBLIC_URL) return c.redirect(`${PUBLIC_URL}${url.pathname}${url.search}`);
+    if (SECURE_COOKIES && url.host !== publicHost) return c.redirect(`${PUBLIC_URL}${url.pathname}${url.search}`);
     await next();
   };
   app.use('/api/auth/login', startOnPublicUrl);
@@ -175,7 +177,8 @@ export function createApp() {
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) return c.text('Invalid beatmapset id', 400);
     const res = await osuApi(`/beatmapsets/${id}`);
-    const cache = { 'Cache-Control': 'public, max-age=60' };
+    // s-maxage: the CDN answers repeats, so nobody can spend the app's osu! rate limit by asking for one set over and over.
+    const cache = { 'Cache-Control': 'public, max-age=60, s-maxage=60' };
     if (res.status === 404) return c.json({ found: false }, 200, cache);
     if (!res.ok) return c.text(`osu! API error (${res.status})`, 502);
     const s = (await res.json()) as { status: string; beatmaps?: { id: number; checksum: string; status: string; version: string }[] };

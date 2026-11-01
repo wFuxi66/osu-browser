@@ -3,17 +3,28 @@ import { createEmptyBeatmap } from '../osu/types';
 import type { Project } from './project';
 
 // A small in-memory IndexedDB: enough of it for storage.ts (one store keyed by id, requests answered in order).
-const data = new Map<string, { id: string; deletedAt?: number }>();
+const data = new Map<string, { id: string; deletedAt?: number; difficulties?: { osu: string; summary?: unknown }[] }>();
+/** When set, every transaction aborts as it commits, after its requests succeeded (what a full disk does). */
+let abortAtCommit: Error | null = null;
 class FakeTx {
   pending = 0;
   oncomplete: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  error = null;
+  onabort: (() => void) | null = null;
+  error: Error | null = null;
+  settled = false;
   constructor() {
     setTimeout(() => this.settle());
   }
   settle() {
-    if (this.pending === 0) setTimeout(() => this.pending === 0 && this.oncomplete?.());
+    if (this.pending !== 0) return;
+    setTimeout(() => {
+      if (this.pending !== 0 || this.settled) return;
+      this.settled = true;
+      if (abortAtCommit) {
+        this.error = abortAtCommit;
+        this.onabort?.();
+      } else this.oncomplete?.();
+    });
   }
   objectStore() {
     const req = <T,>(fn: () => T) => {
@@ -85,6 +96,36 @@ async function addSet(id: string, syncedAt = 100): Promise<Project> {
 
 const versions = (p: Project | null) => p?.difficulties.map((d) => d.beatmap.metadata.version).sort();
 const files = (p: Project | null) => [...(p?.files.keys() ?? [])].sort();
+
+describe('storing a project', () => {
+  beforeEach(() => {
+    data.clear();
+    abortAtCommit = null;
+  });
+
+  it('a save the browser aborts at commit fails, rather than reporting success', async () => {
+    const p = await addSet('a');
+    abortAtCommit = new Error('QuotaExceededError');
+    await expect(saveProjectLocal(p)).rejects.toThrow('QuotaExceededError');
+    await expect(trashProjectLocal('a')).rejects.toThrow('QuotaExceededError');
+  });
+
+  it("song select's list doesn't parse the difficulties again", async () => {
+    await addSet('listed-once');
+    for (const d of data.get('listed-once')!.difficulties!) d.osu = '';
+    const [set] = await listProjectsLocal();
+    expect(set.artist).toBe('Artist');
+    expect(set.difficulties.map((d) => d.version)).toEqual(['Normal', 'Hard']);
+  });
+
+  it('builds the summary of a set saved before there were any, and stores it', async () => {
+    await addSet('saved-long-ago');
+    for (const d of data.get('saved-long-ago')!.difficulties!) delete d.summary;
+    const [set] = await listProjectsLocal();
+    expect(set.difficulties).toHaveLength(2);
+    await vi.waitFor(() => expect(data.get('saved-long-ago')!.difficulties!.every((d) => d.summary)).toBe(true));
+  });
+});
 
 describe('Recently deleted', () => {
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DriveProject } from './drive';
 import type { Project } from './project';
 
@@ -9,6 +9,7 @@ interface Local {
   tag: string;
   /** In Recently deleted. */
   deletedAt?: number;
+  diffIds?: string[];
 }
 const remote = new Map<string, DriveProject & { tag: string }>();
 const local = new Map<string, Local>();
@@ -17,6 +18,9 @@ const removed: string[] = [];
 const project = (id: string, l: { updatedAt: number; tag: string }): Project =>
   ({ id, createdAt: 1, updatedAt: l.updatedAt, files: new Map([['tag', new Blob([l.tag])]]), difficulties: [] }) as unknown as Project;
 const tagOf = async (p: Project) => (await p.files.get('tag')?.text()) ?? '';
+const hard = (id: string) => ({ id, beatmap: { metadata: { beatmapId: 7, version: 'Hard' } } });
+/** Runs while a download from Drive is under way. */
+let duringDownload: (() => void) | null = null;
 
 vi.mock('./drive', () => ({
   drive: {
@@ -25,7 +29,10 @@ vi.mock('./drive', () => ({
     upload: async (meta: { id: string; updatedAt: number }, blob: Blob) => {
       remote.set(meta.id, { fileId: `f-${meta.id}`, id: meta.id, title: meta.id, createdAt: 1, updatedAt: meta.updatedAt, size: 0, tag: await blob.text() });
     },
-    download: async (fileId: string) => [...remote.values()].find((r) => r.fileId === fileId)!.tag,
+    download: async (fileId: string) => {
+      duringDownload?.();
+      return [...remote.values()].find((r) => r.fileId === fileId)!.tag;
+    },
     remove: async (id: string) => {
       removed.push(id);
       remote.delete(id);
@@ -36,7 +43,7 @@ vi.mock('./syncpack', () => ({
   setIdOf: () => 0,
   originOf: async () => ({}),
   buildSyncPackage: async (p: Project) => ({ blob: new Blob([await tagOf(p)]), lite: false }),
-  restoreSyncPackage: async (tag: string) => ({ project: project('', { updatedAt: 0, tag }), warnings: [] }),
+  restoreSyncPackage: async (tag: string) => ({ project: { ...project('', { updatedAt: 0, tag }), difficulties: [hard('new-id')] }, warnings: [] }),
 }));
 vi.mock('./storage', () => ({
   listProjectsLocal: async () => [...local].filter(([, l]) => !l.deletedAt).map(([id, l]) => ({ id, ...l })),
@@ -44,8 +51,13 @@ vi.mock('./storage', () => ({
     [...local].filter(([, l]) => l.deletedAt).map(([id, l]) => ({ id, setId: id, title: id, version: null, deletedAt: l.deletedAt, syncedAt: l.syncedAt, size: 0 })),
   loadProjectLocal: async (id: string) => (local.has(id) && !local.get(id)!.deletedAt ? project(id, local.get(id)!) : null),
   saveProjectLocal: async (p: Project, syncedAt?: number) => {
-    local.set(p.id, { updatedAt: p.updatedAt, syncedAt: syncedAt ?? local.get(p.id)?.syncedAt ?? 0, tag: await tagOf(p) });
+    local.set(p.id, { updatedAt: p.updatedAt, syncedAt: syncedAt ?? local.get(p.id)?.syncedAt ?? 0, tag: await tagOf(p), diffIds: p.difficulties.map((d) => d.id) });
   },
+  storedVersion: async (id: string) => {
+    const l = local.get(id);
+    return l ? { updatedAt: l.updatedAt, deleted: !!l.deletedAt } : null;
+  },
+  storedDifficulties: async (id: string) => (local.has(id) ? [hard('kept-id')] : []),
   markSynced: async (id: string, at: number) => {
     local.get(id)!.syncedAt = at;
   },
@@ -74,6 +86,7 @@ describe('Drive sync never replaces unsynced work', () => {
     remote.clear();
     local.clear();
     removed.length = 0;
+    duringDownload = null;
     store.clear();
     cloud.driveConnected = true;
     cloud.offline = false;
@@ -153,7 +166,7 @@ describe('Drive sync never replaces unsynced work', () => {
     local.set('a', { ...local.get('a')!, deletedAt: 300 });
     remote.set('a', { ...remote.get('a')!, updatedAt: 400, tag: 'still mapping it on the pc' });
     await cloud.syncAll();
-    expect(local.get('a')).toEqual({ updatedAt: 400, syncedAt: 400, tag: 'still mapping it on the pc' });
+    expect(local.get('a')).toEqual({ updatedAt: 400, syncedAt: 400, tag: 'still mapping it on the pc', diffIds: ['kept-id'] });
   });
 
   it('restoring a set deleted offline cancels its removal from Drive and uploads it', async () => {
@@ -184,5 +197,88 @@ describe('Drive sync never replaces unsynced work', () => {
     cloud.offline = true;
     expect(cloud.syncing).toBe(false);
     expect(await cloud.syncAll()).toBe(0);
+  });
+
+  it('a newer version from Drive keeps the difficulty ids, which scores and collections hang on', async () => {
+    synced('a', 100);
+    remote.set('a', { ...remote.get('a')!, updatedAt: 300, tag: 'edit on the pc' });
+    await cloud.syncAll();
+    expect(local.get('a')!.diffIds).toEqual(['kept-id']);
+  });
+
+  it('a save made while its set downloads from Drive is not overwritten', async () => {
+    synced('a', 100);
+    remote.set('a', { ...remote.get('a')!, updatedAt: 300, tag: 'edit on the pc' });
+    duringDownload = () => local.set('a', { updatedAt: 200, syncedAt: 100, tag: 'saved here during the sync' });
+    await cloud.syncAll();
+    expect(local.get('a')!.tag).toBe('saved here during the sync');
+  });
+
+  it('a set deleted while it downloads from Drive stays deleted', async () => {
+    synced('a', 100);
+    remote.set('a', { ...remote.get('a')!, updatedAt: 300, tag: 'edit on the pc' });
+    duringDownload = () => (local.get('a')!.deletedAt = 150);
+    await cloud.syncAll();
+    expect(local.get('a')!.deletedAt).toBe(150);
+    expect(local.get('a')!.tag).toBe('v1');
+  });
+});
+
+describe('downloading a set from the mirrors', () => {
+  const ZIP = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+
+  beforeEach(() => {
+    cloud.offline = false;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('takes as long as it needs while the data keeps coming', async () => {
+    let sent = 0;
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        new ReadableStream({
+          start: (ctrl) => ctrl.enqueue(ZIP),
+          pull: (ctrl) =>
+            new Promise<void>((resolve) =>
+              setTimeout(() => {
+                if (++sent > 10) ctrl.close();
+                else ctrl.enqueue(new Uint8Array([1]));
+                resolve();
+              }, 50_000),
+            ),
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const data = cloud.fetchBeatmapset(1);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect((await data).byteLength).toBe(ZIP.length + 10);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves on to the next mirror when one stops sending', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        async (_url: string, init: RequestInit) =>
+          new Response(
+            new ReadableStream({
+              start(ctrl) {
+                ctrl.enqueue(ZIP);
+                init.signal!.addEventListener('abort', () => ctrl.error(new Error('aborted')));
+              },
+            }),
+          ),
+      )
+      .mockImplementationOnce(async () => new Response(ZIP));
+    vi.stubGlobal('fetch', fetchMock);
+    const data = cloud.fetchBeatmapset(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await data).byteLength).toBe(ZIP.length);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

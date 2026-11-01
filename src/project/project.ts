@@ -84,12 +84,37 @@ export function oszFilename(p: Project): string {
   return sanitizeFilename(`${id}${projectTitle(p)}.osz`);
 }
 
+/** Beatmap folder paths are case-insensitive on Windows, where osu! runs. */
+export function fileKey(name: string): string {
+  return name.toLowerCase().replace(/\\/g, '/');
+}
+
 export function findFile(p: Project, name: string): Blob | undefined {
   const direct = p.files.get(name);
   if (direct) return direct;
-  const lower = name.toLowerCase().replace(/\\/g, '/');
-  for (const [k, v] of p.files) if (k.toLowerCase().replace(/\\/g, '/') === lower) return v;
+  const key = fileKey(name);
+  for (const [k, v] of p.files) if (fileKey(k) === key) return v;
   return undefined;
+}
+
+/**
+ * Gives a new copy of a set the difficulty ids of the copy it replaces, matched by BeatmapID and then by name: a
+ * difficulty's local scores, collections and place in the editor hang on its id. Imports always make new ones.
+ */
+export function keepDifficultyIds(next: Project, old: Difficulty[]) {
+  const left = [...old];
+  const unmatched = new Set(next.difficulties);
+  const match = (key: (d: Difficulty) => string | number | null) => {
+    for (const d of unmatched) {
+      const k = key(d);
+      const i = k === null ? -1 : left.findIndex((o) => key(o) === k);
+      if (i < 0) continue;
+      d.id = left.splice(i, 1)[0].id;
+      unmatched.delete(d);
+    }
+  };
+  match((d) => d.beatmap.metadata.beatmapId || null);
+  match((d) => d.beatmap.metadata.version);
 }
 
 export function uniqueVersionName(p: Project, base: string): string {

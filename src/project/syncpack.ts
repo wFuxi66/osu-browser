@@ -6,7 +6,7 @@
 // difficulty from an edited one, the way song select's status box needs to.
 import { md5Text } from '../osu/md5';
 import { serializeBeatmap } from '../osu/serializer';
-import { exportOsz, importOsz, type DifficultySource, type FileRef, type Project, type ProjectOrigin } from './project';
+import { exportOsz, fileKey, importOsz, type DifficultySource, type FileRef, type Project, type ProjectOrigin } from './project';
 
 export const MANIFEST = '.osu-web-editor-sync.json';
 
@@ -21,11 +21,6 @@ interface Manifest {
 
 export function setIdOf(p: Project): number {
   return p.difficulties.find((d) => d.beatmap.metadata.beatmapSetId > 0)?.beatmap.metadata.beatmapSetId ?? 0;
-}
-
-/** Beatmap folder paths are case-insensitive on Windows, where osu! runs. */
-export function fileKey(name: string): string {
-  return name.toLowerCase().replace(/\\/g, '/');
 }
 
 // Blobs don't change, so each is hashed once (the editor keeps the same Blob objects between saves).

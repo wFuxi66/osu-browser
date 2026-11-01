@@ -184,7 +184,7 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
     editor.toast(`Updated ${set.title} to the latest version.`);
     if (!alive.current) return;
     await refresh();
-    // The difficulties got new ids: stay on the same one if the set is still selected.
+    // Stay on the same difficulty if the set is still selected (one renamed or added on osu! has a new id).
     const same =
       p.difficulties.find((d) => diff.beatmapId > 0 && d.beatmap.metadata.beatmapId === diff.beatmapId) ??
       p.difficulties.find((d) => d.beatmap.metadata.version === diff.version) ??

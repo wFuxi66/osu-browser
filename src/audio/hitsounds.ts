@@ -3,6 +3,7 @@ import { getSliderPath } from '../osu/curves';
 import { sliderTickProgresses } from '../osu/processing';
 import { controlPointAt, sliderSpanDuration } from '../osu/timing';
 import { HitSound, type Beatmap, type HitObject, type SampleSet } from '../osu/types';
+import { fileKey } from '../project/project';
 
 const SET_NAMES = ['normal', 'normal', 'soft', 'drum'];
 const DEFAULT_SAMPLE_NAMES = ['hitnormal', 'hitwhistle', 'hitfinish', 'hitclap', 'slidertick', 'sliderslide', 'sliderwhistle'];
@@ -90,7 +91,7 @@ class HitsoundEngine {
           .arrayBuffer()
           .then((b) => ctx.decodeAudioData(b))
           .then((buf) => {
-            const lower = name.toLowerCase().replace(/\\/g, '/');
+            const lower = fileKey(name);
             this.custom.set(lower, buf);
             this.custom.set(lower.replace(/\.(wav|ogg|mp3)$/, ''), buf);
           })
@@ -241,7 +242,7 @@ class HitsoundEngine {
 
   /** Play a beatmap file by name (storyboard samples). */
   playFile(name: string, volume: number, delay = 0) {
-    const key = name.toLowerCase().replace(/\\/g, '/');
+    const key = fileKey(name);
     this.playBuffer(this.custom.get(key) ?? this.custom.get(key.replace(/\.(wav|ogg|mp3)$/, '')), volume, delay);
   }
 

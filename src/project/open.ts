@@ -3,7 +3,7 @@ import { editor } from '../editor/store';
 import { md5Text } from '../osu/md5';
 import { serializeBeatmap } from '../osu/serializer';
 import { cloud } from './cloud';
-import { createProjectFromAudio, importLooseFiles, importOsz, type Project } from './project';
+import { createProjectFromAudio, importLooseFiles, importOsz, keepDifficultyIds, type Project } from './project';
 import { onlineSet, type OnlineSet } from './online';
 import { listProjectsLocal, loadProjectLocal, saveProjectLocal, trashProjectLocal } from './storage';
 import { originOf, setIdOf } from './syncpack';
@@ -34,8 +34,13 @@ export async function projectFromFiles(files: File[]): Promise<OpenResult> {
   // but into Recently deleted rather than overwritten, so local edits can be restored.
   const setId = kind === 'imported' ? setIdOf(project) : 0;
   const old = setId > 0 ? (await listProjectsLocal()).filter((p) => p.beatmapSetId === setId && p.id !== editor.project?.id) : [];
-  for (const p of old) await trashProjectLocal(p.id);
+  // Saved first: if storage is full the old copy stays, and the space a save frees can't come from the copy it replaces.
   await saveProjectLocal(project);
+  for (const p of old) {
+    await trashProjectLocal(p.id);
+    // Otherwise Drive still has it, and it comes back once Recently deleted lets go of it.
+    if (cloud.driveConnected) await cloud.remove(p.id);
+  }
   return { kind, project, replaced: old.length };
 }
 
@@ -114,6 +119,7 @@ export async function updateToLatest(projectId: string, setId: number, onProgres
   // The download runs in the background: saving a set opened meanwhile would undo the update.
   if (editor.project?.id === projectId) throw new Error('It was opened in the editor while downloading, so nothing was changed. Close it and update again.');
   fillSetId(latest, setId);
+  keepDifficultyIds(latest, p.difficulties);
   p.files = latest.files;
   p.difficulties = latest.difficulties;
   p.origin = await originOf(setId, latest.files);

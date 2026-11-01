@@ -4,7 +4,8 @@ import { parseOsu } from '../osu/parser';
 import { STAR_RATING_VERSION, starRating } from '../osu/stars';
 import { serializeBeatmap } from '../osu/serializer';
 import { parseOsb, parseStoryboardLines, referencedFiles } from '../osu/storyboard';
-import { checksumOf, findFile, projectTitle, uid, uniqueVersionName, type DifficultySource, type Project, type ProjectOrigin } from './project';
+import type { Beatmap } from '../osu/types';
+import { checksumOf, fileKey, findFile, projectTitle, uid, uniqueVersionName, type Difficulty, type DifficultySource, type Project, type ProjectOrigin } from './project';
 import type { Keybinds } from '../editor/keybinds';
 
 const DB_NAME = 'osu-web-editor';
@@ -32,6 +33,31 @@ interface StoredDifficulty {
   source?: DifficultySource;
   /** Star rating cached at save time, so song select doesn't recalculate every map on each visit. */
   stars?: { version: string; value: number | null };
+  /** What song select shows, stored too, so it doesn't parse every difficulty when the app starts. */
+  summary?: StoredSummary;
+}
+
+/** Bump this when StoredSummary or BeatmapInfo changes: older summaries are then rebuilt from the .osu text. */
+const SUMMARY_FORMAT = 1;
+
+interface StoredSummary {
+  format: number;
+  metadata: Beatmap['metadata'];
+  checksum: string;
+  info: BeatmapInfo;
+  background?: string;
+  audio: string;
+}
+
+function summaryOf(bm: Beatmap, osu: string, stars: number | null, source: DifficultySource | undefined): StoredSummary {
+  return {
+    format: SUMMARY_FORMAT,
+    metadata: bm.metadata,
+    checksum: checksumOf(osu, source),
+    info: beatmapInfo(bm, stars),
+    background: bm.events.background?.filename,
+    audio: bm.general.audioFilename,
+  };
 }
 
 /** The cached star rating, or a fresh one (with whether it had to be calculated). */
@@ -83,16 +109,27 @@ function db(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+/**
+ * Runs `fn` in one transaction, settling once it has committed: a full disk can still abort it at that point, after
+ * every request succeeded. A request that fails aborts it too.
+ */
+function transaction(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => void): Promise<void> {
   return db().then(
     (d) =>
-      new Promise<T>((resolve, reject) => {
+      new Promise<void>((resolve, reject) => {
         const t = d.transaction(STORE, mode);
-        const req = fn(t.objectStore(STORE));
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+        t.oncomplete = () => resolve();
+        t.onabort = () => reject(t.error);
+        fn(t.objectStore(STORE));
       }),
   );
+}
+
+function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  let req!: IDBRequest<T>;
+  return transaction(mode, (s) => {
+    req = fn(s);
+  }).then(() => req.result);
 }
 
 function recordOf(p: Project, existing: StoredProject | undefined, syncedAt?: number): StoredProject {
@@ -105,7 +142,9 @@ function recordOf(p: Project, existing: StoredProject | undefined, syncedAt?: nu
     difficulties: p.difficulties.map((d) => {
       const osu = serializeBeatmap(d.beatmap);
       const prev = existing?.difficulties.find((e) => e.id === d.id && e.osu === osu);
-      return { id: d.id, osu, source: d.source, stars: { version: STAR_RATING_VERSION, value: storedStars(prev ?? { id: d.id, osu }, parseOsu(osu)).value } };
+      const bm = parseOsu(osu);
+      const stars = storedStars(prev ?? { id: d.id, osu }, bm).value;
+      return { id: d.id, osu, source: d.source, stars: { version: STAR_RATING_VERSION, value: stars }, summary: summaryOf(bm, osu, stars, d.source) };
     }),
     syncedAt: syncedAt ?? existing?.syncedAt ?? 0,
     origin: p.origin ?? existing?.origin,
@@ -118,17 +157,23 @@ function getRecord(id: string): Promise<StoredProject | undefined> {
 
 /** Puts and deletes records in one transaction, so a crash can't leave half of a change. */
 function write(puts: StoredProject[], deletes: string[] = []): Promise<void> {
-  return db().then(
-    (d) =>
-      new Promise<void>((resolve, reject) => {
-        const t = d.transaction(STORE, 'readwrite');
-        const store = t.objectStore(STORE);
-        for (const r of puts) store.put(r);
-        for (const id of deletes) store.delete(id);
-        t.oncomplete = () => resolve();
-        t.onerror = () => reject(t.error);
-      }),
-  );
+  return transaction('readwrite', (store) => {
+    for (const r of puts) store.put(r);
+    for (const id of deletes) store.delete(id);
+  });
+}
+
+/** Changes a stored record in one transaction, so a save landing meanwhile can't be overwritten with the older copy. */
+function patchRecord(id: string, change: (r: StoredProject) => void): Promise<void> {
+  return transaction('readwrite', (store) => {
+    const req = store.get(id);
+    req.onsuccess = () => {
+      const r = req.result as StoredProject | undefined;
+      if (!r) return;
+      change(r);
+      store.put(r);
+    };
+  });
 }
 
 /** Saves a project. Saving a deleted one (a newer version from Drive, say) takes it out of Recently deleted. */
@@ -138,26 +183,38 @@ export async function saveProjectLocal(p: Project, syncedAt?: number): Promise<v
   await tx('readwrite', (s) => s.put(recordOf(p, existing, syncedAt)));
 }
 
-export async function markSynced(id: string, syncedAt: number): Promise<void> {
-  const existing = await tx<StoredProject | undefined>('readonly', (s) => s.get(id));
-  if (!existing) return;
-  existing.syncedAt = syncedAt;
-  await tx('readwrite', (s) => s.put(existing));
+export function markSynced(id: string, syncedAt: number): Promise<void> {
+  return patchRecord(id, (r) => {
+    r.syncedAt = syncedAt;
+  });
 }
 
 /** The updatedAt of the version this browser and Drive last both had (0 = never synced). */
 export async function syncedAtLocal(id: string): Promise<number> {
-  const r = await tx<StoredProject | undefined>('readonly', (s) => s.get(id));
+  const r = await getRecord(id);
   return r?.syncedAt ?? 0;
 }
 
-/** Records what the mirrors serve for a project's set, without counting as a save. */
-export async function saveOriginLocal(id: string, origin: ProjectOrigin): Promise<void> {
-  const existing = await tx<StoredProject | undefined>('readonly', (s) => s.get(id));
-  if (!existing) return;
-  existing.origin = origin;
-  await tx('readwrite', (s) => s.put(existing));
+/** Which version of a project is stored now, and whether it's in Recently deleted; null when there's none. */
+export async function storedVersion(id: string): Promise<{ updatedAt: number; deleted: boolean } | null> {
+  const r = await getRecord(id);
+  return r ? { updatedAt: r.updatedAt, deleted: !!r.deletedAt } : null;
 }
+
+/** The difficulties stored for a project, in Recently deleted or not. */
+export async function storedDifficulties(id: string): Promise<Difficulty[]> {
+  const r = await getRecord(id);
+  return r ? difficultiesOf(r) : [];
+}
+
+/** Records what the mirrors serve for a project's set, without counting as a save. */
+export function saveOriginLocal(id: string, origin: ProjectOrigin): Promise<void> {
+  return patchRecord(id, (r) => {
+    r.origin = origin;
+  });
+}
+
+const difficultiesOf = (r: StoredProject): Difficulty[] => r.difficulties.map((d) => ({ id: d.id, beatmap: parseOsu(d.osu), source: d.source }));
 
 function toProject(r: StoredProject): Project {
   return {
@@ -165,7 +222,7 @@ function toProject(r: StoredProject): Project {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     files: new Map(r.files.map((f) => [f.name, f.blob])),
-    difficulties: r.difficulties.map((d) => ({ id: d.id, beatmap: parseOsu(d.osu), source: d.source })),
+    difficulties: difficultiesOf(r),
     origin: r.origin,
   };
 }
@@ -183,24 +240,25 @@ function summarize(r: StoredProject, backfill: StoredProject[]): ProjectSummary 
   if (cached && cached.updatedAt === r.updatedAt) return { ...cached.summary, syncedAt: r.syncedAt };
   let fresh = false;
   const maps = r.difficulties.map((d) => {
-    const bm = parseOsu(d.osu);
-    const stars = storedStars(d, bm);
-    if (stars.fresh) {
+    let s = d.summary;
+    if (s?.format !== SUMMARY_FORMAT || d.stars?.version !== STAR_RATING_VERSION) {
+      const bm = parseOsu(d.osu);
+      const value = storedStars(d, bm).value;
+      d.stars = { version: STAR_RATING_VERSION, value };
+      s = d.summary = summaryOf(bm, d.osu, value, d.source);
       fresh = true;
-      d.stars = { version: STAR_RATING_VERSION, value: stars.value };
     }
-    return { id: d.id, bm, stars: stars.value, checksum: checksumOf(d.osu, d.source) };
+    return { id: d.id, ...s };
   });
   if (fresh) backfill.push(r);
-  const order = (m: (typeof maps)[number]) => m.stars ?? m.bm.difficulty.overallDifficulty;
-  maps.sort((a, b) => a.bm.general.mode - b.bm.general.mode || order(a) - order(b));
-  const m = maps[0]?.bm.metadata;
+  const order = (m: (typeof maps)[number]) => m.info.stars ?? m.info.od;
+  maps.sort((a, b) => a.info.mode - b.info.mode || order(a) - order(b));
+  const m = maps[0]?.metadata;
   const findBlob = (name: string | undefined) => {
     if (!name) return null;
-    const lower = name.toLowerCase().replace(/\\/g, '/');
-    return r.files.find((f) => f.name.toLowerCase().replace(/\\/g, '/') === lower)?.blob ?? null;
+    const key = fileKey(name);
+    return r.files.find((f) => fileKey(f.name) === key)?.blob ?? null;
   };
-  const first = maps[0]?.bm;
   const summary: ProjectSummary = {
     id: r.id,
     title: r.title,
@@ -215,9 +273,9 @@ function summarize(r: StoredProject, backfill: StoredProject[]): ProjectSummary 
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     syncedAt: r.syncedAt,
-    difficulties: maps.map(({ id, bm, stars, checksum }) => ({ id, beatmapId: bm.metadata.beatmapId, checksum, ...beatmapInfo(bm, stars) })),
-    background: findBlob(maps.find((x) => x.bm.events.background)?.bm.events.background?.filename),
-    audio: findBlob(first?.general.audioFilename),
+    difficulties: maps.map(({ id, metadata, checksum, info }) => ({ id, beatmapId: metadata.beatmapId, checksum, ...info })),
+    background: findBlob(maps.find((x) => x.background)?.background),
+    audio: findBlob(maps[0]?.audio),
   };
   summaryCache.set(r.id, { updatedAt: r.updatedAt, summary });
   return summary;
@@ -227,16 +285,13 @@ export async function listProjectsLocal(): Promise<ProjectSummary[]> {
   const all = await tx<StoredProject[]>('readonly', (s) => s.getAll());
   const backfill: StoredProject[] = [];
   const list = all.filter((r) => !r.deletedAt).map((r) => summarize(r, backfill)).sort((a, b) => b.updatedAt - a.updatedAt);
-  if (backfill.length) void backfillStars(backfill).catch(() => {});
+  if (backfill.length) void backfillSummaries(backfill).catch(() => {});
   return list;
 }
 
-/** Stores star ratings calculated for projects saved before they were cached (or by an older calculator). */
-async function backfillStars(records: StoredProject[]): Promise<void> {
-  const d = await db();
-  await new Promise<void>((resolve, reject) => {
-    const t = d.transaction(STORE, 'readwrite');
-    const store = t.objectStore(STORE);
+/** Stores star ratings and summaries calculated for projects saved before they were cached (or by an older calculator). */
+function backfillSummaries(records: StoredProject[]): Promise<void> {
+  return transaction('readwrite', (store) => {
     for (const r of records) {
       const req = store.get(r.id);
       req.onsuccess = () => {
@@ -245,14 +300,7 @@ async function backfillStars(records: StoredProject[]): Promise<void> {
         if (current && current.updatedAt === r.updatedAt) store.put({ ...current, difficulties: r.difficulties });
       };
     }
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
   });
-}
-
-/** Deletes a set for good (Recently deleted's "Delete forever"; a delete in song select goes to trashProjectLocal). */
-export async function deleteProjectLocal(id: string): Promise<void> {
-  await tx('readwrite', (s) => s.delete(id));
 }
 
 // ------------------------------------------------------------------ Recently deleted
@@ -283,7 +331,6 @@ export interface TrashEntry {
 }
 
 const trashId = (diffId: string) => `deleted-difficulty:${diffId}`;
-const fileKey = (name: string) => name.toLowerCase().replace(/\\/g, '/');
 
 /** Files a difficulty names: its song, background, video, storyboard images and sounds, and custom hitsounds. */
 function filesNamedBy(osu: string): string[] {

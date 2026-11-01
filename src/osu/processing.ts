@@ -83,6 +83,29 @@ function applyStacking(bm: Beatmap, objs: HitObject[], info: Map<number, ObjectI
   const count = objs.length;
   if (count === 0) return;
 
+  if (bm.formatVersion < 6) {
+    // Format v5 and older stack forwards, with slider tails stacking away from the slider.
+    for (let i = 0; i < count; i++) {
+      const curr = objs[i];
+      if (inf(curr).stackHeight !== 0 && curr.kind !== 'slider') continue;
+      let last = inf(curr).endTime;
+      let sliderStack = 0;
+      const tail = curr.kind === 'slider' ? getSliderPath(curr).positionAt(1) : pos(curr);
+      for (let j = i + 1; j < count; j++) {
+        if (objs[j].time - threshold > last) break;
+        if (dist(pos(objs[j]), pos(curr)) < STACK_DISTANCE) {
+          inf(curr).stackHeight++;
+          last = objs[j].time;
+        } else if (dist(pos(objs[j]), tail) < STACK_DISTANCE) {
+          sliderStack++;
+          inf(objs[j]).stackHeight -= sliderStack;
+          last = objs[j].time;
+        }
+      }
+    }
+    return;
+  }
+
   // Reverse pass, following osu!'s stacking algorithm for format v6+.
   for (let i = count - 1; i > 0; i--) {
     let n = i;
@@ -161,7 +184,8 @@ export function sliderTickProgresses(bm: Beatmap, o: Slider): number[] {
   const spanDuration = sliderSpanDuration(bm, o);
   if (path.length <= 0 || spanDuration <= 0) return [];
   const tickRate = bm.difficulty.sliderTickRate || 1;
-  const tickDistance = (bm.difficulty.sliderMultiplier * 100 * svAt(bm, o.time)) / tickRate;
+  // Before format v8, ticks ignore green lines.
+  const tickDistance = (bm.difficulty.sliderMultiplier * 100 * (bm.formatVersion < 8 ? 1 : svAt(bm, o.time))) / tickRate;
   const velocity = path.length / spanDuration;
   const minFromEnd = velocity * 10;
   const out: number[] = [];

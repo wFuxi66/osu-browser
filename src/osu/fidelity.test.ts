@@ -48,7 +48,7 @@ function normObject(line: string): string {
 
 function normTiming(line: string): string {
   const p = line.split(',');
-  return [Math.round(Number(p[0])), Number(Number(p[1]).toPrecision(12)), p[2] ?? 4, p[3] ?? 0, p[4] ?? 0, p[5] ?? 100, p[6] ?? (Number(p[1]) > 0 ? 1 : 0), p[7] ?? 0].join(',');
+  return [Number(Number(p[0]).toPrecision(12)), Number(Number(p[1]).toPrecision(12)), p[2] ?? 4, p[3] ?? 0, p[4] ?? 0, p[5] ?? 100, p[6] ?? (Number(p[1]) > 0 ? 1 : 0), p[7] ?? 0].join(',');
 }
 
 describe.skipIf(!dir)('real beatmap fidelity', () => {

@@ -80,6 +80,12 @@ describe('osu! login', () => {
     expect(cookies(res).oauth_state).toBeUndefined();
   });
 
+  it('starts a login that reaches the app over http behind a proxy, instead of redirecting to itself', async () => {
+    const res = await createApp().request('http://editor.example/api/auth/login?return=/songs');
+    expect(res.headers.get('location')).toMatch(/^https:\/\/osu\.ppy\.sh\/oauth\/authorize/);
+    expect(cookies(res).oauth_state).toBeTruthy();
+  });
+
   it("lists the user's own beatmapsets from every list", async () => {
     const { app, session } = await login();
     expect((await app.request('/api/me/beatmapsets')).status).toBe(401);

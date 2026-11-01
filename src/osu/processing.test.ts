@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { processBeatmap, stackTarget } from './processing';
+import { parseOsu } from './parser';
+import { processBeatmap, sliderTickProgresses, stackTarget } from './processing';
+import { serializeBeatmap } from './serializer';
 import { createEmptyBeatmap, defaultSample, newObjectId, type Beatmap, type Circle, type HitObject, type Slider, type Vec2 } from './types';
 
 /** A standard beatmap with one red line at 1000 ms, AR9 and StackLeniency 0.7 (stacking threshold 420 ms). */
@@ -125,5 +127,51 @@ describe('stackTarget (placement snapping onto a shown head or slider tail)', ()
     const proc = processBeatmap(map([early, late]));
     const visible = { x: 100 + proc.stackOffset, y: 100 + proc.stackOffset };
     expect(stackTarget(visible, [early], proc, 3)).toEqual({ x: 100, y: 100 });
+  });
+});
+
+describe('older file formats', () => {
+  /** A long slider (5 s at 100 px per 500 ms beat), then a circle on its head; a green line doubles the speed from 10000 ms. */
+  const old = (version: number) =>
+    parseOsu(`osu file format v${version}
+
+[Difficulty]
+ApproachRate:9
+SliderMultiplier:1
+SliderTickRate:1
+
+[TimingPoints]
+0,500,4,2,0,100,1,0
+10000,-50,4,2,0,100,0,0
+
+[HitObjects]
+100,100,1000,2,0,L|400:100,1,1000
+100,100,6300,1,0
+100,300,10000,2,0,L|400:300,1,300
+`);
+
+  it('format v5 and older stack as stable does for them', () => {
+    const height = (version: number) => {
+      const bm = old(version);
+      return processBeatmap(bm).info.get(bm.hitObjects[0].id)!.stackHeight;
+    };
+    expect(height(5)).toBe(1);
+    expect(height(14)).toBe(0);
+  });
+
+  it('before format v8, slider ticks ignore green lines', () => {
+    const ticks = (version: number) => {
+      const bm = old(version);
+      return sliderTickProgresses(bm, bm.hitObjects[2] as Slider).length;
+    };
+    expect(ticks(7)).toBe(2);
+    expect(ticks(8)).toBe(1);
+  });
+
+  it('saving keeps the format version and fractional timing points', () => {
+    const bm = parseOsu('osu file format v4\n\n[TimingPoints]\n1.36563876651985,500,4,2,0,100,1,0\n');
+    const again = parseOsu(serializeBeatmap(bm));
+    expect(again.formatVersion).toBe(4);
+    expect(again.timingPoints[0].time).toBeCloseTo(1.36563876651985, 10);
   });
 });

@@ -93,7 +93,8 @@ class StoryboardRuntime {
   private hitsKey = '';
   private blobByPath = new Map<string, Blob | null>();
   private blobCacheRev = -1;
-  private images = new Map<Blob, HTMLImageElement>();
+  /** Weak: every open reads a map's files again as new Blobs, so a closed map's images must go with them. */
+  private images = new WeakMap<Blob, HTMLImageElement>();
   private tints = new Map<string, HTMLCanvasElement>();
 
   /** Pick up project/difficulty changes. Cheap enough to call every frame. */
@@ -228,8 +229,10 @@ class StoryboardRuntime {
     if (!blob) return null;
     let img = this.images.get(blob);
     if (!img) {
+      const url = URL.createObjectURL(blob);
       img = new Image();
-      img.src = URL.createObjectURL(blob);
+      img.onload = img.onerror = () => URL.revokeObjectURL(url);
+      img.src = url;
       this.images.set(blob, img);
     }
     return img.complete && img.naturalWidth ? img : null;

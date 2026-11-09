@@ -2,6 +2,10 @@
 // has that the running one doesn't, so add a line with each change worth telling players about (the build puts
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
+  'Google Drive sync only sends what you saved: changes you chose not to save no longer come back, and saving while you keep mapping no longer leaves a second copy of the map.',
+  'Connecting Google Drive with several maps makes one "osu-browser" folder instead of several.',
+  'Song select stays smooth while Google Drive syncs a lot of maps.',
+  'Opening or playing maps again and again no longer uses more and more memory (maps with storyboards most of all).',
   'If importing an .osz fails to save (storage full), the copy you already have stays in song select.',
   'If saving fails when you leave a map (storage full), the map stays open instead of losing your changes.',
   'Drive sync and "Update to latest version" keep your local scores, collections and place in the map.',

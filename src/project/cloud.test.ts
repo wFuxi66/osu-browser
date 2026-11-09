@@ -21,11 +21,17 @@ const tagOf = async (p: Project) => (await p.files.get('tag')?.text()) ?? '';
 const hard = (id: string) => ({ id, beatmap: { metadata: { beatmapId: 7, version: 'Hard' } } });
 /** Runs while a download from Drive is under way. */
 let duringDownload: (() => void) | null = null;
+/** Runs once, while an upload looks up Drive's copy of its map. */
+let duringGet: (() => void) | null = null;
 
 vi.mock('./drive', () => ({
   drive: {
     list: async () => [...remote.values()],
-    get: async (id: string) => remote.get(id) ?? null,
+    get: async (id: string) => {
+      duringGet?.();
+      duringGet = null;
+      return remote.get(id) ?? null;
+    },
     upload: async (meta: { id: string; updatedAt: number }, blob: Blob) => {
       remote.set(meta.id, { fileId: `f-${meta.id}`, id: meta.id, title: meta.id, createdAt: 1, updatedAt: meta.updatedAt, size: 0, tag: await blob.text() });
     },
@@ -87,6 +93,7 @@ describe('Drive sync never replaces unsynced work', () => {
     local.clear();
     removed.length = 0;
     duringDownload = null;
+    duringGet = null;
     store.clear();
     cloud.driveConnected = true;
     cloud.offline = false;
@@ -128,9 +135,36 @@ describe('Drive sync never replaces unsynced work', () => {
     synced('d', 100);
     remote.set('d', { ...remote.get('d')!, updatedAt: 300, tag: 'edit on the pc' });
     local.set('d', { updatedAt: 200, syncedAt: 100, tag: 'edit here' });
-    await cloud.upload(project('d', local.get('d')!));
+    await cloud.upload('d');
     expect(remote.get('d')!.tag).toBe('edit here');
     expect(tags()).toEqual(['edit here', 'edit on the pc']);
+  });
+
+  it('uploads the saved copy, never edits made in the editor since the save', async () => {
+    synced('e', 100);
+    local.set('e', { updatedAt: 200, syncedAt: 100, tag: 'saved' });
+    // The editor's copy goes on changing while the upload runs.
+    const open = project('e', local.get('e')!);
+    duringGet = () => {
+      open.updatedAt = 300;
+      open.files.set('tag', new Blob(['edited, not saved']));
+    };
+    await cloud.upload(open.id);
+    expect(remote.get('e')).toMatchObject({ updatedAt: 200, tag: 'saved' });
+  });
+
+  it('a save made during an upload is sent after it, with no conflict copy', async () => {
+    synced('f', 100);
+    local.set('f', { updatedAt: 200, syncedAt: 100, tag: 'first save' });
+    let second: Promise<void> | undefined;
+    duringGet = () => {
+      local.set('f', { ...local.get('f')!, updatedAt: 300, tag: 'second save' });
+      second = cloud.upload('f');
+    };
+    await cloud.upload('f');
+    await second;
+    expect(remote.get('f')).toMatchObject({ updatedAt: 300, tag: 'second save' });
+    expect(tags()).toEqual(['second save']);
   });
 
   it('leaves the map open in the editor alone', async () => {

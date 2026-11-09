@@ -529,7 +529,7 @@ class Editor {
     if (cloud.syncing) {
       // Saved is saved: the upload carries on in the background (saves made meanwhile are sent once it's done).
       this.toast('Saved. Syncing to Google Drive…');
-      cloud.upload(this.project).catch((e) => this.toast(`Saved locally. Cloud sync failed: ${(e as Error).message}`, 'error'));
+      cloud.upload(this.project.id).catch((e) => this.toast(`Saved locally. Cloud sync failed: ${(e as Error).message}`, 'error'));
     } else {
       this.toast('Saved.');
       void this.firstSaveNudge();

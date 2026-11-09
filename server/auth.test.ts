@@ -74,6 +74,20 @@ describe('osu! login', () => {
     expect(cookies(out).osu_session).toBe('');
   });
 
+  it('only returns to a path on PUBLIC_URL, and refuses a callback without the state it set', async () => {
+    const app = createApp();
+    for (const ret of ['.evil.example', '@evil.example', '//evil.example', 'https://evil.example']) {
+      const c = cookies(await app.request(`https://editor.example/api/auth/login?return=${encodeURIComponent(ret)}`));
+      const back = await app.request('/api/auth/callback?error=access_denied', { headers: { Cookie: `oauth_state=${c.oauth_state}; oauth_return=${c.oauth_return}` } });
+      expect(back.headers.get('location')).toBe('https://editor.example/');
+    }
+    const c = cookies(await app.request('https://editor.example/api/auth/login?return=/songs'));
+    const callback = (state: string, cookie: string) => app.request(`/api/auth/callback?code=the-code&state=${state}`, { headers: { Cookie: cookie } });
+    expect((await callback('forged', `oauth_state=${c.oauth_state}`)).status).toBe(400);
+    expect((await callback(c.oauth_state, '')).status).toBe(400);
+    expect(osu).not.toHaveBeenCalled();
+  });
+
   it('restarts a login begun on another domain on PUBLIC_URL, where its callback lands', async () => {
     const res = await createApp().request('https://old-name.example/api/auth/login?return=/songs');
     expect(res.headers.get('location')).toBe('https://editor.example/api/auth/login?return=/songs');

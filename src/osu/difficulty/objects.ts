@@ -51,6 +51,7 @@ export interface ControlPoints {
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
+/** Stable's DifficultyRange: `min` at 0, `mid` at 5, `max` at 10. */
 export function difficultyRange(d: number, min: number, mid: number, max: number): number {
   if (d > 5) return mid + (max - mid) * ((d - 5) / 5);
   if (d < 5) return mid + (mid - min) * ((d - 5) / 5);

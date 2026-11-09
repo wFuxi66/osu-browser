@@ -3,6 +3,7 @@
 // the objects disappear as they're actually hit.
 import { hitsounds, objectSoundEvents, objectSustainedSounds, type SoundEvent } from '../audio/hitsounds';
 import { dist, getSliderPath, sliderPositionAtSpan } from '../osu/curves';
+import { difficultyRange } from '../osu/difficulty/objects';
 import { comboColourIndex, hitWindows, processBeatmap, sliderTickProgresses, stackedPosition, type ProcessedBeatmap } from '../osu/processing';
 import { objectEndTime, sliderSpanDuration } from '../osu/timing';
 import type { Beatmap, BreakPeriod, HitObject, Rgb, Vec2 } from '../osu/types';
@@ -21,7 +22,7 @@ import {
   type View,
 } from '../editor/render/draw';
 import { isAuto, moddedBeatmap, rateOf, scoreMultiplier, type ModId } from './mods';
-import type { Counts } from './scores';
+import { accuracyOf, type Counts } from './scores';
 
 export type Judgement = 300 | 100 | 50 | 0;
 
@@ -97,13 +98,6 @@ export interface ErrorMark {
   error: number;
   value: Judgement;
   at: number;
-}
-
-/** Stable's DifficultyRange: `min` at 0, `mid` at 5, `max` at 10. */
-export function difficultyRange(v: number, min: number, mid: number, max: number): number {
-  if (v > 5) return mid + ((max - mid) * (v - 5)) / 5;
-  if (v < 5) return mid - ((mid - min) * (5 - v)) / 5;
-  return mid;
 }
 
 export class StdGame {
@@ -293,9 +287,7 @@ export class StdGame {
   }
 
   get accuracy(): number {
-    const c = this.counts;
-    const total = c.n300 + c.n100 + c.n50 + c.nMiss;
-    return total ? (c.n300 * 300 + c.n100 * 100 + c.n50 * 50) / (total * 300) : 1;
+    return accuracyOf(this.counts);
   }
 
   /** Every object has been judged. */

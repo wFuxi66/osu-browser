@@ -204,23 +204,24 @@ class Cloud {
   private uploaded = new Map<string, number>();
 
   /**
-   * Uploads a project. Saves made while one of its uploads is running wait for it and then send only the newest
-   * state once, rather than racing each other.
+   * Uploads a project as it's saved in this browser. Saves made while one of its uploads is running wait for it and
+   * then send only the newest state once, rather than racing each other.
    */
-  upload(p: Project): Promise<void> {
-    const prev = this.uploads.get(p.id) ?? Promise.resolve();
-    const next = prev
-      .catch(() => undefined)
-      .then(() => (p.updatedAt > (this.uploaded.get(p.id) ?? 0) ? this.uploadNow(p) : undefined));
-    this.uploads.set(p.id, next);
+  upload(id: string): Promise<void> {
+    const prev = this.uploads.get(id) ?? Promise.resolve();
+    const next = prev.catch(() => undefined).then(() => this.uploadNow(id));
+    this.uploads.set(id, next);
     const done = () => {
-      if (this.uploads.get(p.id) === next) this.uploads.delete(p.id);
+      if (this.uploads.get(id) === next) this.uploads.delete(id);
     };
     next.then(done, done);
     return next;
   }
 
-  private async uploadNow(p: Project): Promise<void> {
+  private async uploadNow(id: string): Promise<void> {
+    // The saved copy, never the editor's project: that one goes on changing with edits that aren't saved.
+    const p = await loadProjectLocal(id);
+    if (!p || p.updatedAt <= (this.uploaded.get(id) ?? 0)) return;
     const at = p.updatedAt;
     // Drive's copy isn't the version this browser last synced: another device saved the map too (while this one
     // was offline, say). Ours is about to replace it, so keep that version first, as a map of its own.
@@ -254,7 +255,7 @@ class Cloud {
     await saveProjectLocal(project);
     this.onConflict?.(remote.title);
     // Back into Drive under its new id; if that fails, it's unsynced here and the next sync sends it.
-    void this.upload(project).catch(() => undefined);
+    void this.upload(project.id).catch(() => undefined);
   }
 
   async download(meta: CloudProject): Promise<{ project: Project; warnings: string[] }> {
@@ -300,7 +301,7 @@ class Cloud {
   /** A map back from Recently deleted: Drive no longer has to remove it, and it uploads as a new save. */
   async restore(p: Project): Promise<void> {
     setPendingRemovals(pendingRemovals().filter((id) => id !== p.id));
-    if (this.syncing) await this.upload(p);
+    if (this.syncing) await this.upload(p.id);
   }
 
   /** Does the removals left for later; returns the ids Drive still couldn't remove. */
@@ -369,8 +370,7 @@ class Cloud {
       if (l.updatedAt > l.syncedAt) {
         jobs.push(async () => {
           try {
-            const p = await loadProjectLocal(l.id);
-            if (p) await this.upload(p);
+            await this.upload(l.id);
           } catch (e) {
             failures.push((e as Error).message);
           }

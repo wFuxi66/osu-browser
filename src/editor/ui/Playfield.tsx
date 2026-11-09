@@ -17,7 +17,8 @@ const CURSOR_LIFT = 50;
 /** The active compose surface, exposed so keyboard shortcuts can reach it (Escape/Enter). */
 export const activePlayfield: { current: PlayfieldMode | null } = { current: null };
 
-const bgCache = new Map<Blob, HTMLImageElement>();
+// Weak: every open reads a map's files again as new Blobs, so a closed map's background must go with them.
+const bgCache = new WeakMap<Blob, HTMLImageElement>();
 function backgroundImage(): HTMLImageElement | null {
   const p = editor.project;
   const bg = p && editor.bm.events.background;
@@ -26,8 +27,10 @@ function backgroundImage(): HTMLImageElement | null {
   if (!blob) return null;
   let img = bgCache.get(blob);
   if (!img) {
+    const url = URL.createObjectURL(blob);
     img = new Image();
-    img.src = URL.createObjectURL(blob);
+    img.onload = img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
     bgCache.set(blob, img);
   }
   return img.complete && img.naturalWidth ? img : null;

@@ -66,7 +66,8 @@ function newestById(files: ProjectFile[]): Map<string, DriveProject> {
 
 class Drive {
   private token: { value: string; expires: number } | null = null;
-  private folderId: string | null = null;
+  /** The app's folder, looked up (or made) once: uploads starting together would each make one otherwise. */
+  private folderId: Promise<string> | null = null;
   /** The settings file's id ('' when there is none yet), once looked up. */
   private settingsId: string | null = null;
   /** Project id → its file's id, from the last listing or upload: saves a search before each upload. */
@@ -112,8 +113,15 @@ class Drive {
     return out;
   }
 
-  private async folder(): Promise<string> {
-    if (this.folderId) return this.folderId;
+  private folder(): Promise<string> {
+    this.folderId ??= this.findFolder().catch((e) => {
+      this.folderId = null;
+      throw e;
+    });
+    return this.folderId;
+  }
+
+  private async findFolder(): Promise<string> {
     const [found] = await this.search<{ id: string; name: string }>(
       `mimeType='application/vnd.google-apps.folder' and trashed=false and appProperties has { key='${APP_KEY}' and value='folder' }`,
       'id,name',
@@ -127,14 +135,14 @@ class Drive {
           body: JSON.stringify({ name: DRIVE_FOLDER }),
         }).catch(() => undefined);
       }
-      return (this.folderId = found.id);
+      return found.id;
     }
     const r = await this.call(`${API}/files?fields=id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=UTF-8' },
       body: JSON.stringify({ name: DRIVE_FOLDER, mimeType: 'application/vnd.google-apps.folder', appProperties: { [APP_KEY]: 'folder' } }),
     });
-    return (this.folderId = ((await r.json()) as { id: string }).id);
+    return ((await r.json()) as { id: string }).id;
   }
 
   /** Every synced project, newest copy per project id. */
@@ -153,21 +161,16 @@ class Drive {
     return p;
   }
 
-  private async fileFor(projectId: string): Promise<string | undefined> {
-    const files = await this.search<{ id: string }>(`trashed=false and appProperties has { key='projectId' and value=${quote(projectId)} }`, 'id');
-    return files[0]?.id;
-  }
-
   /** Creates or replaces a project's file (resumable upload, so large sets work too). */
   async upload(meta: DriveUpload, blob: Blob): Promise<void> {
     const cached = this.fileIds.get(meta.id);
     try {
-      await this.uploadTo(cached ?? (await this.fileFor(meta.id)), meta, blob);
+      await this.uploadTo(cached ?? (await this.get(meta.id))?.fileId, meta, blob);
     } catch (e) {
       // The remembered file may have been deleted from Drive since: look it up and try once more.
       if (!cached) throw e;
       this.fileIds.delete(meta.id);
-      await this.uploadTo(await this.fileFor(meta.id), meta, blob);
+      await this.uploadTo((await this.get(meta.id))?.fileId, meta, blob);
     }
   }
 

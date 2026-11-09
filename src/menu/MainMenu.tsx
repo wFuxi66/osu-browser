@@ -11,7 +11,7 @@ import type { Beatmap } from '../osu/types';
 import { cloud } from '../project/cloud';
 import { listProjectsLocal, loadProjectLocal, type ProjectSummary } from '../project/storage';
 import { scores, useScores } from '../play/scores';
-import { accountDialog } from '../songselect/SongSelect';
+import { accountDialog, blobUrl } from '../songselect/SongSelect';
 import { options, optionsOpen } from '../ui/options';
 import { promptOpen } from '../ui/prompt';
 import { screens } from '../ui/screens';
@@ -32,14 +32,6 @@ const TIPS = [
   'Every editor shortcut can be rebound in Options → Input.',
   'You can drop an .osz or a skin straight onto the window.',
 ];
-
-const urlCache = new WeakMap<Blob, string>();
-const blobUrl = (b: Blob | null) => {
-  if (!b) return null;
-  let u = urlCache.get(b);
-  if (!u) urlCache.set(b, (u = URL.createObjectURL(b)));
-  return u;
-};
 
 const startedAt = Date.now();
 

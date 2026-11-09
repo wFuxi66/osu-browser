@@ -55,7 +55,7 @@ function loadUiPrefs(): { group: GroupMode; sort: SortMode } {
 const LEAVE_MS = 260;
 
 const urlCache = new WeakMap<Blob, string>();
-function blobUrl(b: Blob | null): string | null {
+export function blobUrl(b: Blob | null): string | null {
   if (!b) return null;
   let u = urlCache.get(b);
   if (!u) {
@@ -133,14 +133,19 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
     else if (result === 'cancelled') editor.toast('Google Drive wasn\x27t connected.');
     if (!cloud.syncing) return;
     void editor.syncSettings();
-    // In the background: song select stays usable, and maps appear in the list as they arrive.
+    // In the background: song select stays usable, and maps appear in the list as they arrive (at most once a second:
+    // each refresh reads every stored map).
     let live = true;
+    let refreshedAt = 0;
     setSyncStatus('Syncing with Google Drive…');
     cloud
       .syncAll((done, total) => {
         if (!live) return;
         setSyncStatus(`Syncing with Google Drive… ${done}/${total}`);
-        if (done > 0) void refresh();
+        if (done > 0 && Date.now() - refreshedAt > 1000) {
+          refreshedAt = Date.now();
+          void refresh();
+        }
       })
       .then((n) => n > 0 && editor.toast(`Synced ${n} beatmap${n > 1 ? 's' : ''} with Google Drive.`))
       .catch((e) => editor.toast(`Sync failed: ${e.message}`, 'error'))
@@ -180,7 +185,7 @@ export function SongSelect({ mode }: { mode: SelectMode }) {
     // In the background, like stable: the game stays usable while it downloads.
     const p = await downloadInBackground(`set:${set.beatmapSetId}`, set.title, (progress) => updateToLatest(set.id, set.beatmapSetId, progress));
     if (!p) return;
-    if (cloud.syncing) await cloud.upload(p).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
+    if (cloud.syncing) await cloud.upload(p.id).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
     editor.toast(`Updated ${set.title} to the latest version.`);
     if (!alive.current) return;
     await refresh();
@@ -414,7 +419,7 @@ You can restore it from Recently deleted for ${TRASH_DAYS} days.`,
     await run('Deleting…', async () => {
       if (r === 'diff') {
         const p = await trashDifficultyLocal(selSet.id, selDiff.id);
-        if (p && cloud.syncing) await cloud.upload(p).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
+        if (p && cloud.syncing) await cloud.upload(p.id).catch((e) => editor.toast(`Cloud sync failed: ${e.message}`, 'error'));
       } else {
         await trashProjectLocal(selSet.id);
         if (cloud.driveConnected && !(await cloud.remove(selSet.id))) editor.toast("Deleted. It's removed from Google Drive once you're back online.");

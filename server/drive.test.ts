@@ -71,6 +71,20 @@ describe('Google Drive sign-in', () => {
     expect(cookies(cb).gdrive).toBeUndefined();
   });
 
+  it('only returns to a path on PUBLIC_URL, and refuses a callback without the state it set', async () => {
+    const app = createApp();
+    for (const ret of ['.evil.example', '@evil.example', '//evil.example', 'https://evil.example']) {
+      const c = cookies(await app.request(`https://editor.example/api/drive/login?return=${encodeURIComponent(ret)}`));
+      const back = await app.request('/api/drive/callback?error=access_denied', { headers: { Cookie: `drive_state=${c.drive_state}; drive_return=${c.drive_return}` } });
+      expect(back.headers.get('location')).toBe('https://editor.example/?drive=cancelled');
+    }
+    const c = cookies(await app.request('https://editor.example/api/drive/login?return=/songs'));
+    const callback = (state: string, cookie: string) => app.request(`/api/drive/callback?code=the-code&state=${state}`, { headers: { Cookie: cookie } });
+    expect((await callback('forged', `drive_state=${c.drive_state}`)).status).toBe(400);
+    expect((await callback(c.drive_state, '')).status).toBe(400);
+    expect(google).not.toHaveBeenCalled();
+  });
+
   it('rejects missing, tampered and revoked tokens, and cross-origin requests', async () => {
     const { app, cb } = await connect();
     const sealed = cookies(cb).gdrive;

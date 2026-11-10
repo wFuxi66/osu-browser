@@ -2,6 +2,7 @@
 // has that the running one doesn't, so add a line with each change worth telling players about (the build puts
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
+  'Editor: Ctrl+clicking an anchor onto a straight slider makes a perfect curve again, like stable (a fourth anchor makes it bezier).',
   'Google Drive sync only sends what you saved: changes you chose not to save no longer come back, and saving while you keep mapping no longer leaves a second copy of the map.',
   'Connecting Google Drive with several maps makes one "osu-browser" folder instead of several.',
   'Song select stays smooth while Google Drive syncs a lot of maps.',

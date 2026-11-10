@@ -961,7 +961,8 @@ export class StdPlayfield {
     editor.commit(() => {
       verts.splice(bestI, 0, { x: Math.round(p.x), y: Math.round(p.y) });
       s.points = verts.slice(1);
-      if (s.curveType === 'P' || s.curveType === 'L') s.curveType = 'B';
+      // Like stable, an anchor added to a straight slider makes a perfect curve; a fourth one makes it bezier.
+      if (s.curveType !== 'C') s.curveType = verts.length === 3 ? 'P' : 'B';
       s.length = getSliderPath({ ...s, length: 0 }).rawLength;
     });
     return true;

@@ -115,8 +115,8 @@ function applyStacking(bm: Beatmap, objs: HitObject[], info: Map<number, ObjectI
       while (--n >= 0) {
         const objN = objs[n];
         if (objN.kind === 'spinner') continue;
-        // Stable compares the two start times here; the end time of a circle is its start, a slider's is not.
-        if (objI.time - objN.time > threshold) break;
+        // Stable measures a circle from where the previous object ends.
+        if (objI.time - inf(objN).endTime > threshold) break;
         if (objN.kind === 'slider' && dist(inf(objN).endPos, pos(objI)) < STACK_DISTANCE) {
           const offset = inf(objI).stackHeight - inf(objN).stackHeight + 1;
           for (let j = n + 1; j <= i; j++) {
@@ -134,8 +134,8 @@ function applyStacking(bm: Beatmap, objs: HitObject[], info: Map<number, ObjectI
       while (--n >= 0) {
         const objN = objs[n];
         if (objN.kind === 'spinner') continue;
-        // A slider compares against where the previous object ends, so a long slider's own length counts.
-        if (objI.time - inf(objN).endTime > threshold) break;
+        // Stable measures a slider from where the previous object starts, so a long slider's length is not extra leniency.
+        if (objI.time - objN.time > threshold) break;
         if (dist(inf(objN).endPos, pos(objI)) < STACK_DISTANCE) {
           inf(objN).stackHeight = inf(objI).stackHeight + 1;
           objI = objN;

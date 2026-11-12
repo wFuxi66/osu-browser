@@ -44,28 +44,27 @@ function slider(x: number, y: number, time: number, to: Vec2, length: number): S
   };
 }
 
-describe('stacking time references (stable: circle compares starts, slider compares ends)', () => {
-  it('does not stack a circle 129 ms after a long slider ends', () => {
-    // Slider 1000 → 2071 (300 px at 1.4x slider multiplier and 500 ms beats), circle at 2200 one pixel away
-    // from the slider head. Stable compares the circle's start (2200) with the slider's start (1000): 1200 ms
-    // is past the 420 ms threshold, so neither object stacks.
+describe('stacking time references (stable: circle compares the previous end, slider the previous start)', () => {
+  it('stacks a circle on a long slider tail it follows within the threshold', () => {
+    // Slider 1000 → 2071 (300 px at 1.4x slider multiplier and 500 ms beats), circle at 2200 on its tail:
+    // 129 ms after the slider ends, inside the 420 ms threshold, so the circle stacks below the tail.
     const s = slider(100, 100, 1000, { x: 400, y: 100 }, 300);
-    const c = circle(101, 100, 2200);
+    const c = circle(400, 100, 2200);
     const proc = processBeatmap(map([s, c]));
     expect(proc.info.get(s.id)!.endTime).toBeCloseTo(2071.43, 1);
-    expect(proc.info.get(c.id)!.stackHeight).toBe(0);
+    expect(proc.info.get(c.id)!.stackHeight).toBe(-1);
     expect(proc.info.get(s.id)!.stackHeight).toBe(0);
   });
 
-  it('stacks a slider onto a long slider that ends within the threshold', () => {
-    // Slider A runs 1000 → 1714. Slider B starts at 1800 on A's tail: 85 ms after A ends, well inside the
-    // 420 ms threshold. A slider compares the previous object's end, so the two stack (A is lifted).
+  it('does not stack a slider on a long slider tail when the heads are past the threshold', () => {
+    // Slider A runs 1000 → 1714. Slider B starts at 1800 on A's tail: 86 ms after A ends, but 800 ms after
+    // A starts, and a slider compares the previous start, so with a 420 ms threshold nothing stacks.
     const a = slider(100, 100, 1000, { x: 300, y: 100 }, 200);
     const b = slider(300, 100, 1800, { x: 500, y: 100 }, 200);
     const proc = processBeatmap(map([a, b]));
     expect(proc.info.get(a.id)!.endTime).toBeCloseTo(1714.29, 1);
-    expect(proc.info.get(b.id)!.stackHeight).toBe(0);
-    expect(proc.info.get(a.id)!.stackHeight).toBe(1);
+    expect(proc.info.get(a.id)!.stackHeight).toBe(0);
+    expect(processBeatmap(map([a, { ...b, time: 1400 }])).info.get(a.id)!.stackHeight).toBe(1);
   });
 
   it('stacks two circles two pixels apart (the earlier one gets the height)', () => {
@@ -131,7 +130,7 @@ describe('stackTarget (placement snapping onto a shown head or slider tail)', ()
 });
 
 describe('older file formats', () => {
-  /** A long slider (5 s at 100 px per 500 ms beat), then a circle on its head; a green line doubles the speed from 10000 ms. */
+  /** A long slider (5 s at 100 px per 500 ms beat), then a short slider on its head; a green line doubles the speed from 10000 ms. */
   const old = (version: number) =>
     parseOsu(`osu file format v${version}
 
@@ -146,7 +145,7 @@ SliderTickRate:1
 
 [HitObjects]
 100,100,1000,2,0,L|400:100,1,1000
-100,100,6300,1,0
+100,100,6300,2,0,L|100:200,1,50
 100,300,10000,2,0,L|400:300,1,300
 `);
 

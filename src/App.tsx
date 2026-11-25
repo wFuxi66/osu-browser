@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { hitsounds } from './audio/hitsounds';
+import { music } from './audio/music';
 import { EditorShell } from './editor/ui/EditorShell';
 import { Toasts } from './editor/ui/Toasts';
 import { editor, useEditor } from './editor/store';
@@ -55,7 +56,10 @@ export function App() {
     void cleanUpTrash().catch(() => undefined);
     void skins.use(editor.prefs.skin);
     // The AudioContext can only start after a user gesture.
-    const unlock = () => hitsounds.unlock();
+    const unlock = () => {
+      hitsounds.unlock();
+      if (hitsounds.ctx) music.attach(hitsounds.ctx);
+    };
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
   }, []);

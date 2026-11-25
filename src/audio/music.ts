@@ -41,6 +41,8 @@ class MusicClock {
   private baseVolume = 1;
   private fadeLevel = 1;
   private fadeFrame = 0;
+  /** iOS ignores `el.volume`, so there the element plays through this gain instead (see attach). */
+  private gain: GainNode | null = null;
 
   constructor() {
     this.el = new Audio();
@@ -73,7 +75,7 @@ class MusicClock {
     this.pause();
     cancelAnimationFrame(this.fadeFrame);
     this.fadeLevel = 1;
-    this.el.volume = this.baseVolume;
+    this.output();
     if (this.url) URL.revokeObjectURL(this.url);
     this.url = null;
     this.duration = 0;
@@ -123,6 +125,26 @@ class MusicClock {
     if (wasPlaying) await this.play();
   }
 
+  /** On browsers where an element's volume is read-only (iOS), routes the music through `ctx` so volume works. */
+  attach(ctx: AudioContext) {
+    if (this.gain) return;
+    const probe = new Audio();
+    probe.volume = 0.5;
+    if (probe.volume === 0.5) return;
+    // Web Audio follows the ringer switch on iOS, the element didn't: keep the music audible in silent mode.
+    const session = (navigator as { audioSession?: { type: string } }).audioSession;
+    if (session) session.type = 'playback';
+    this.gain = ctx.createGain();
+    ctx.createMediaElementSource(this.el).connect(this.gain).connect(ctx.destination);
+    this.output();
+  }
+
+  private output() {
+    const v = this.baseVolume * this.fadeLevel;
+    if (this.gain) this.gain.gain.value = v;
+    else this.el.volume = v;
+  }
+
   /** The volume from the settings (0–1); a fade scales it. */
   get volume(): number {
     return this.baseVolume;
@@ -130,7 +152,7 @@ class MusicClock {
 
   set volume(v: number) {
     this.baseVolume = v;
-    this.el.volume = v * this.fadeLevel;
+    this.output();
   }
 
   /** Brings the volume up from silence over `ms`, so a song starting part-way through doesn't cut in. */
@@ -159,7 +181,7 @@ class MusicClock {
       const k = curve(t);
       // Squared, as loudness follows amplitude roughly logarithmically: a linear ramp sounds like it jumps.
       this.fadeLevel = k * k;
-      this.el.volume = this.baseVolume * this.fadeLevel;
+      this.output();
       if (t < 1) this.fadeFrame = requestAnimationFrame(step);
     };
     step();
@@ -230,6 +252,8 @@ class MusicClock {
     if (!this.url) return;
     if (this.pausedTime >= this.duration - 5) this.seek(0);
     this.el.currentTime = Math.max(0, this.pausedTime + this.offset) / 1000;
+    const ctx = this.gain?.context;
+    if (ctx && ctx.state !== 'running') void (ctx as AudioContext).resume(); // iOS suspends it in the background
     try {
       await this.el.play();
     } catch {

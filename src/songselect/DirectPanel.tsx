@@ -11,7 +11,12 @@ import { starColour } from './filter';
 import { useSkin } from '../play/ModIcon';
 import { hasSkinUi, SkinUi } from '../skin/SkinUi';
 
-const previewVolume = () => editor.prefs.masterVolume * editor.prefs.musicVolume;
+const setPreviewVolume = (a: HTMLAudioElement) => {
+  const v = editor.prefs.masterVolume * editor.prefs.musicVolume;
+  a.volume = v;
+  // iOS ignores `volume`; the preview is cross-origin, so it can't go through Web Audio, but muting works.
+  a.muted = v === 0;
+};
 
 const STATUSES: [DirectStatus, string][] = [
   ['ranked', 'Ranked'],
@@ -210,7 +215,7 @@ export function DirectPanel({ have, background, onImported, onOpen, onClose, min
   // The preview follows the volume settings while it plays (Alt+wheel), as the song select music does.
   useEffect(() => {
     const off = editor.subscribe(() => {
-      if (audio.current) audio.current.volume = previewVolume();
+      if (audio.current) setPreviewVolume(audio.current);
     });
     return () => void off();
   }, []);
@@ -250,7 +255,7 @@ export function DirectPanel({ have, background, onImported, onOpen, onClose, min
     music.pause();
     setPreviewAt(0);
     a.src = s.preview;
-    a.volume = previewVolume();
+    setPreviewVolume(a);
     a.onended = () => setPlaying(null);
     a.ontimeupdate = () => a.duration && setPreviewAt(a.currentTime / a.duration);
     a.play().then(

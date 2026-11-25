@@ -39,6 +39,8 @@ export function runAiMod(project: Project, bm: Beatmap): AiModIssue[] {
   // Compose
   if (objs.length === 0) add({ severity: 'error', category: 'Compose', message: 'This difficulty has no hit objects.' });
   const r = circleRadius(bm.difficulty.circleSize);
+  // What a 4:3 screen shows of a circle in stable (playfield sits 8px low), as measured by Mapset Verifier.
+  const offscreen = (p: { x: number; y: number }) => p.x - r < -67 || p.x + r > 579 || p.y - r < -60 || p.y + r > 428;
   for (let i = 0; i < objs.length; i++) {
     const o = objs[i];
     if (reds.length) {
@@ -54,21 +56,13 @@ export function runAiMod(project: Project, bm: Beatmap): AiModIssue[] {
       else if (next.time < objectEndTime(bm, o) - 1) add({ severity: 'error', category: 'Compose', message: 'Object starts before the previous one ends.', time: next.time, objectIds: [o.id, next.id] });
     }
     if (mode === 0 && o.kind !== 'spinner') {
-      const pts = o.kind === 'slider' ? [{ x: o.x, y: o.y }, getSliderPath(o).positionAt(1)] : [{ x: o.x, y: o.y }];
-      if (pts.some((p) => p.x - r < -64 || p.x + r > 576 || p.y - r < -48 + 16 || p.y + r > 432)) add({ severity: 'warning', category: 'Compose', message: 'Object is partially off-screen.', time: o.time, objectIds: [o.id] });
-      else if (pts.some((p) => p.x < 0 || p.x > 512 || p.y < 0 || p.y > 384)) add({ severity: 'info', category: 'Compose', message: 'Object is outside the playfield area.', time: o.time, objectIds: [o.id] });
+      const ends = o.kind === 'slider' ? [{ x: o.x, y: o.y }, getSliderPath(o).positionAt(1)] : [{ x: o.x, y: o.y }];
+      if (ends.some(offscreen)) add({ severity: 'warning', category: 'Compose', message: 'Object is partially off-screen.', time: o.time, objectIds: [o.id] });
+      else if (o.kind === 'slider' && getSliderPath(o).points.some(offscreen)) add({ severity: 'warning', category: 'Compose', message: 'Slider body goes off-screen.', time: o.time, objectIds: [o.id] });
     }
     if (o.kind === 'slider') {
       const path = getSliderPath(o);
       if (o.length <= 0 || path.length <= 0) add({ severity: 'error', category: 'Compose', message: 'Slider has zero length.', time: o.time, objectIds: [o.id] });
-      if (mode === 0) {
-        for (const p of path.points) {
-          if (p.x - r < -64 || p.x + r > 576 || p.y - r < -32 || p.y + r > 432) {
-            add({ severity: 'warning', category: 'Compose', message: 'Slider body goes off-screen.', time: o.time, objectIds: [o.id] });
-            break;
-          }
-        }
-      }
     }
     if (o.kind === 'spinner') {
       const beat = redLineAt(bm, o.time).beatLength;

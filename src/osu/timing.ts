@@ -148,10 +148,13 @@ export function tickColour(d: number): string {
 
 export const BEAT_DIVISORS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 16];
 
-/** Is `time` within ~1ms of a tick at `divisor`? */
+/**
+ * Is `time` on a tick at `divisor`, as stable judges it? Stable stores a snapped time as the tick cast to int, and only
+ * a 2ms+ unsnap counts, so a time is unsnapped only when it is 2ms+ from both the exact tick and the truncated one.
+ */
 export function isSnapped(bm: Beatmap, time: number, divisor: number): boolean {
   const s = snapTime(bm, time, divisor);
-  return Math.abs(s - time) <= 1.5;
+  return Math.abs(s - time) < 2 || Math.abs(Math.trunc(s) - time) < 2;
 }
 
 /** Smallest standard divisor this time is snapped to, or 0 if unsnapped. */

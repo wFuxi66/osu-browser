@@ -2,6 +2,7 @@
 // has that the running one doesn't, so add a line with each change worth telling players about (the build puts
 // this list in the service worker too). Lines are matched by their text: don't reword one that has shipped.
 export const CHANGELOG: string[] = [
+  'Volume overlay (bottom right): it stays up while the cursor is over it, so you can reach the music and effect meters; Alt+wheel over a meter changes that one right away; on the main menu the wheel alone changes the volume, like stable.',
   'Editor AiMod: no more false "not snapped" (it now allows the 1ms rounding stable saves) or "off-screen" warnings (it uses what a 4:3 screen really shows); the "outside the playfield" note is gone.',
   'On iPhone and iPad, the volume settings now change the music (and 0% mutes it).',
   'Objects on slider ends stack with the map\'s stack leniency again, like stable (a long slider no longer makes them stack from much further away).',

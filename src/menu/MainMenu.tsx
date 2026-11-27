@@ -23,7 +23,7 @@ const TIPS = [
   'Press F1 in song select to choose mods, and Ctrl+Enter to watch an autoplay of the selected map.',
   'In the editor, F5 test-plays the map from the current time. Esc brings you back.',
   'Your scores stay in this browser: they are there to test your own maps.',
-  'Alt + mouse wheel changes the volume. While playing, the wheel alone does.',
+  'Alt + mouse wheel changes the volume. On the main menu and while playing, the wheel alone does.',
   'Press ` (the key under Esc) to quickly retry a map.',
   'Connect Google Drive in Options to find your maps on any computer.',
   'Right-click a score in the local ranking to delete it.',

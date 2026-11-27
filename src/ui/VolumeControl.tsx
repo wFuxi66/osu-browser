@@ -1,11 +1,13 @@
 // stable's volume overlay: Alt+wheel shows master/music/effect meters in the bottom right and changes the
-// one under the cursor (master otherwise). While it's showing, the wheel over a meter changes it without Alt.
+// one under the cursor (master otherwise). While it's showing, the wheel over a meter changes it without Alt,
+// and it stays up while the cursor is over it. On the main menu and while playing, the wheel alone changes it.
 // In the editor, Alt+wheel only reaches it in the bottom-right corner; elsewhere it stays the editor's.
 import { useEffect, useRef, useState } from 'react';
 import { editor, useEditor } from '../editor/store';
 import { activePlayfield } from '../editor/ui/Playfield';
 import { gameplay } from '../play/session';
 import type { Prefs } from '../project/storage';
+import { screens } from './screens';
 
 type Meter = 'master' | 'music' | 'effect';
 
@@ -39,6 +41,12 @@ function inCorner(x: number, y: number): boolean {
   return Math.hypot((x - window.innerWidth) / unit - BACKDROP.cx, (y - window.innerHeight) / unit - BACKDROP.cy) <= BACKDROP.r;
 }
 
+/** Whether the pointer is over the overlay: the backdrop or around the meters, which reach past it. */
+function overOverlay(x: number, y: number): boolean {
+  const unit = window.innerHeight / 1000;
+  return inCorner(x, y) || Math.hypot((x - window.innerWidth) / unit, (y - window.innerHeight) / unit) <= 340;
+}
+
 /** Whether the wheel is over an editor area that uses Alt+wheel itself. */
 function editorWheelAt(e: WheelEvent): boolean {
   const area = (e.target as HTMLElement).closest?.<HTMLElement>('[data-wheel]');
@@ -54,22 +62,32 @@ export function VolumeControl() {
   const [visible, setVisible] = useState(false);
   const [hover, setHover] = useState<Meter | null>(null);
   const hideTimer = useRef(0);
+  const pointer = useRef({ x: -1, y: -1 });
   const state = useRef({ visible, hover });
   state.current = { visible, hover };
 
   useEffect(() => {
-    const show = () => {
-      setVisible(true);
+    // Hides a second after the last change, unless the cursor is over the overlay (it may be on its way to a meter).
+    const armHide = () => {
       window.clearTimeout(hideTimer.current);
       hideTimer.current = window.setTimeout(() => {
-        if (!state.current.hover) setVisible(false);
+        if (overOverlay(pointer.current.x, pointer.current.y)) armHide();
+        else setVisible(false);
       }, HIDE_AFTER);
     };
+    const show = () => {
+      setVisible(true);
+      armHide();
+    };
     const onWheel = (e: WheelEvent) => {
-      const over = state.current.visible ? meterAt(e.clientX, e.clientY) : null;
+      pointer.current = { x: e.clientX, y: e.clientY };
+      const at = meterAt(e.clientX, e.clientY);
+      const over = state.current.visible ? at : null;
       // While playing, the wheel alone changes the volume, as in stable (unless "Disable mouse wheel in play mode").
-      const playing = gameplay.active && !editor.prefs.disableWheelInPlay && !e.ctrlKey && !e.metaKey;
-      if (!over && !playing) {
+      // So does it on the main menu, which has nothing else to scroll.
+      const menu = !editor.hasProject && screens.get().screen === 'menu' && !!(e.target as HTMLElement).closest?.('.mm');
+      const bare = (menu || (gameplay.active && !editor.prefs.disableWheelInPlay)) && !e.ctrlKey && !e.metaKey;
+      if (!over && !bare) {
         if (!e.altKey || e.ctrlKey || e.metaKey) return;
         // Alt+wheel over the playfield or timeline stays the editor's (distance spacing, zoom) outside the
         // bottom-right corner, as in stable. Around the playfield (the canvas covers the whole stage) it's the volume.
@@ -77,7 +95,8 @@ export function VolumeControl() {
       }
       e.preventDefault();
       e.stopImmediatePropagation();
-      const meter = over ?? 'master';
+      // Alt+wheel over where a meter shows changes that one, even before the overlay is up.
+      const meter = at ?? 'master';
       const key = KEYS[meter];
       const delta = (e.deltaY || e.deltaX) < 0 ? STEP : -STEP;
       const value = Math.round(Math.min(1, Math.max(0, (editor.prefs[key] as number) + delta)) * 100) / 100;
@@ -85,10 +104,10 @@ export function VolumeControl() {
       show();
     };
     const onMove = (e: PointerEvent) => {
+      pointer.current = { x: e.clientX, y: e.clientY };
       if (!state.current.visible) return;
       const over = meterAt(e.clientX, e.clientY);
       if (over !== state.current.hover) setHover(over);
-      if (!over && state.current.hover) show();
     };
     window.addEventListener('wheel', onWheel, { capture: true, passive: false });
     window.addEventListener('pointermove', onMove);
